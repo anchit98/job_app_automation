@@ -430,13 +430,11 @@ export async function submitResumeResponse(
     const versions = await listResumeVersions(existing.target_entity_id);
     const linked = versions.find((v) => v.prompt_run_id === promptRunId);
     if (linked?.status === "ready" || linked?.status === "uploading") {
-      if (existing.status !== "completed") {
-        await completePromptRun(
-          promptRunId,
-          rawResponse,
-          schemaResult.data as Record<string, unknown>,
-        );
-      }
+      await completePromptRun(
+        promptRunId,
+        rawResponse,
+        schemaResult.data as Record<string, unknown>,
+      );
       return {
         ok: true as const,
         already_completed: true,
