@@ -10,9 +10,9 @@ export default async function PipelinePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const pipeline = getPipelineRunById(id);
+  const pipeline = await getPipelineRunById(id);
   if (!pipeline) notFound();
-  const application = getApplicationById(pipeline.application_id);
+  const application = await getApplicationById(pipeline.application_id);
 
   return (
     <div className="space-y-3">

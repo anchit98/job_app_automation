@@ -1,4 +1,4 @@
-import { getDb } from "@/lib/db";
+import { dbGet, dbAll, dbRun } from "@/lib/db";
 import type { Application, PromptRun } from "@/lib/db/types";
 import { isApplicationStatus } from "@/lib/applications/status";
 import {
@@ -59,9 +59,9 @@ function mapPromptRun(row: Record<string, unknown>): PromptRun {
   };
 }
 
-export function searchApplications(
+export async function searchApplications(
   filters: ApplicationSearchFilters,
-): ApplicationSearchResult {
+): Promise<ApplicationSearchResult> {
   const page = filters.page ?? 1;
   const pageSize = Math.min(
     Math.max(filters.pageSize ?? DEFAULT_PAGE_SIZE, 1),
@@ -75,7 +75,7 @@ export function searchApplications(
   const ftsQuery = filters.q ? buildFtsMatchQuery(filters.q) : "";
   if (ftsQuery) {
     conditions.push(
-      `a.id IN (SELECT application_id FROM applications_fts WHERE applications_fts MATCH ?)`,
+      `(to_tsvector('english', coalesce(a.company,'') || ' ' || coalesce(a.role,'') || ' ' || coalesce(a.jd_raw,'') || ' ' || coalesce(a.notes,'')) @@ plainto_tsquery('english', ?))`,
     );
     params.push(ftsQuery);
   }
@@ -115,24 +115,20 @@ export function searchApplications(
   }
 
   if (filters.dateFrom) {
-    conditions.push(`date(a.created_at) >= date(?)`);
+    conditions.push(`(a.created_at::timestamptz)::date >= ?::date`);
     params.push(filters.dateFrom);
   }
 
   if (filters.dateTo) {
-    conditions.push(`date(a.created_at) <= date(?)`);
+    conditions.push(`(a.created_at::timestamptz)::date <= ?::date`);
     params.push(filters.dateTo);
   }
 
   const where = conditions.join(" AND ");
 
-  const countRow = getDb()
-    .prepare(`SELECT COUNT(*) AS total FROM applications a WHERE ${where}`)
-    .get(...params) as { total: number };
+  const countRow = await dbGet(`SELECT COUNT(*) AS total FROM applications a WHERE ${where}`, ...params) as { total: number };
 
-  const rows = getDb()
-    .prepare(
-      `SELECT
+  const rows = await dbAll(`SELECT
          a.*,
          (SELECT COUNT(*) FROM resume_versions rv WHERE rv.application_id = a.id) AS resume_version_count,
          (SELECT MAX(rv.version) FROM resume_versions rv
@@ -140,9 +136,7 @@ export function searchApplications(
        FROM applications a
        WHERE ${where}
        ORDER BY a.updated_at DESC
-       LIMIT ? OFFSET ?`,
-    )
-    .all(...params, pageSize, offset) as Record<string, unknown>[];
+       LIMIT ? OFFSET ?`, ...params, pageSize, offset) as Record<string, unknown>[];
 
   const items: ApplicationListItem[] = rows.map((row) => {
     const resumeCount = Number(row.resume_version_count ?? 0);
@@ -164,7 +158,7 @@ export function searchApplications(
     };
   });
 
-  const total = countRow.total;
+  const total = Number(countRow?.total ?? 0);
   return {
     items,
     total,
@@ -174,13 +168,11 @@ export function searchApplications(
   };
 }
 
-export function getDashboardMetricsRow(): DashboardMetricsRow {
-  return getDb()
-    .prepare(
-      `SELECT
+export async function getDashboardMetricsRow(): Promise<DashboardMetricsRow> {
+  const row = await dbGet(`SELECT
          (SELECT COUNT(*) FROM applications) AS total,
          (SELECT COUNT(*) FROM applications
-          WHERE created_at >= datetime('now', '-7 days')) AS this_week,
+          WHERE created_at >= (NOW() AT TIME ZONE 'utc' - INTERVAL '7 days')::text) AS this_week,
          (SELECT COUNT(*) FROM applications
           WHERE status IN (
             'applied', 'email_sent', 'hr_replied', 'interview_scheduled',
@@ -206,9 +198,8 @@ export function getDashboardMetricsRow(): DashboardMetricsRow {
           WHERE a.status = 'applied'
             AND NOT EXISTS (
               SELECT 1 FROM resume_versions rv WHERE rv.application_id = a.id
-            )) AS incomplete_applied`,
-    )
-    .get() as DashboardMetricsRow;
+            )) AS incomplete_applied`);
+  return row as unknown as DashboardMetricsRow;
 }
 
 export interface PendingPromptRunItem extends PromptRun {
@@ -217,10 +208,8 @@ export interface PendingPromptRunItem extends PromptRun {
   application_role: string | null;
 }
 
-export function listPendingPromptRuns(): PendingPromptRunItem[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT pr.*,
+export async function listPendingPromptRuns(): Promise<PendingPromptRunItem[]> {
+  const rows = await dbAll(`SELECT pr.*,
          COALESCE(a.company, a2.company) AS application_company,
          COALESCE(a.role, a2.role) AS application_role,
          COALESCE(
@@ -245,9 +234,7 @@ export function listPendingPromptRuns(): PendingPromptRunItem[] {
            WHEN 'jd_parse' THEN 6
            ELSE 7
          END,
-         pr.exported_at ASC`,
-    )
-    .all() as Record<string, unknown>[];
+         pr.exported_at ASC`) as Record<string, unknown>[];
 
   return rows.map((row) => ({
     ...mapPromptRun(row),
@@ -257,27 +244,19 @@ export function listPendingPromptRuns(): PendingPromptRunItem[] {
   }));
 }
 
-export function listApplicationTimeline(
+export async function listApplicationTimeline(
   applicationId: string,
-): TimelineEvent[] {
-  const auditRows = getDb()
-    .prepare(
-      `SELECT id, action, payload, created_at
+): Promise<TimelineEvent[]> {
+  const auditRows = await dbAll(`SELECT id, action, payload, created_at
        FROM audit_log
        WHERE (entity = 'applications' AND entity_id = ?)
-          OR json_extract(payload, '$.application_id') = ?
-       ORDER BY created_at ASC`,
-    )
-    .all(applicationId, applicationId) as Record<string, unknown>[];
+          OR (payload::jsonb->>'application_id') = ?
+       ORDER BY created_at ASC`, applicationId, applicationId) as Record<string, unknown>[];
 
-  const promptRows = getDb()
-    .prepare(
-      `SELECT id, kind, status, exported_at, completed_at
+  const promptRows = await dbAll(`SELECT id, kind, status, exported_at, completed_at
        FROM prompt_runs
        WHERE target_entity_id = ?
-       ORDER BY exported_at ASC`,
-    )
-    .all(applicationId) as Record<string, unknown>[];
+       ORDER BY exported_at ASC`, applicationId) as Record<string, unknown>[];
 
   const events: TimelineEvent[] = [];
 
@@ -344,19 +323,27 @@ export function listApplicationTimeline(
   return events;
 }
 
-export function findSimilarApplications(
+export async function findSimilarApplications(
   company: string | null | undefined,
   role: string | null | undefined,
   excludeId?: string,
-): Application[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM applications
-       WHERE (? IS NULL OR id != ?)
-       ORDER BY updated_at DESC
-       LIMIT 50`,
-    )
-    .all(excludeId ?? null, excludeId ?? null) as Record<string, unknown>[];
+): Promise<Application[]> {
+  // Avoid `? IS NULL` — Postgres cannot infer the type of a null parameter.
+  const rows = (
+    excludeId
+      ? await dbAll(
+          `SELECT * FROM applications
+           WHERE id != ?
+           ORDER BY updated_at DESC
+           LIMIT 50`,
+          excludeId,
+        )
+      : await dbAll(
+          `SELECT * FROM applications
+           ORDER BY updated_at DESC
+           LIMIT 50`,
+        )
+  ) as Record<string, unknown>[];
 
   const candidate = { company, role };
   return rows
@@ -365,20 +352,28 @@ export function findSimilarApplications(
     .slice(0, 5);
 }
 
-export function updateApplicationNotesRow(
+export async function updateApplicationNotesRow(
   id: string,
   notes: string | null,
   notesHtml: string | null,
-): boolean {
-  const result = getDb()
-    .prepare(`UPDATE applications SET notes = ?, notes_html = ? WHERE id = ?`)
-    .run(notes, notesHtml, id);
+): Promise<boolean> {
+  const result = await dbRun(`UPDATE applications SET notes = ?, notes_html = ? WHERE id = ?`, notes, notesHtml, id);
   return result.changes > 0;
 }
 
-export function deleteApplicationRow(id: string): boolean {
-  const result = getDb()
-    .prepare(`DELETE FROM applications WHERE id = ?`)
-    .run(id);
-  return result.changes > 0;
+export async function deleteApplicationRow(id: string): Promise<boolean> {
+  // pipeline_runs / pending_extension_runs lack ON DELETE CASCADE — clear them first.
+  await dbRun(
+    `DELETE FROM pending_extension_runs
+       WHERE pipeline_run_id IN (
+         SELECT id FROM pipeline_runs WHERE application_id = ?
+       )`,
+    id,
+  );
+  await dbRun(`DELETE FROM pipeline_runs WHERE application_id = ?`, id);
+  const row = await dbGet<{ id: string }>(
+    `DELETE FROM applications WHERE id = ? RETURNING id`,
+    id,
+  );
+  return Boolean(row?.id);
 }

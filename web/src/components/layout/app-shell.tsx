@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -24,7 +25,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
-      {/* LinkedIn-style global top nav */}
       <header className="sticky top-0 z-50 h-nav-height bg-surface border-b border-border-hairline">
         <div className="mx-auto h-full max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -32,9 +32,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/dashboard"
               className="flex items-center gap-2 shrink-0 no-underline"
             >
-              <span className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-primary text-on-primary text-[18px] font-bold">
-                A
-              </span>
+              <Image
+                src="/brand/logo.svg"
+                alt="ApplyForge"
+                width={32}
+                height={32}
+                className="h-8 w-8 rounded-[4px]"
+                priority
+              />
               <span className="hidden sm:inline text-[20px] font-semibold text-primary tracking-tight">
                 ApplyForge
               </span>
@@ -87,11 +92,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+            <Link
+              href="/onboarding"
+              className="ml-1 hidden sm:flex items-center no-underline"
+              title="Profile"
+            >
+              <Image
+                src="/profile-sm.webp"
+                alt="Profile"
+                width={28}
+                height={28}
+                className="h-7 w-7 rounded-full border border-border-hairline object-cover"
+              />
+            </Link>
           </nav>
         </div>
       </header>
 
-      {/* Main canvas */}
       <main
         className={`
           flex-1 w-full

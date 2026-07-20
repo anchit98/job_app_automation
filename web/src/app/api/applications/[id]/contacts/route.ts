@@ -6,11 +6,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const application = getApplicationById(id);
+  const application = await getApplicationById(id);
   if (!application) {
     return NextResponse.json({ error: "Application not found" }, { status: 404 });
   }
 
-  const contacts = listContacts(id);
+  const contacts = await listContacts(id);
   return NextResponse.json({ contacts });
 }

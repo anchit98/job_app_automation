@@ -31,6 +31,8 @@ import {
   getApplicationById,
   getLatestReadyCoverLetterVersion,
   getLatestReadyResumeVersion,
+  getLatestUsableCoverLetterVersion,
+  getLatestUsableResumeVersion,
   getPromptRunById,
   listContacts,
   listCoverLetterVersions,
@@ -85,7 +87,7 @@ async function registerChatGptPending(
   promptText: string,
   chatgptUrl: string,
 ) {
-  upsertPendingExtensionRun({
+  await upsertPendingExtensionRun({
     prompt_run_id: promptRunId,
     pipeline_run_id: pipelineId,
     kind,
@@ -94,7 +96,7 @@ async function registerChatGptPending(
   });
   // Arm immediately so JobApp Bridge can open ChatGPT for this stage
   // (including JD parse) without waiting on a separate client-only step.
-  armExtensionWake(promptRunId, 300);
+  await armExtensionWake(promptRunId, 300);
 }
 
 async function savePipelineContactsNow(
@@ -136,7 +138,7 @@ async function bootstrapAndAdvancePipeline(input: {
     contactsAlreadySaved = true;
   }
 
-  let pipeline = insertPipelineRun({
+  let pipeline = await insertPipelineRun({
     application_id: input.application_id,
     contacts: input.contacts,
   });
@@ -160,7 +162,7 @@ async function bootstrapAndAdvancePipeline(input: {
   const nextStage: PipelineStageId = input.skip_jd_parse ? "resume" : "jd_parse";
 
   pipeline =
-    updatePipelineRun(pipeline.id, {
+    await updatePipelineRun(pipeline.id, {
       stages,
       current_stage: nextStage,
       status: "running",
@@ -241,7 +243,7 @@ export async function startQuickApplyForApplication(
   }
 
   try {
-    const application = getApplicationById(parsed.data.applicationId);
+    const application = await getApplicationById(parsed.data.applicationId);
     if (!application) {
       return { ok: false as const, error: "Application not found." };
     }
@@ -253,7 +255,7 @@ export async function startQuickApplyForApplication(
     }
 
     if (parsed.data.email_instructions !== undefined) {
-      updateApplicationEmailInstructions(
+      await updateApplicationEmailInstructions(
         application.id,
         parsed.data.email_instructions.trim() || null,
       );
@@ -263,7 +265,7 @@ export async function startQuickApplyForApplication(
     let contactsAlreadySaved = false;
 
     if (contacts.length === 0) {
-      contacts = listContacts(application.id)
+      contacts = (await listContacts(application.id))
         .filter((c) => Boolean(c.email?.trim()))
         .map((c) => ({
           name: c.name,
@@ -299,11 +301,11 @@ export async function startQuickApplyForApplication(
 }
 
 export async function getPipelineStatus(pipelineId: string) {
-  const run = getPipelineRunById(pipelineId);
+  const run = await getPipelineRunById(pipelineId);
   if (!run) return { ok: false as const, error: "Pipeline not found." };
-  const application = getApplicationById(run.application_id);
-  const resume = getLatestReadyResumeVersion(run.application_id);
-  const coverLetter = getLatestReadyCoverLetterVersion(run.application_id);
+  const application = await getApplicationById(run.application_id);
+  const resume = await getLatestReadyResumeVersion(run.application_id);
+  const coverLetter = await getLatestReadyCoverLetterVersion(run.application_id);
   return {
     ok: true as const,
     pipeline: run,
@@ -317,6 +319,11 @@ export async function getPipelineStatus(pipelineId: string) {
   };
 }
 
+type AdvanceOptions = {
+  /** When true, stop after cold_email and let Gmail drafts run in a separate call. */
+  deferGmailDrafts?: boolean;
+};
+
 type AdvanceResult =
   | {
       ok: true;
@@ -327,6 +334,7 @@ type AdvanceResult =
       prompt_text?: string | null;
       chatgpt_url?: string;
       repair_prompt?: string | null;
+      deferred_gmail?: boolean;
     }
   | {
       ok: false;
@@ -345,11 +353,12 @@ const advancingPipelines = new Map<string, Promise<AdvanceResult>>();
 
 export async function advancePipeline(
   pipelineId: string,
+  options: AdvanceOptions = {},
 ): Promise<AdvanceResult> {
   const existing = advancingPipelines.get(pipelineId);
   if (existing) return existing;
 
-  const promise = advancePipelineInner(pipelineId).finally(() => {
+  const promise = advancePipelineInner(pipelineId, options).finally(() => {
     if (advancingPipelines.get(pipelineId) === promise) {
       advancingPipelines.delete(pipelineId);
     }
@@ -360,8 +369,9 @@ export async function advancePipeline(
 
 async function advancePipelineInner(
   pipelineId: string,
+  options: AdvanceOptions = {},
 ): Promise<AdvanceResult> {
-  let run = getPipelineRunById(pipelineId);
+  let run = await getPipelineRunById(pipelineId);
   if (!run) return { ok: false as const, error: "Pipeline not found." };
   if (run.status === "completed") {
     return { ok: true as const, pipeline: run, done: true };
@@ -380,12 +390,12 @@ async function advancePipelineInner(
       if (currentStage === "resume" || currentStage === "cover_letter") {
         const hasFailedArtifact =
           currentStage === "resume"
-            ? listResumeVersions(run.application_id).some(
+            ? (await listResumeVersions(run.application_id)).some(
                 (v) =>
                   v.prompt_run_id === stage.prompt_run_id &&
                   v.status === "upload_failed",
               )
-            : listCoverLetterVersions(run.application_id).some(
+            : (await listCoverLetterVersions(run.application_id)).some(
                 (v) =>
                   v.prompt_run_id === stage.prompt_run_id &&
                   v.status === "upload_failed",
@@ -412,7 +422,7 @@ async function advancePipelineInner(
                 : "Drive export pending",
             });
             run =
-              updatePipelineRun(pipelineId, {
+              await updatePipelineRun(pipelineId, {
                 status: "awaiting_chatgpt",
                 stages,
                 error: recovered.error,
@@ -423,7 +433,7 @@ async function advancePipelineInner(
               detail: "Drive export ready",
             });
             run =
-              updatePipelineRun(pipelineId, {
+              await updatePipelineRun(pipelineId, {
                 stages,
                 error: null,
               }) ?? run;
@@ -431,16 +441,15 @@ async function advancePipelineInner(
         }
       }
 
-      const promptRun = getPromptRunById(stage.prompt_run_id);
+      const promptRun = await getPromptRunById(stage.prompt_run_id);
       if (promptRun?.status === "completed") {
-        // Resume/cover letter mark the prompt complete before Google Docs finishes.
-        // Do not advance until the linked artifact is ready, or cover letter races.
+        // Advance once ChatGPT content is accepted. Drive PDFs finish in the background.
         if (
-          !chatgptStageArtifactsReady(
+          !(await chatgptStageArtifactsReady(
             currentStage,
             run.application_id,
             stage.prompt_run_id,
-          )
+          ))
         ) {
           return {
             ok: true as const,
@@ -452,7 +461,11 @@ async function advancePipelineInner(
             repair_prompt: stage.repair_prompt ?? null,
           };
         }
-        const after = await onChatGptStageCompleted(pipelineId, currentStage);
+        const after = await onChatGptStageCompleted(
+          pipelineId,
+          currentStage,
+          options,
+        );
         return after;
       }
     }
@@ -476,7 +489,7 @@ async function advancePipelineInner(
   const next = nextPendingStage(run);
   if (!next) {
     run =
-      updatePipelineRun(pipelineId, {
+      await updatePipelineRun(pipelineId, {
         status: "completed",
         current_stage: null,
         error: null,
@@ -493,7 +506,7 @@ async function advancePipelineInner(
       case "cover_letter":
         return await startCoverLetterStage(pipelineId, run);
       case "save_contacts":
-        return await runSaveContactsStage(pipelineId, run);
+        return await runSaveContactsStage(pipelineId, run, options);
       case "cold_email":
         return await startColdEmailStage(pipelineId, run);
       case "gmail_drafts":
@@ -512,7 +525,7 @@ async function advancePipelineInner(
       error: message,
     });
     run =
-      updatePipelineRun(pipelineId, {
+      await updatePipelineRun(pipelineId, {
         status: "failed",
         current_stage: next.id,
         stages,
@@ -532,23 +545,27 @@ function nextPendingStage(run: PipelineRunRecord): PipelineStage | null {
   );
 }
 
-/** True when downstream stages can safely consume this ChatGPT stage's outputs. */
-function chatgptStageArtifactsReady(
+/** True when ChatGPT stage content is accepted (Drive may still be uploading). */
+async function chatgptStageArtifactsReady(
   stageId: PipelineStageId,
   applicationId: string,
   promptRunId: string,
-): boolean {
+): Promise<boolean> {
   switch (stageId) {
     case "resume":
-      return listResumeVersions(applicationId).some(
-        (v) => v.prompt_run_id === promptRunId && v.status === "ready",
+      return (await listResumeVersions(applicationId)).some(
+        (v) =>
+          v.prompt_run_id === promptRunId &&
+          (v.status === "ready" || v.status === "uploading"),
       );
     case "cover_letter":
-      return listCoverLetterVersions(applicationId).some(
-        (v) => v.prompt_run_id === promptRunId && v.status === "ready",
+      return (await listCoverLetterVersions(applicationId)).some(
+        (v) =>
+          v.prompt_run_id === promptRunId &&
+          (v.status === "ready" || v.status === "uploading"),
       );
     case "cold_email":
-      return listEmails(applicationId).some((e) => e.prompt_run_id === promptRunId);
+      return (await listEmails(applicationId)).some((e) => e.prompt_run_id === promptRunId);
     default:
       return true;
   }
@@ -584,7 +601,7 @@ async function markAwaitingChatGpt(
   });
 
   const updated =
-    updatePipelineRun(pipelineId, {
+    await updatePipelineRun(pipelineId, {
       status: "awaiting_chatgpt",
       current_stage: stageId,
       stages,
@@ -627,11 +644,12 @@ async function startCoverLetterStage(pipelineId: string, run: PipelineRunRecord)
 async function runSaveContactsStage(
   pipelineId: string,
   run: PipelineRunRecord,
+  options: AdvanceOptions = {},
 ): Promise<AdvanceResult> {
   const stagesRunning = patchStage(run.stages, "save_contacts", {
     status: "running",
   });
-  updatePipelineRun(pipelineId, {
+  await updatePipelineRun(pipelineId, {
     status: "running",
     current_stage: "save_contacts",
     stages: stagesRunning,
@@ -651,7 +669,7 @@ async function runSaveContactsStage(
         error: result.error,
       });
       const failed =
-        updatePipelineRun(pipelineId, {
+        await updatePipelineRun(pipelineId, {
           status: "failed",
           stages,
           error: result.error,
@@ -664,12 +682,13 @@ async function runSaveContactsStage(
     status: "completed",
     detail: `Saved ${contacts.length} contact(s)`,
   });
-  updatePipelineRun(pipelineId, {
+  await updatePipelineRun(pipelineId, {
     status: "running",
     current_stage: "cold_email",
     stages,
   });
-  return advancePipeline(pipelineId);
+  // Must call Inner — advancePipeline would deadlock on the in-flight lock.
+  return advancePipelineInner(pipelineId, options);
 }
 
 async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
@@ -679,7 +698,7 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
   // Continue next batch if previous completed and more remain.
   if (stage?.prompt_run_id && queued.length > 0) {
     const nextId = queued[0];
-    const nextRun = getPromptRunById(nextId);
+    const nextRun = await getPromptRunById(nextId);
     if (!nextRun?.prompt_text) {
       throw new Error("Cold email batch prompt missing.");
     }
@@ -696,7 +715,7 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
     );
   }
 
-  const application = getApplicationById(run.application_id);
+  const application = await getApplicationById(run.application_id);
   const exported = await exportColdEmailsPrompt(run.application_id, {
     sharedContext: application?.email_instructions ?? undefined,
   });
@@ -717,18 +736,54 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
   );
 }
 
+/** Wait for background Drive PDFs before attaching to Gmail drafts. */
+async function waitForDrivePdfsReady(applicationId: string, timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const [resume, cover] = await Promise.all([
+      getLatestUsableResumeVersion(applicationId),
+      getLatestUsableCoverLetterVersion(applicationId),
+    ]);
+    const resumeBusy = resume?.status === "uploading";
+    const coverBusy = cover?.status === "uploading";
+    if (!resumeBusy && !coverBusy) return;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+
 async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
+  const existing = findStage(run, "gmail_drafts");
+  if (existing?.status === "completed") {
+    const done =
+      run.status === "completed"
+        ? run
+        : (await updatePipelineRun(pipelineId, {
+            status: "completed",
+            current_stage: null,
+            error: null,
+          })) ?? run;
+    return { ok: true as const, pipeline: done, done: true };
+  }
+
   const stagesRunning = patchStage(run.stages, "gmail_drafts", {
     status: "running",
   });
-  updatePipelineRun(pipelineId, {
+  await updatePipelineRun(pipelineId, {
     status: "running",
     current_stage: "gmail_drafts",
     stages: stagesRunning,
   });
 
-  const emails = listEmails(run.application_id).filter(
-    (e) => e.kind === "cold" && !e.gmail_draft_id,
+  // Drive exports run in the background during ChatGPT stages — wait briefly
+  // so Gmail attachments can attach when possible.
+  await waitForDrivePdfsReady(run.application_id, 45_000);
+
+  const emails = (await listEmails(run.application_id)).filter(
+    (e) =>
+      e.kind === "cold" &&
+      !e.gmail_draft_id &&
+      e.draft_status !== "creating" &&
+      e.draft_status !== "created",
   );
   if (emails.length === 0) {
     const stages = patchStage(stagesRunning, "gmail_drafts", {
@@ -736,7 +791,7 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
       detail: "No new drafts to create",
     });
     const done =
-      updatePipelineRun(pipelineId, {
+      await updatePipelineRun(pipelineId, {
         status: "completed",
         current_stage: null,
         stages,
@@ -751,7 +806,7 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
       error: result.error,
     });
     const failed =
-      updatePipelineRun(pipelineId, {
+      await updatePipelineRun(pipelineId, {
         status: result.reconnect_required ? "needs_manual" : "failed",
         stages,
         error: result.error,
@@ -764,7 +819,7 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
     detail: `Created ${result.results?.filter((r) => r.ok).length ?? emails.length} draft(s)`,
   });
   const done =
-    updatePipelineRun(pipelineId, {
+    await updatePipelineRun(pipelineId, {
       status: "completed",
       current_stage: null,
       stages,
@@ -776,8 +831,9 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
 async function onChatGptStageCompleted(
   pipelineId: string,
   stageId: PipelineStageId,
+  options: AdvanceOptions = {},
 ): Promise<AdvanceResult> {
-  let run = getPipelineRunById(pipelineId);
+  let run = await getPipelineRunById(pipelineId);
   if (!run) return { ok: false as const, error: "Pipeline not found." };
 
   const stage = findStage(run, stageId);
@@ -788,12 +844,13 @@ async function onChatGptStageCompleted(
       prompt_text: null,
       repair_prompt: null,
     });
-    updatePipelineRun(pipelineId, {
+    await updatePipelineRun(pipelineId, {
       status: "running",
       current_stage: stageId,
       stages,
     });
-    return advancePipeline(pipelineId);
+    // Must call Inner — advancePipeline would deadlock on the in-flight lock.
+    return advancePipelineInner(pipelineId, options);
   }
 
   const stages = patchStage(run.stages, stageId, {
@@ -803,7 +860,7 @@ async function onChatGptStageCompleted(
     repair_prompt: null,
   });
   if (stage?.prompt_run_id) {
-    completePendingExtensionRun(stage.prompt_run_id, "completed");
+    await completePendingExtensionRun(stage.prompt_run_id, "completed");
   }
 
   const order: PipelineStageId[] = [
@@ -817,20 +874,32 @@ async function onChatGptStageCompleted(
   const idx = order.indexOf(stageId);
   const nextId = order[idx + 1] ?? null;
 
-  updatePipelineRun(pipelineId, {
+  await updatePipelineRun(pipelineId, {
     status: "running",
     current_stage: nextId,
     stages,
     error: null,
   });
-  return advancePipeline(pipelineId);
+
+  // Let the extension delete/close ChatGPT before slow Gmail API work.
+  if (options.deferGmailDrafts && nextId === "gmail_drafts") {
+    const refreshed = await getPipelineRunById(pipelineId);
+    return {
+      ok: true as const,
+      pipeline: refreshed ?? run,
+      deferred_gmail: true,
+    };
+  }
+
+  // Must call Inner — advancePipeline would deadlock on the in-flight lock.
+  return advancePipelineInner(pipelineId, options);
 }
 
 export async function submitPipelineResponse(
   pipelineId: string,
   rawResponse: string,
 ) {
-  const run = getPipelineRunById(pipelineId);
+  const run = await getPipelineRunById(pipelineId);
   if (!run) return { ok: false as const, error: "Pipeline not found." };
   if (!run.current_stage) {
     return { ok: false as const, error: "No active pipeline stage." };
@@ -854,7 +923,7 @@ export async function submitPipelineResponse(
       repair_prompt: result.repair_prompt ?? null,
     });
     const updated =
-      updatePipelineRun(pipelineId, {
+      await updatePipelineRun(pipelineId, {
         status: "awaiting_chatgpt",
         stages,
         error: result.error,
@@ -891,7 +960,7 @@ export async function routeChatGptSubmit(
     case "cold_email":
       return submitColdEmailsResponse(promptRunId, rawResponse);
     default: {
-      const run = getPromptRunById(promptRunId);
+      const run = await getPromptRunById(promptRunId);
       if (!run) return { ok: false, error: "Prompt run not found." };
       if (run.kind === "jd_parse") return submitPasteBack(promptRunId, rawResponse);
       if (run.kind === "resume") return submitResumeResponse(promptRunId, rawResponse);
@@ -907,7 +976,7 @@ export async function routeChatGptSubmit(
 }
 
 export async function skipPipelineStage(pipelineId: string) {
-  const run = getPipelineRunById(pipelineId);
+  const run = await getPipelineRunById(pipelineId);
   if (!run?.current_stage) {
     return { ok: false as const, error: "Nothing to skip." };
   }
@@ -920,7 +989,7 @@ export async function skipPipelineStage(pipelineId: string) {
     detail: "Skipped by user",
     prompt_text: null,
   });
-  updatePipelineRun(pipelineId, {
+  await updatePipelineRun(pipelineId, {
     status: "running",
     current_stage: "resume",
     stages,
@@ -930,7 +999,7 @@ export async function skipPipelineStage(pipelineId: string) {
 }
 
 export async function retryFailedPipeline(pipelineId: string) {
-  const run = getPipelineRunById(pipelineId);
+  const run = await getPipelineRunById(pipelineId);
   if (!run) return { ok: false as const, error: "Pipeline not found." };
   const failed = run.stages.find((s) => s.status === "failed");
   if (!failed) {
@@ -941,7 +1010,7 @@ export async function retryFailedPipeline(pipelineId: string) {
     error: null,
     repair_prompt: null,
   });
-  updatePipelineRun(pipelineId, {
+  await updatePipelineRun(pipelineId, {
     status: "running",
     current_stage: failed.id,
     stages,

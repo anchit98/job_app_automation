@@ -41,7 +41,7 @@ export async function syncMasterFromGoogleDoc(
   const templateDocId = await drive.ensureMasterTemplateCopy(docId);
 
   const syncedAt = new Date().toISOString();
-  upsertMasterResumeRow({
+  await upsertMasterResumeRow({
     content: content as unknown as Record<string, unknown>,
     doc_id: templateDocId,
     doc_layout: layout as unknown as Record<string, unknown>,

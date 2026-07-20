@@ -2,6 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { maybeAdvanceApplicationStatus } from "@/app/actions/applications";
 import { writeAuditLog } from "@/lib/audit";
 import {
@@ -11,7 +12,7 @@ import {
   getApplicationById,
   getCoverLetterVersion,
   getCoverLetterVersionById,
-  getLatestReadyResumeVersion,
+  getLatestUsableResumeVersion,
   getMasterCoverLetterRow,
   getNextCoverLetterVersionNumber,
   getProfileRow,
@@ -60,15 +61,15 @@ import {
 export async function getCoverLetterVersionsForApplication(
   applicationId: string,
 ) {
-  return listCoverLetterVersions(applicationId);
+  return await listCoverLetterVersions(applicationId);
 }
 
 export async function getMasterCoverLetter() {
-  return getMasterCoverLetterRow();
+  return await getMasterCoverLetterRow();
 }
 
 function assertMasterCoverLetterReady(
-  masterRow: ReturnType<typeof getMasterCoverLetterRow>,
+  masterRow: Awaited<ReturnType<typeof getMasterCoverLetterRow>>,
 ) {
   if (!masterRow?.doc_id) {
     throw new Error(
@@ -112,20 +113,21 @@ async function persistCoverLetterArtifacts(
   options: {
     resumeVersionId: string;
     editedFromVersionId?: string | null;
+    deferDrive?: boolean;
   },
 ) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found.");
 
-  const masterRow = getMasterCoverLetterRow();
+  const masterRow = await getMasterCoverLetterRow();
   assertMasterCoverLetterReady(masterRow);
 
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const fullName = profile?.full_name ?? "Candidate";
 
   const existing =
     promptRunId != null
-      ? listCoverLetterVersions(applicationId).find(
+      ? (await listCoverLetterVersions(applicationId)).find(
           (v) =>
             v.prompt_run_id === promptRunId &&
             (v.status === "upload_failed" || v.status === "uploading"),
@@ -133,10 +135,10 @@ async function persistCoverLetterArtifacts(
       : undefined;
   const coverLetterVersionId = existing?.id ?? randomUUID();
   const version =
-    existing?.version ?? getNextCoverLetterVersionNumber(applicationId);
+    existing?.version ?? await getNextCoverLetterVersionNumber(applicationId);
 
   if (!existing) {
-    insertCoverLetterVersion({
+    await insertCoverLetterVersion({
       id: coverLetterVersionId,
       application_id: applicationId,
       resume_version_id: options.resumeVersionId,
@@ -147,52 +149,70 @@ async function persistCoverLetterArtifacts(
       status: "uploading",
     });
   } else {
-    updateCoverLetterVersionContentForRetry(coverLetterVersionId, content);
+    await updateCoverLetterVersionContentForRetry(coverLetterVersionId, content);
   }
 
-  try {
-    const auth = await getGoogleAuthClient();
-    const drive = new DriveClient(auth);
-    const docs = new DocsClient(auth);
+  const finishDrive = async () => {
+    try {
+      const auth = await getGoogleAuthClient();
+      const drive = new DriveClient(auth);
+      const docs = new DocsClient(auth);
 
-    const result = await generateCoverLetterArtifacts(drive, docs, {
-      masterDocId: masterRow!.doc_id!,
-      layout: masterRow!.doc_layout as unknown as CoverLetterLayoutMap,
-      content,
-      application,
-      version,
-      fullName,
-    });
-
-    updateCoverLetterVersionDriveIds(
-      coverLetterVersionId,
-      result.drive_pdf_id,
-      result.drive_docx_id,
-      result.drive_doc_id,
-    );
-
-    await writeAuditLog(
-      "cover_letter.generated",
-      "cover_letter_versions",
-      coverLetterVersionId,
-      {
-        application_id: applicationId,
+      const result = await generateCoverLetterArtifacts(drive, docs, {
+        masterDocId: masterRow!.doc_id!,
+        layout: masterRow!.doc_layout as unknown as CoverLetterLayoutMap,
+        content,
+        application,
         version,
-        drive_doc_id: result.drive_doc_id,
-        drive_pdf_id: result.drive_pdf_id,
-        edited: Boolean(options.editedFromVersionId),
-      },
-    );
+        fullName,
+      });
 
+      await updateCoverLetterVersionDriveIds(
+        coverLetterVersionId,
+        result.drive_pdf_id,
+        result.drive_docx_id,
+        result.drive_doc_id,
+      );
+
+      await writeAuditLog(
+        "cover_letter.generated",
+        "cover_letter_versions",
+        coverLetterVersionId,
+        {
+          application_id: applicationId,
+          version,
+          drive_doc_id: result.drive_doc_id,
+          drive_pdf_id: result.drive_pdf_id,
+          edited: Boolean(options.editedFromVersionId),
+        },
+      );
+
+      return {
+        cover_letter_version_id: coverLetterVersionId,
+        version,
+        pdf_name: result.pdf_name,
+      };
+    } catch (e) {
+      await markCoverLetterVersionUploadFailed(coverLetterVersionId);
+      throw e;
+    }
+  };
+
+  if (options.deferDrive) {
+    after(() => {
+      void finishDrive().catch((err) => {
+        console.error("[cover-letter] deferred Drive export failed", err);
+      });
+    });
     return {
       cover_letter_version_id: coverLetterVersionId,
       version,
-      pdf_name: result.pdf_name,
+      pdf_name: null as string | null,
+      deferred: true as const,
     };
-  } catch (e) {
-    markCoverLetterVersionUploadFailed(coverLetterVersionId);
-    throw e;
   }
+
+  return finishDrive();
 }
 
 export async function exportCoverLetterPrompt(
@@ -202,20 +222,23 @@ export async function exportCoverLetterPrompt(
     skipCompanyCheck?: boolean;
   },
 ) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found.");
 
-  const masterRow = getMasterCoverLetterRow();
+  const masterRow = await getMasterCoverLetterRow();
   assertMasterCoverLetterReady(masterRow);
 
   const resumeVersion =
     options?.resumeVersion != null
-      ? getResumeVersion(applicationId, options.resumeVersion)
-      : getLatestReadyResumeVersion(applicationId);
+      ? await getResumeVersion(applicationId, options.resumeVersion)
+      : await getLatestUsableResumeVersion(applicationId);
 
-  if (!resumeVersion || resumeVersion.status !== "ready") {
+  if (
+    !resumeVersion ||
+    (resumeVersion.status !== "ready" && resumeVersion.status !== "uploading")
+  ) {
     throw new Error(
-      "Generate a tailored resume first (at least one ready version required).",
+      "Generate a tailored resume first (at least one accepted version required).",
     );
   }
 
@@ -224,10 +247,10 @@ export async function exportCoverLetterPrompt(
     throw new Error("Selected resume version has invalid content.");
   }
 
-  const template = getActivePromptTemplate("cover_letter");
+  const template = await getActivePromptTemplate("cover_letter");
   if (!template) throw new Error("No active cover letter prompt template.");
 
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const targetCompany =
     application.company?.trim() ||
     application.jd_parsed?.company?.trim() ||
@@ -237,7 +260,7 @@ export async function exportCoverLetterPrompt(
     application.jd_parsed?.role?.trim() ||
     "the role";
 
-  const runId = createPromptRun("cover_letter", {
+  const runId = await createPromptRun("cover_letter", {
     entity: "applications",
     entityId: applicationId,
   });
@@ -265,7 +288,7 @@ export async function exportCoverLetterPrompt(
   );
 
   const lengthWarning = warnIfPromptTooLong(promptText);
-  updatePromptRunText(runId, promptText);
+  await updatePromptRunText(runId, promptText);
 
   await writeAuditLog("prompt.exported", "prompt_runs", runId, {
     kind: "cover_letter",
@@ -303,7 +326,7 @@ export async function submitCoverLetterResponse(
     };
   }
 
-  const existing = getPromptRunById(promptRunId);
+  const existing = await getPromptRunById(promptRunId);
   if (!existing) {
     return { ok: false as const, error: "Prompt run not found." };
   }
@@ -318,7 +341,7 @@ export async function submitCoverLetterResponse(
   }
 
   if (existing.status === "completed") {
-    const versions = listCoverLetterVersions(existing.target_entity_id);
+    const versions = await listCoverLetterVersions(existing.target_entity_id);
     const linked = versions.find((v) => v.prompt_run_id === promptRunId);
     return {
       ok: true as const,
@@ -328,19 +351,22 @@ export async function submitCoverLetterResponse(
     };
   }
 
-  const application = getApplicationById(existing.target_entity_id);
+  const application = await getApplicationById(existing.target_entity_id);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
 
   const resumeVersion =
     options?.resumeVersion != null
-      ? getResumeVersion(existing.target_entity_id, options.resumeVersion)
-      : getLatestReadyResumeVersion(existing.target_entity_id);
-  if (!resumeVersion || resumeVersion.status !== "ready") {
+      ? await getResumeVersion(existing.target_entity_id, options.resumeVersion)
+      : await getLatestUsableResumeVersion(existing.target_entity_id);
+  if (
+    !resumeVersion ||
+    (resumeVersion.status !== "ready" && resumeVersion.status !== "uploading")
+  ) {
     return {
       ok: false as const,
-      error: "No ready resume version found for this application.",
+      error: "No accepted resume version found for this application.",
     };
   }
 
@@ -354,8 +380,8 @@ export async function submitCoverLetterResponse(
     jsonText = extractJsonFromText(rawResponse);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Invalid JSON";
-    updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }], rawResponse);
-    const template = getActivePromptTemplate("cover_letter");
+    await updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }], rawResponse);
+    const template = await getActivePromptTemplate("cover_letter");
     return {
       ok: false as const,
       error: message,
@@ -376,7 +402,7 @@ export async function submitCoverLetterResponse(
     return { ok: false as const, error: "Parsed text is not valid JSON." };
   }
 
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const fullName = profile?.full_name ?? "Candidate";
   const targetCompany =
     application.company?.trim() ||
@@ -414,8 +440,8 @@ export async function submitCoverLetterResponse(
   const schemaResult = coverLetterContentSchema.safeParse(normalizedContent);
   if (!schemaResult.success) {
     const errors = zodErrorsToList(schemaResult.error);
-    updatePromptRunValidationErrors(promptRunId, errors, rawResponse);
-    const template = getActivePromptTemplate("cover_letter");
+    await updatePromptRunValidationErrors(promptRunId, errors, rawResponse);
+    const template = await getActivePromptTemplate("cover_letter");
     return {
       ok: false as const,
       error: "Response failed cover letter schema validation.",
@@ -437,7 +463,7 @@ export async function submitCoverLetterResponse(
   });
 
   if (contentIssues.length > 0) {
-    updatePromptRunValidationErrors(
+    await updatePromptRunValidationErrors(
       promptRunId,
       contentIssues,
       rawResponse,
@@ -450,22 +476,23 @@ export async function submitCoverLetterResponse(
     };
   }
 
-  // Finalize prompt only after Google Docs export succeeds (same race as resume).
+  // Content already accepted — do not block ChatGPT chain on Drive.
   {
-    const versions = listCoverLetterVersions(existing.target_entity_id);
+    const versions = await listCoverLetterVersions(existing.target_entity_id);
     const linked = versions.find((v) => v.prompt_run_id === promptRunId);
-    if (linked?.status === "ready") {
+    if (linked?.status === "ready" || linked?.status === "uploading") {
+      if (existing.status !== "completed") {
+        await completePromptRun(
+          promptRunId,
+          rawResponse,
+          schemaResult.data as Record<string, unknown>,
+        );
+      }
       return {
         ok: true as const,
         already_completed: true,
         version: linked.version,
         cover_letter_version_id: linked.id,
-      };
-    }
-    if (linked?.status === "uploading") {
-      return {
-        ok: false as const,
-        error: "Cover letter export still in progress. Try again in a moment.",
       };
     }
   }
@@ -475,10 +502,10 @@ export async function submitCoverLetterResponse(
       existing.target_entity_id,
       promptRunId,
       schemaResult.data,
-      { resumeVersionId: resumeVersion.id },
+      { resumeVersionId: resumeVersion.id, deferDrive: true },
     );
 
-    completePromptRun(
+    await completePromptRun(
       promptRunId,
       rawResponse,
       schemaResult.data as Record<string, unknown>,
@@ -496,6 +523,7 @@ export async function submitCoverLetterResponse(
       version: result.version,
       cover_letter_version_id: result.cover_letter_version_id,
       status_advance,
+      drive_deferred: true as const,
     };
   } catch (e) {
     const error = formatCoverLetterExportError(e);
@@ -514,7 +542,7 @@ export async function saveCoverLetterEdit(
   sourceVersion: number,
   bodyHtml: string,
 ) {
-  const source = getCoverLetterVersion(applicationId, sourceVersion);
+  const source = await getCoverLetterVersion(applicationId, sourceVersion);
   if (!source) {
     return { ok: false as const, error: "Cover letter version not found." };
   }
@@ -527,7 +555,7 @@ export async function saveCoverLetterEdit(
     };
   }
 
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
@@ -537,7 +565,7 @@ export async function saveCoverLetterEdit(
     return { ok: false as const, error: "Resume version link missing." };
   }
 
-  const resumeVersion = getResumeVersionById(resumeVersionId);
+  const resumeVersion = await getResumeVersionById(resumeVersionId);
   if (!resumeVersion) {
     return { ok: false as const, error: "Linked resume version not found." };
   }
@@ -596,24 +624,24 @@ export async function updateCompanyBlurb(
   applicationId: string,
   companyBlurb: string,
 ) {
-  const ok = updateApplicationCompanyBlurb(applicationId, companyBlurb);
+  const ok = await updateApplicationCompanyBlurb(applicationId, companyBlurb);
   if (!ok) return { ok: false as const, error: "Application not found." };
   revalidatePath(`/applications/${applicationId}`);
   return { ok: true as const };
 }
 
 export async function retryCoverLetterUpload(coverLetterVersionId: string) {
-  const versionRow = getCoverLetterVersionById(coverLetterVersionId);
+  const versionRow = await getCoverLetterVersionById(coverLetterVersionId);
   if (!versionRow || versionRow.status !== "upload_failed") {
     return { ok: false as const, error: "Nothing to retry." };
   }
 
-  const application = getApplicationById(versionRow.application_id);
+  const application = await getApplicationById(versionRow.application_id);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
 
-  const masterRow = getMasterCoverLetterRow();
+  const masterRow = await getMasterCoverLetterRow();
   try {
     assertMasterCoverLetterReady(masterRow);
   } catch (e) {
@@ -623,7 +651,7 @@ export async function retryCoverLetterUpload(coverLetterVersionId: string) {
     };
   }
 
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const fullName = profile?.full_name ?? "Candidate";
 
   try {
@@ -640,7 +668,7 @@ export async function retryCoverLetterUpload(coverLetterVersionId: string) {
       fullName,
     });
 
-    updateCoverLetterVersionDriveIds(
+    await updateCoverLetterVersionDriveIds(
       versionRow.id,
       result.drive_pdf_id,
       result.drive_docx_id,
@@ -648,9 +676,9 @@ export async function retryCoverLetterUpload(coverLetterVersionId: string) {
     );
 
     if (versionRow.prompt_run_id) {
-      const prompt = getPromptRunById(versionRow.prompt_run_id);
+      const prompt = await getPromptRunById(versionRow.prompt_run_id);
       if (prompt?.status === "pending") {
-        completePromptRun(
+        await completePromptRun(
           versionRow.prompt_run_id,
           JSON.stringify(versionRow.content),
           versionRow.content as unknown as Record<string, unknown>,
@@ -688,15 +716,15 @@ export async function recoverCoverLetterExportForPromptRun(
   error?: string;
   reconnect_required?: boolean;
 }> {
-  const versions = listCoverLetterVersions(applicationId)
+  const versions = (await listCoverLetterVersions(applicationId))
     .filter((v) => v.prompt_run_id === promptRunId)
     .sort((a, b) => b.version - a.version);
 
   const ready = versions.find((v) => v.status === "ready");
   if (ready) {
-    const prompt = getPromptRunById(promptRunId);
+    const prompt = await getPromptRunById(promptRunId);
     if (prompt?.status === "pending") {
-      completePromptRun(
+      await completePromptRun(
         promptRunId,
         JSON.stringify(ready.content),
         ready.content as unknown as Record<string, unknown>,
@@ -717,5 +745,5 @@ export async function getCoverLetterVersionForDownload(
   applicationId: string,
   version: number,
 ) {
-  return getCoverLetterVersion(applicationId, version);
+  return await getCoverLetterVersion(applicationId, version);
 }

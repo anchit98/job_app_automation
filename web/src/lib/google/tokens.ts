@@ -30,7 +30,7 @@ export async function saveGoogleTokens(
   scope: string,
   expiresAt: Date,
 ) {
-  saveGoogleTokensRow({
+  await saveGoogleTokensRow({
     encrypted_access_token: encryptSecret(accessToken),
     encrypted_refresh_token: encryptSecret(refreshToken),
     scope,
@@ -39,15 +39,15 @@ export async function saveGoogleTokens(
 }
 
 export async function markGoogleTokensRevoked() {
-  markGoogleTokensRevokedRow();
+  await markGoogleTokensRevokedRow();
 }
 
 export async function disconnectGoogle() {
-  deleteGoogleTokensRow();
+  await deleteGoogleTokensRow();
 }
 
 export async function getGoogleAuthClient() {
-  const row = getGoogleTokensRow();
+  const row = await getGoogleTokensRow();
   if (!row || row.status === "revoked") {
     throw new GoogleNotConnectedError();
   }
@@ -96,7 +96,7 @@ export async function getGoogleAuthClient() {
 }
 
 export async function isGoogleConnected(): Promise<boolean> {
-  const row = getGoogleTokensRow();
+  const row = await getGoogleTokensRow();
   return Boolean(row && row.status === "active");
 }
 

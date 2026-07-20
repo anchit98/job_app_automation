@@ -18,7 +18,7 @@ export interface MasterResumeInput {
 }
 
 export async function upsertMasterResume(input: MasterResumeInput) {
-  upsertMasterResumeRow({
+  await upsertMasterResumeRow({
     content: input.content,
     rules: {
       ...getDefaultMasterResumeRules(),
@@ -38,5 +38,5 @@ export async function upsertMasterResume(input: MasterResumeInput) {
 }
 
 export async function getMasterResume() {
-  return getMasterResumeRow();
+  return await getMasterResumeRow();
 }

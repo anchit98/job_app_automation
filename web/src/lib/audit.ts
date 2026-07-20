@@ -6,7 +6,7 @@ export async function writeAuditLog(
   entityId?: string,
   payload?: Record<string, unknown>,
 ) {
-  insertAuditLog({
+  await insertAuditLog({
     action,
     entity,
     entity_id: entityId,

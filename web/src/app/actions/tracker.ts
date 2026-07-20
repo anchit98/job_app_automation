@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { writeAuditLog } from "@/lib/audit";
 import { htmlToPlainText } from "@/lib/cover-letter/html";
-import { getApplicationById } from "@/lib/db/queries";
+import { getApplicationById, abandonAllPendingPromptRuns } from "@/lib/db/queries";
 import {
   formatRate,
   mapDashboardMetrics,
@@ -36,8 +36,8 @@ export async function getDashboardData(): Promise<{
     offerRate: string;
   };
 }> {
-  runTrackerMaintenance();
-  const row = getDashboardMetricsRow();
+  await runTrackerMaintenance();
+  const row = await getDashboardMetricsRow();
   const metrics = mapDashboardMetrics(row);
   return {
     metrics,
@@ -52,24 +52,24 @@ export async function getDashboardData(): Promise<{
 export async function searchApplicationsAction(
   filters: ApplicationSearchFilters,
 ): Promise<ApplicationSearchResult> {
-  return searchApplications(filters);
+  return await searchApplications(filters);
 }
 
 export async function searchApplicationsFromParams(
   params: Record<string, string | string[] | undefined>,
 ): Promise<ApplicationSearchResult> {
-  return searchApplications(parseApplicationSearchParams(params));
+  return await searchApplications(parseApplicationSearchParams(params));
 }
 
 export async function getPromptsInbox(): Promise<PendingPromptRunItem[]> {
-  runTrackerMaintenance();
-  return listPendingPromptRuns();
+  await runTrackerMaintenance();
+  return await listPendingPromptRuns();
 }
 
 export async function getApplicationTimeline(
   applicationId: string,
 ): Promise<TimelineEvent[]> {
-  return listApplicationTimeline(applicationId);
+  return await listApplicationTimeline(applicationId);
 }
 
 export async function getSimilarApplications(
@@ -77,20 +77,20 @@ export async function getSimilarApplications(
   role: string | null | undefined,
   excludeId?: string,
 ): Promise<Application[]> {
-  return findSimilarApplications(company, role, excludeId);
+  return await findSimilarApplications(company, role, excludeId);
 }
 
 export async function updateApplicationNotes(
   applicationId: string,
   notesHtml: string,
 ) {
-  const existing = getApplicationById(applicationId);
+  const existing = await getApplicationById(applicationId);
   if (!existing) {
     return { ok: false as const, error: "Application not found." };
   }
 
   const plain = htmlToPlainText(notesHtml);
-  const updated = updateApplicationNotesRow(applicationId, plain || null, notesHtml);
+  const updated = await updateApplicationNotesRow(applicationId, plain || null, notesHtml);
   if (!updated) {
     return { ok: false as const, error: "Failed to save notes." };
   }
@@ -102,12 +102,12 @@ export async function updateApplicationNotes(
 }
 
 export async function deleteApplication(applicationId: string) {
-  const existing = getApplicationById(applicationId);
+  const existing = await getApplicationById(applicationId);
   if (!existing) {
     return { ok: false as const, error: "Application not found." };
   }
 
-  const deleted = deleteApplicationRow(applicationId);
+  const deleted = await deleteApplicationRow(applicationId);
   if (!deleted) {
     return { ok: false as const, error: "Failed to delete application." };
   }
@@ -121,4 +121,17 @@ export async function deleteApplication(applicationId: string) {
   revalidatePath("/dashboard");
   revalidatePath("/prompts");
   return { ok: true as const };
+}
+
+/** Clear all pending ChatGPT prompt runs (dashboard count → 0). */
+export async function clearAllPendingPrompts() {
+  const cleared = await abandonAllPendingPromptRuns();
+  await writeAuditLog("prompts.cleared_pending", "prompt_runs", "all", {
+    cleared,
+  });
+  revalidatePath("/dashboard");
+  revalidatePath("/settings");
+  revalidatePath("/prompts");
+  revalidatePath("/health");
+  return { ok: true as const, cleared };
 }

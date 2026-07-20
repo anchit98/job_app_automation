@@ -54,7 +54,7 @@ function parseDiscoveryPayload(promptText: string): EmailDiscoveryPayload | null
 export async function getContactsForApplication(
   applicationId: string,
 ): Promise<Contact[]> {
-  return listContacts(applicationId);
+  return await listContacts(applicationId);
 }
 
 export async function lookupCompanyDomain(companyName: string) {
@@ -74,7 +74,7 @@ export async function startEmailDiscovery(
   applicationId: string,
   intake: ContactIntake,
 ) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
@@ -101,14 +101,14 @@ export async function startEmailDiscovery(
     company_domain: companyDomain,
   };
 
-  const promptRunId = createPromptRun("email_discovery", {
+  const promptRunId = await createPromptRun("email_discovery", {
     entity: "application",
     entityId: applicationId,
   });
 
   const marker = `\n<!-- prompt_run_id: ${promptRunId} -->`;
   const promptText = JSON.stringify(payload, null, 2) + marker;
-  updatePromptRunText(promptRunId, promptText);
+  await updatePromptRunText(promptRunId, promptText);
 
   await writeAuditLog("email_discovery_started", "application", applicationId, {
     prompt_run_id: promptRunId,
@@ -128,7 +128,7 @@ export async function submitMailmeteorResult(
   promptRunId: string,
   result: MailmeteorResult,
 ) {
-  const run = getPromptRunById(promptRunId);
+  const run = await getPromptRunById(promptRunId);
   if (!run) {
     return { ok: false as const, error: "Discovery run not found." };
   }
@@ -136,7 +136,7 @@ export async function submitMailmeteorResult(
     return { ok: false as const, error: "Invalid discovery run." };
   }
   if (run.status !== "pending") {
-    const existing = listContacts(run.target_entity_id ?? "").find(
+    const existing = (await listContacts(run.target_entity_id ?? "")).find(
       (contact) => contact.prompt_run_id === promptRunId,
     );
     if (existing) {
@@ -152,7 +152,7 @@ export async function submitMailmeteorResult(
 
   const parsed = mailmeteorResultSchema.safeParse(result);
   if (!parsed.success) {
-    updatePromptRunValidationErrors(
+    await updatePromptRunValidationErrors(
       promptRunId,
       zodErrorsToList(parsed.error),
       JSON.stringify(result),
@@ -169,7 +169,7 @@ export async function submitMailmeteorResult(
     parsed.data.validation_status,
   );
 
-  const contactId = insertContact({
+  const contactId = await insertContact({
     application_id: applicationId,
     name: parsed.data.name,
     role: parsed.data.position ?? payload?.role ?? null,
@@ -188,7 +188,7 @@ export async function submitMailmeteorResult(
     verification_status: verificationStatus,
   };
 
-  const completed = completePromptRun(
+  const completed = await completePromptRun(
     promptRunId,
     JSON.stringify(parsed.data),
     stored,
@@ -212,7 +212,7 @@ export async function submitMailmeteorResult(
 }
 
 export async function markNoEmailAvailable(promptRunId: string) {
-  const run = getPromptRunById(promptRunId);
+  const run = await getPromptRunById(promptRunId);
   if (!run || run.kind !== "email_discovery" || !run.target_entity_id) {
     return { ok: false as const, error: "Discovery run not found." };
   }
@@ -220,7 +220,7 @@ export async function markNoEmailAvailable(promptRunId: string) {
   const payload = parseDiscoveryPayload(run.prompt_text);
   const name = payload?.name?.trim() || "Unknown contact";
 
-  const contactId = insertContact({
+  const contactId = await insertContact({
     application_id: run.target_entity_id,
     name,
     role: payload?.role ?? null,
@@ -233,7 +233,7 @@ export async function markNoEmailAvailable(promptRunId: string) {
     prompt_run_id: promptRunId,
   });
 
-  completePromptRun(
+  await completePromptRun(
     promptRunId,
     JSON.stringify({ status: "no_email_available" }),
     { contact_id: contactId, status: "no_email_available" },
@@ -255,7 +255,7 @@ export async function runPatternFallback(input: {
   linkedinUrl?: string | null;
   role?: string | null;
 }) {
-  const application = getApplicationById(input.applicationId);
+  const application = await getApplicationById(input.applicationId);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
@@ -299,7 +299,7 @@ export async function runPatternFallback(input: {
       ? "unverified"
       : "unverified";
 
-  const contactId = insertContact({
+  const contactId = await insertContact({
     application_id: input.applicationId,
     name: input.name.trim(),
     role: input.role ?? null,
@@ -314,9 +314,9 @@ export async function runPatternFallback(input: {
   });
 
   if (input.promptRunId) {
-    const run = getPromptRunById(input.promptRunId);
+    const run = await getPromptRunById(input.promptRunId);
     if (run?.status === "pending") {
-      completePromptRun(
+      await completePromptRun(
         input.promptRunId,
         JSON.stringify({ email: bestEmail, patterns }),
         { contact_id: contactId, email: bestEmail },
@@ -355,7 +355,7 @@ export async function saveManualContact(
     promptRunId?: string | null;
   },
 ) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
@@ -369,7 +369,7 @@ export async function saveManualContact(
     };
   }
 
-  const contactId = insertContact({
+  const contactId = await insertContact({
     application_id: applicationId,
     name: parsed.data.name,
     role: parsed.data.role ?? null,
@@ -383,9 +383,9 @@ export async function saveManualContact(
   });
 
   if (input.promptRunId) {
-    const run = getPromptRunById(input.promptRunId);
+    const run = await getPromptRunById(input.promptRunId);
     if (run?.status === "pending") {
-      completePromptRun(
+      await completePromptRun(
         input.promptRunId,
         JSON.stringify(parsed.data),
         { contact_id: contactId, email: parsed.data.email },
@@ -402,12 +402,12 @@ export async function saveManualContact(
 }
 
 export async function removeContact(contactId: string) {
-  const contact = getContactById(contactId);
+  const contact = await getContactById(contactId);
   if (!contact) {
     return { ok: false as const, error: "Contact not found." };
   }
 
-  deleteContact(contactId);
+  await deleteContact(contactId);
   await writeAuditLog("contact_deleted", "contact", contactId, {
     application_id: contact.application_id,
   });

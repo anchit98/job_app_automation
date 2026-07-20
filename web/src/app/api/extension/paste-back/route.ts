@@ -38,7 +38,7 @@ function patchStageError(
  * Body: { prompt_run_id, raw_response, partial?: boolean }
  */
 export async function POST(request: Request) {
-  if (!verifyExtensionBearer(request.headers.get("authorization"))) {
+  if (!await verifyExtensionBearer(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -68,27 +68,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const promptRun = getPromptRunById(promptRunId);
+  const promptRun = await getPromptRunById(promptRunId);
   if (!promptRun) {
     return NextResponse.json({ error: "Prompt run not found" }, { status: 404 });
   }
 
-  const pending = getPendingExtensionRun(promptRunId);
+  const pending = await getPendingExtensionRun(promptRunId);
   const stageKind = pending?.kind ?? promptRun.kind;
 
   const submit = await routeChatGptSubmit(stageKind, promptRunId, raw);
   if (!submit.ok) {
-    completePendingExtensionRun(
+    await completePendingExtensionRun(
       promptRunId,
       body.partial ? "timed_out" : "failed",
       submit.error,
     );
 
-    const pipeline = findPipelineByPromptRun(promptRunId);
+    const pipeline = await findPipelineByPromptRun(promptRunId);
     if (pipeline && submit.error) {
       const stageId = pipeline.current_stage ?? stageKind;
       const stages = patchStageError(pipeline.stages, stageId, submit.error);
-      updatePipelineRun(pipeline.id, {
+      await updatePipelineRun(pipeline.id, {
         status: "awaiting_chatgpt",
         stages,
         error: submit.error,
@@ -115,20 +115,57 @@ export async function POST(request: Request) {
     );
   }
 
-  completePendingExtensionRun(promptRunId, "completed");
+  await completePendingExtensionRun(promptRunId, "completed");
 
-  const pipeline = findPipelineByPromptRun(promptRunId);
+  const pipeline = await findPipelineByPromptRun(promptRunId);
+  let nextPending: {
+    prompt_run_id: string;
+    pipeline_run_id: string;
+    kind: string;
+    prompt_text: string;
+    chatgpt_url: string;
+  } | null = null;
+
   if (pipeline && pipeline.status === "awaiting_chatgpt") {
-    // Do not await — Gmail drafts / Drive work can take many seconds and would
-    // block the extension from deleting the ChatGPT session and closing the tab.
-    void advancePipeline(pipeline.id).catch((err) => {
+    // Await so the extension can chain straight into the next ChatGPT stage
+    // (resume → cover letter → cold email) without depending on the pipeline tab.
+    // Defer Gmail drafts so the extension can delete/close ChatGPT first.
+    try {
+      const advanced = await advancePipeline(pipeline.id, {
+        deferGmailDrafts: true,
+      });
+      if (
+        advanced.ok &&
+        advanced.awaiting_chatgpt &&
+        advanced.prompt_run_id &&
+        advanced.prompt_text &&
+        // Never re-open the stage we just finished (e.g. Drive export still settling).
+        advanced.prompt_run_id !== promptRunId
+      ) {
+        nextPending = {
+          prompt_run_id: advanced.prompt_run_id,
+          pipeline_run_id: advanced.pipeline.id,
+          kind: advanced.pipeline.current_stage || "unknown",
+          prompt_text: advanced.prompt_text,
+          chatgpt_url: advanced.chatgpt_url || "https://chatgpt.com/",
+        };
+      }
+
+      // Gmail runs after the HTTP response so cleanup/close is not blocked.
+      if (advanced.ok && advanced.deferred_gmail) {
+        void advancePipeline(pipeline.id).catch((err) => {
+          console.error("[paste-back] deferred gmail_drafts failed", err);
+        });
+      }
+    } catch (err) {
       console.error("[paste-back] advancePipeline failed", err);
-    });
+    }
   }
 
   return NextResponse.json({
     ok: true,
     prompt_run_id: promptRunId,
     pipeline_run_id: pipeline?.id ?? null,
+    next_pending: nextPending,
   });
 }

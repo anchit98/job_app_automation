@@ -17,7 +17,7 @@ function isPermanentExtensionFailure(message?: string | null): boolean {
 
 /** Extension reports DOM/selector failures for maintenance. */
 export async function POST(request: Request) {
-  if (!verifyExtensionBearer(request.headers.get("authorization"))) {
+  if (!await verifyExtensionBearer(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

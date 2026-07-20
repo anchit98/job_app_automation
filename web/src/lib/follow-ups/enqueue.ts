@@ -8,6 +8,7 @@ import {
   getProfileRow,
   getPromptRunById,
   listEmails,
+  updatePromptRunText,
 } from "@/lib/db/queries";
 import type { FollowUp } from "@/lib/db/types";
 import {
@@ -25,18 +26,19 @@ import {
   warnIfPromptTooLong,
 } from "@/lib/prompt/composer";
 import { buildJdContent } from "@/lib/resume/context";
-import { updatePromptRunText } from "@/lib/db/queries";
 
-export function scheduleFollowUpsForApplication(applicationId: string): number {
-  const profile = getProfileRow();
+export async function scheduleFollowUpsForApplication(
+  applicationId: string,
+): Promise<number> {
+  const profile = await getProfileRow();
   const timezone = profile?.timezone ?? "UTC";
-  const emails = listEmails(applicationId).filter(
+  const emails = (await listEmails(applicationId)).filter(
     (e) => e.kind === "cold" && e.draft_status === "created",
   );
 
   for (const email of emails) {
-    const before = followUpsExistForEmail(email.id);
-    scheduleFollowUpsForColdEmail(applicationId, email.id, timezone);
+    const before = await followUpsExistForEmail(email.id);
+    await scheduleFollowUpsForColdEmail(applicationId, email.id, timezone);
     if (!before) {
       void writeAuditLog("follow_ups.scheduled", "applications", applicationId, {
         email_id: email.id,
@@ -46,33 +48,33 @@ export function scheduleFollowUpsForApplication(applicationId: string): number {
   return emails.length;
 }
 
-export function composeFollowUpPromptText(followUp: FollowUp): {
+export async function composeFollowUpPromptText(followUp: FollowUp): Promise<{
   promptRunId: string;
   promptText: string;
   lengthWarning: string | null;
-} {
-  const originalEmail = getEmailById(followUp.email_id);
+}> {
+  const originalEmail = await getEmailById(followUp.email_id);
   if (!originalEmail) {
     throw new Error("Original cold email not found.");
   }
 
-  const application = getApplicationById(followUp.application_id);
+  const application = await getApplicationById(followUp.application_id);
   if (!application) {
     throw new Error("Application not found.");
   }
 
-  const contact = getContactById(originalEmail.contact_id);
+  const contact = await getContactById(originalEmail.contact_id);
   if (!contact) {
     throw new Error("Contact not found.");
   }
 
-  const template = getActivePromptTemplate("follow_up");
+  const template = await getActivePromptTemplate("follow_up");
   if (!template) {
     throw new Error("No active follow-up prompt template.");
   }
 
-  const profile = getProfileRow();
-  const runId = createPromptRun("follow_up", {
+  const profile = await getProfileRow();
+  const runId = await createPromptRun("follow_up", {
     entity: "follow_ups",
     entityId: followUp.id,
   });
@@ -116,7 +118,7 @@ export function composeFollowUpPromptText(followUp: FollowUp): {
   );
 
   const lengthWarning = warnIfPromptTooLong(promptText);
-  updatePromptRunText(runId, promptText);
+  await updatePromptRunText(runId, promptText);
 
   return { promptRunId: runId, promptText, lengthWarning };
 }
@@ -133,7 +135,7 @@ export async function enqueueFollowUpPrompt(
     }
   | { ok: false; error: string; needs_confirmation?: boolean }
 > {
-  const followUp = getFollowUpById(followUpId);
+  const followUp = await getFollowUpById(followUpId);
   if (!followUp) {
     return { ok: false, error: "Follow-up not found." };
   }
@@ -143,7 +145,7 @@ export async function enqueueFollowUpPrompt(
   }
 
   if (followUp.prompt_run_id) {
-    const existing = getPromptRunById(followUp.prompt_run_id);
+    const existing = await getPromptRunById(followUp.prompt_run_id);
     if (existing?.status === "pending" && existing.prompt_text) {
       return {
         ok: true,
@@ -154,7 +156,7 @@ export async function enqueueFollowUpPrompt(
     }
   }
 
-  const application = getApplicationById(followUp.application_id);
+  const application = await getApplicationById(followUp.application_id);
   if (!application) {
     return { ok: false, error: "Application not found." };
   }
@@ -174,7 +176,7 @@ export async function enqueueFollowUpPrompt(
   }
 
   if (followUp.sequence === 2) {
-    const seq1 = getFollowUpByEmailSequence(followUp.email_id, 1);
+    const seq1 = await getFollowUpByEmailSequence(followUp.email_id, 1);
     if (seq1 && seq1.status !== "sent" && seq1.status !== "skipped") {
       return {
         ok: false,
@@ -189,7 +191,7 @@ export async function enqueueFollowUpPrompt(
 
   const claimed =
     followUp.status === "processing" ||
-    claimFollowUpForProcessing(followUp.id);
+    (await claimFollowUpForProcessing(followUp.id));
 
   if (!claimed) {
     return { ok: false, error: "Could not claim follow-up for processing." };
@@ -197,8 +199,8 @@ export async function enqueueFollowUpPrompt(
 
   try {
     const { promptRunId, promptText, lengthWarning } =
-      composeFollowUpPromptText(followUp);
-    markFollowUpEnqueued(followUp.id, promptRunId);
+      await composeFollowUpPromptText(followUp);
+    await markFollowUpEnqueued(followUp.id, promptRunId);
 
     await writeAuditLog("follow_up.prompt_enqueued", "follow_ups", followUp.id, {
       application_id: followUp.application_id,
@@ -213,7 +215,7 @@ export async function enqueueFollowUpPrompt(
       length_warning: lengthWarning,
     };
   } catch (e) {
-    releaseFollowUpProcessing(followUp.id);
+    await releaseFollowUpProcessing(followUp.id);
     return {
       ok: false,
       error: e instanceof Error ? e.message : "Failed to enqueue prompt.",
@@ -226,7 +228,7 @@ export async function enqueueDueFollowUpPrompts(): Promise<{
   enqueued: number;
   errors: string[];
 }> {
-  const due = listDueFollowUps(25);
+  const due = await listDueFollowUps(25);
   let enqueued = 0;
   const errors: string[] = [];
 

@@ -362,7 +362,7 @@ async function waitForResponseComplete(startedAt, baselineText) {
   let lastText = "";
   let stableSince = Date.now();
   while (Date.now() - startedAt < TIMEOUT_MS) {
-    await sleep(1500);
+    await sleep(400);
     if (isStreaming()) {
       stableSince = Date.now();
       continue;
@@ -377,11 +377,12 @@ async function waitForResponseComplete(startedAt, baselineText) {
       stableSince = Date.now();
       continue;
     }
-    if (
-      lastText &&
-      lastText.length > 40 &&
-      Date.now() - stableSince > 3500
-    ) {
+    if (!lastText || lastText.length <= 40) continue;
+
+    const stableMs = Date.now() - stableSince;
+    // Structured JSON settles faster than freeform prose.
+    const needed = looksLikeJson(lastText) ? 900 : 1400;
+    if (stableMs > needed) {
       return { text: lastText, partial: false };
     }
   }
@@ -430,31 +431,45 @@ async function deleteConversationViaApi(conversationId) {
   const headers = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
+    Accept: "application/json",
   };
 
-  // Prefer soft-delete (is_visible: false); fall back to DELETE.
-  try {
-    const patch = await fetch(`/backend-api/conversation/${conversationId}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers,
-      body: JSON.stringify({ is_visible: false }),
-    });
-    if (patch.ok || patch.status === 404) return true;
-  } catch {
-    /* try DELETE */
-  }
+  const endpoints = [
+    async () =>
+      fetch(`/backend-api/conversation/${conversationId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({ is_visible: false }),
+      }),
+    async () =>
+      fetch(`/backend-api/conversation/${conversationId}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers,
+      }),
+    async () =>
+      fetch(`/backend-api/conversations`, {
+        method: "PATCH",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({
+          conversation_ids: [conversationId],
+          is_visible: false,
+        }),
+      }),
+  ];
 
-  try {
-    const del = await fetch(`/backend-api/conversation/${conversationId}`, {
-      method: "DELETE",
-      credentials: "include",
-      headers,
-    });
-    return del.ok || del.status === 404;
-  } catch {
-    return false;
+  for (const call of endpoints) {
+    try {
+      const res = await call();
+      if (res.ok || res.status === 404 || res.status === 204) return true;
+      console.warn("[JobApp Bridge] delete attempt status", res.status);
+    } catch (e) {
+      console.warn("[JobApp Bridge] delete attempt failed", e);
+    }
   }
+  return false;
 }
 
 function clickFirstMatching(elements, pattern) {
@@ -535,16 +550,18 @@ async function deleteConversationViaDom() {
 async function cleanupChatGptSession() {
   showBanner("JobApp Bridge: deleting ChatGPT session…", "#333");
   let deleted = false;
+  let lastId = conversationIdFromUrl();
 
   // URL may update slightly after the first reply — retry briefly.
-  for (let i = 0; i < 10 && !deleted; i++) {
-    const id = conversationIdFromUrl();
+  for (let i = 0; i < 6 && !deleted; i++) {
+    const id = conversationIdFromUrl() || lastId;
     if (id) {
+      lastId = id;
       console.info("[JobApp Bridge] deleting conversation", id);
       deleted = await deleteConversationViaApi(id);
       if (deleted) break;
     }
-    await sleep(400);
+    await sleep(250);
   }
 
   if (!deleted) {
@@ -552,14 +569,14 @@ async function cleanupChatGptSession() {
     deleted = await deleteConversationViaDom();
   }
 
-  console.info("[JobApp Bridge] session delete result", { deleted });
+  console.info("[JobApp Bridge] session delete result", { deleted, lastId });
   showBanner(
     deleted
       ? "JobApp Bridge: session deleted — closing tab…"
       : "JobApp Bridge: closing tab…",
     deleted ? "#0a7" : "#555",
   );
-  await sleep(400);
+  await sleep(deleted ? 200 : 100);
   return { deleted };
 }
 
@@ -693,29 +710,27 @@ async function runPrompt(payload, { force = false } = {}) {
 
     const baseline = extractAssistantText();
 
-    // Require ProseMirror-accepted paste (Send becomes enabled), not just DOM text.
-    const filled = await ensureComposerFilled(composer, payload.prompt_text);
-    if (myGen !== runGeneration) return;
-    if (!filled) {
-      throw new Error(
-        "ChatGPT did not accept the paste (Send stayed disabled). Click the composer and try Open ChatGPT again.",
-      );
-    }
-
-    showBanner(`JobApp Bridge: pasted ${payload.kind} — sending (no web search)…`);
-    composer = findComposer() || composer;
-
-    // Prefer page-world submit so React handlers see a real click in-page.
-    // page-bridge strips Search/Research tools before send.
-    const pageSend = await pagePaste(payload.prompt_text, true);
+    showBanner(`JobApp Bridge: pasting ${payload.kind} — sending (no web search)…`);
+    // Single page-world paste+send (avoids fill-then-paste-again).
+    let pageSend = await pagePaste(payload.prompt_text, true);
     let sent = Boolean(pageSend?.ok && pageSend.sent);
     if (!sent) {
-      sent = await submitComposer(composer);
-    }
-    if (myGen !== runGeneration) return;
-    if (!sent && !isStreaming()) {
-      // One more isolated-world attempt
-      sent = await submitComposer(findComposer() || composer);
+      const filled = await ensureComposerFilled(composer, payload.prompt_text);
+      if (myGen !== runGeneration) return;
+      if (!filled) {
+        throw new Error(
+          "ChatGPT did not accept the paste (Send stayed disabled). Click the composer and try Open ChatGPT again.",
+        );
+      }
+      composer = findComposer() || composer;
+      pageSend = await pagePaste(payload.prompt_text, true);
+      sent = Boolean(pageSend?.ok && pageSend.sent);
+      if (!sent) {
+        sent = await submitComposer(composer);
+      }
+      if (!sent && !isStreaming()) {
+        sent = await submitComposer(findComposer() || composer);
+      }
     }
     if (myGen !== runGeneration) return;
     if (!sent && !isStreaming()) {
@@ -727,7 +742,8 @@ async function runPrompt(payload, { force = false } = {}) {
     runPhase = "waiting";
     showBanner(`JobApp Bridge: waiting for ${payload.kind} reply…`);
     const startedAt = Date.now();
-    await sleep(1500);
+    // Short settle so streaming UI can appear; response waiter polls quickly after.
+    await sleep(400);
     if (myGen !== runGeneration) return;
     const { text, partial } = await waitForResponseComplete(startedAt, baseline);
     if (myGen !== runGeneration) return;
@@ -804,6 +820,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // Never force — SW inject may arrive around the same time.
 chrome.runtime.sendMessage({ type: "JOBAPP_GET_ACTIVE" }).then((active) => {
   if (active?.prompt_text) {
-    setTimeout(() => runPrompt(active, { force: false }), 2800);
+    setTimeout(() => runPrompt(active, { force: false }), 800);
   }
 });

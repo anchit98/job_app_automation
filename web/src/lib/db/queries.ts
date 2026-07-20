@@ -24,7 +24,7 @@ import type {
   EmailSource,
   VerificationStatus,
 } from "@/lib/db/types";
-import { getDb, parseJson, SINGLETON_ID } from "@/lib/db/index";
+import { dbGet, dbAll, dbRun, parseJson, SINGLETON_ID } from "@/lib/db/index";
 
 function mapProfile(row: Record<string, unknown>): Profile {
   return {
@@ -94,14 +94,12 @@ function mapGoogleTokens(row: Record<string, unknown>): GoogleTokensRow {
   };
 }
 
-export function getProfileRow(): Profile | null {
-  const row = getDb()
-    .prepare("SELECT * FROM profiles WHERE id = ?")
-    .get(SINGLETON_ID) as Record<string, unknown> | undefined;
+export async function getProfileRow(): Promise<Profile | null> {
+  const row = await dbGet("SELECT * FROM profiles WHERE id = ?", SINGLETON_ID) as Record<string, unknown> | undefined;
   return row ? mapProfile(row) : null;
 }
 
-export function upsertProfileRow(input: {
+export async function upsertProfileRow(input: {
   full_name: string;
   headline?: string | null;
   location?: string | null;
@@ -112,7 +110,7 @@ export function upsertProfileRow(input: {
   github_url?: string | null;
   portfolio_url?: string | null;
 }) {
-  const existing = getProfileRow();
+  const existing = await getProfileRow();
   const phone =
     input.phone !== undefined ? input.phone : (existing?.phone ?? null);
   const linkedin_url =
@@ -128,14 +126,12 @@ export function upsertProfileRow(input: {
       ? input.portfolio_url
       : (existing?.portfolio_url ?? null);
 
-  getDb()
-    .prepare(
-      `INSERT INTO profiles (
+  await dbRun(`INSERT INTO profiles (
          id, full_name, headline, location, timezone, preferred_tone,
          phone, linkedin_url, github_url, portfolio_url
        )
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
+       ON CONFLICT (id) DO UPDATE SET
          full_name = excluded.full_name,
          headline = excluded.headline,
          location = excluded.location,
@@ -144,10 +140,7 @@ export function upsertProfileRow(input: {
          phone = excluded.phone,
          linkedin_url = excluded.linkedin_url,
          github_url = excluded.github_url,
-         portfolio_url = excluded.portfolio_url`,
-    )
-    .run(
-      SINGLETON_ID,
+         portfolio_url = excluded.portfolio_url`, SINGLETON_ID,
       input.full_name,
       input.headline ?? null,
       input.location ?? null,
@@ -156,18 +149,13 @@ export function upsertProfileRow(input: {
       phone,
       linkedin_url,
       github_url,
-      portfolio_url,
-    );
+      portfolio_url,);
 }
 
-export function setDriveRootId(driveRootId: string) {
-  getDb()
-    .prepare(
-      `INSERT INTO profiles (id, drive_root_id)
+export async function setDriveRootId(driveRootId: string) {
+  await dbRun(`INSERT INTO profiles (id, drive_root_id)
        VALUES (?, ?)
-       ON CONFLICT(id) DO UPDATE SET drive_root_id = excluded.drive_root_id`,
-    )
-    .run(SINGLETON_ID, driveRootId);
+       ON CONFLICT (id) DO UPDATE SET drive_root_id = excluded.drive_root_id`, SINGLETON_ID, driveRootId);
 }
 
 function mapMasterCoverLetter(row: Record<string, unknown>): MasterCoverLetter {
@@ -180,19 +168,17 @@ function mapMasterCoverLetter(row: Record<string, unknown>): MasterCoverLetter {
   };
 }
 
-export function getMasterCoverLetterRow(): MasterCoverLetter | null {
-  const row = getDb()
-    .prepare("SELECT * FROM master_cover_letter WHERE id = ?")
-    .get(SINGLETON_ID) as Record<string, unknown> | undefined;
+export async function getMasterCoverLetterRow(): Promise<MasterCoverLetter | null> {
+  const row = await dbGet("SELECT * FROM master_cover_letter WHERE id = ?", SINGLETON_ID) as Record<string, unknown> | undefined;
   return row ? mapMasterCoverLetter(row) : null;
 }
 
-export function upsertMasterCoverLetterRow(input: {
+export async function upsertMasterCoverLetterRow(input: {
   doc_id?: string | null;
   doc_layout?: Record<string, unknown> | null;
   doc_synced_at?: string | null;
 }) {
-  const existing = getMasterCoverLetterRow();
+  const existing = await getMasterCoverLetterRow();
   const doc_id = input.doc_id !== undefined ? input.doc_id : existing?.doc_id ?? null;
   const doc_layout =
     input.doc_layout !== undefined ? input.doc_layout : existing?.doc_layout ?? null;
@@ -201,38 +187,30 @@ export function upsertMasterCoverLetterRow(input: {
       ? input.doc_synced_at
       : existing?.doc_synced_at ?? null;
 
-  getDb()
-    .prepare(
-      `INSERT INTO master_cover_letter (id, doc_id, doc_layout, doc_synced_at)
+  await dbRun(`INSERT INTO master_cover_letter (id, doc_id, doc_layout, doc_synced_at)
        VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
+       ON CONFLICT (id) DO UPDATE SET
          doc_id = excluded.doc_id,
          doc_layout = excluded.doc_layout,
-         doc_synced_at = excluded.doc_synced_at`,
-    )
-    .run(
-      SINGLETON_ID,
+         doc_synced_at = excluded.doc_synced_at`, SINGLETON_ID,
       doc_id,
       doc_layout ? JSON.stringify(doc_layout) : null,
-      doc_synced_at,
-    );
+      doc_synced_at,);
 }
 
-export function getMasterResumeRow(): MasterResume | null {
-  const row = getDb()
-    .prepare("SELECT * FROM master_resume WHERE id = ?")
-    .get(SINGLETON_ID) as Record<string, unknown> | undefined;
+export async function getMasterResumeRow(): Promise<MasterResume | null> {
+  const row = await dbGet("SELECT * FROM master_resume WHERE id = ?", SINGLETON_ID) as Record<string, unknown> | undefined;
   return row ? mapMasterResume(row) : null;
 }
 
-export function upsertMasterResumeRow(input: {
+export async function upsertMasterResumeRow(input: {
   content: Record<string, unknown>;
   rules?: Record<string, unknown>;
   doc_id?: string | null;
   doc_layout?: Record<string, unknown> | null;
   doc_synced_at?: string | null;
 }) {
-  const existing = getMasterResumeRow();
+  const existing = await getMasterResumeRow();
   const doc_id = input.doc_id !== undefined ? input.doc_id : existing?.doc_id ?? null;
   const doc_layout =
     input.doc_layout !== undefined ? input.doc_layout : existing?.doc_layout ?? null;
@@ -241,197 +219,160 @@ export function upsertMasterResumeRow(input: {
       ? input.doc_synced_at
       : existing?.doc_synced_at ?? null;
 
-  getDb()
-    .prepare(
-      `INSERT INTO master_resume (id, content, rules, doc_id, doc_layout, doc_synced_at)
+  await dbRun(`INSERT INTO master_resume (id, content, rules, doc_id, doc_layout, doc_synced_at)
        VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
+       ON CONFLICT (id) DO UPDATE SET
          content = excluded.content,
          rules = excluded.rules,
          doc_id = excluded.doc_id,
          doc_layout = excluded.doc_layout,
-         doc_synced_at = excluded.doc_synced_at`,
-    )
-    .run(
-      SINGLETON_ID,
+         doc_synced_at = excluded.doc_synced_at`, SINGLETON_ID,
       JSON.stringify(input.content),
       JSON.stringify(input.rules ?? { never_fabricate: true }),
       doc_id,
       doc_layout ? JSON.stringify(doc_layout) : null,
-      doc_synced_at,
-    );
+      doc_synced_at,);
 }
 
-export function getActivePromptTemplate(kind: string): PromptTemplate | null {
-  const row = getDb()
-    .prepare(
-      `SELECT * FROM prompt_templates
+export async function getActivePromptTemplate(kind: string): Promise<PromptTemplate | null> {
+  const row = await dbGet(`SELECT * FROM prompt_templates
        WHERE kind = ? AND active = 1
        ORDER BY version DESC
-       LIMIT 1`,
-    )
-    .get(kind) as Record<string, unknown> | undefined;
+       LIMIT 1`, kind) as Record<string, unknown> | undefined;
   return row ? mapPromptTemplate(row) : null;
 }
 
-export function createPromptRun(
+export async function createPromptRun(
   kind: PromptRunKind,
   target?: { entity: string; entityId: string },
-): string {
+): Promise<string> {
   const id = randomUUID();
-  getDb()
-    .prepare(
-      `INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
-       VALUES (?, ?, '', 'pending', ?, ?)`,
-    )
-    .run(id, kind, target?.entity ?? null, target?.entityId ?? null);
+  await dbRun(`INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
+       VALUES (?, ?, '', 'pending', ?, ?)`, id, kind, target?.entity ?? null, target?.entityId ?? null);
   return id;
 }
 
-export function updatePromptRunText(id: string, promptText: string) {
-  getDb()
-    .prepare(
-      `UPDATE prompt_runs SET prompt_text = ? WHERE id = ? AND status = 'pending'`,
-    )
-    .run(promptText, id);
+export async function updatePromptRunText(id: string, promptText: string) {
+  await dbRun(`UPDATE prompt_runs SET prompt_text = ? WHERE id = ? AND status = 'pending'`, promptText, id);
 }
 
-export function getPromptRunById(id: string): PromptRun | null {
-  const row = getDb()
-    .prepare("SELECT * FROM prompt_runs WHERE id = ?")
-    .get(id) as Record<string, unknown> | undefined;
+export async function getPromptRunById(id: string): Promise<PromptRun | null> {
+  const row = await dbGet("SELECT * FROM prompt_runs WHERE id = ?", id) as Record<string, unknown> | undefined;
   return row ? mapPromptRun(row) : null;
 }
 
-export function updatePromptRunValidationErrors(
+export async function updatePromptRunValidationErrors(
   id: string,
   errors: unknown[],
   rawResponse?: string,
 ) {
-  getDb()
-    .prepare(
-      `UPDATE prompt_runs
+  await dbRun(`UPDATE prompt_runs
        SET validation_errors = ?, raw_response = COALESCE(?, raw_response)
-       WHERE id = ? AND status = 'pending'`,
-    )
-    .run(JSON.stringify(errors), rawResponse ?? null, id);
+       WHERE id = ? AND status = 'pending'`, JSON.stringify(errors), rawResponse ?? null, id);
 }
 
-export function completePromptRun(
+export async function completePromptRun(
   id: string,
   rawResponse: string,
   parsedResponse: Record<string, unknown>,
-): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE prompt_runs
+): Promise<boolean> {
+  const result = await dbRun(`UPDATE prompt_runs
        SET status = 'completed',
            raw_response = ?,
            parsed_response = ?,
            validation_errors = NULL,
-           completed_at = datetime('now')
-       WHERE id = ? AND status = 'pending'`,
-    )
-    .run(rawResponse, JSON.stringify(parsedResponse), id);
+           completed_at = (NOW() AT TIME ZONE 'utc')::text
+       WHERE id = ? AND status = 'pending'`, rawResponse, JSON.stringify(parsedResponse), id);
   return result.changes > 0;
 }
 
-export function abandonPromptRunRow(id: string) {
-  getDb()
-    .prepare(
-      `UPDATE prompt_runs SET status = 'abandoned' WHERE id = ? AND status = 'pending'`,
-    )
-    .run(id);
+export async function abandonPromptRunRow(id: string) {
+  await dbRun(`UPDATE prompt_runs SET status = 'abandoned' WHERE id = ? AND status = 'pending'`, id);
 }
 
-export function listRecentPromptRuns(limit = 10): PromptRun[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM prompt_runs ORDER BY exported_at DESC LIMIT ?`,
-    )
-    .all(limit) as Record<string, unknown>[];
+/** Abandon every pending prompt run and close related extension wake rows. */
+export async function abandonAllPendingPromptRuns(): Promise<number> {
+  const before = await dbGet<{ n: number | string }>(
+    `SELECT COUNT(*)::int AS n FROM prompt_runs WHERE status = 'pending'`,
+  );
+  await dbRun(
+    `UPDATE prompt_runs
+       SET status = 'abandoned'
+       WHERE status = 'pending'`,
+  );
+  await dbRun(
+    `UPDATE pending_extension_runs
+       SET status = 'completed',
+           wake_until = NULL,
+           error = 'cleared',
+           updated_at = (NOW() AT TIME ZONE 'utc')::text
+       WHERE status IN ('pending', 'claimed')`,
+  );
+  return Number(before?.n ?? 0);
+}
+
+export async function listRecentPromptRuns(limit = 10): Promise<PromptRun[]> {
+  const rows = await dbAll(`SELECT * FROM prompt_runs ORDER BY exported_at DESC LIMIT ?`, limit) as Record<string, unknown>[];
   return rows.map(mapPromptRun);
 }
 
-export function hasCompletedDemoPrompt(): boolean {
-  const row = getDb()
-    .prepare(
-      `SELECT 1 AS ok FROM prompt_runs
+export async function hasCompletedDemoPrompt(): Promise<boolean> {
+  const row = await dbGet(`SELECT 1 AS ok FROM prompt_runs
        WHERE kind = 'hello_world' AND status = 'completed'
-       LIMIT 1`,
-    )
-    .get();
+       LIMIT 1`);
   return Boolean(row);
 }
 
-export function getGoogleTokensRow(): GoogleTokensRow | null {
-  const row = getDb()
-    .prepare("SELECT * FROM google_tokens WHERE id = ?")
-    .get(SINGLETON_ID) as Record<string, unknown> | undefined;
+export async function getGoogleTokensRow(): Promise<GoogleTokensRow | null> {
+  const row = await dbGet("SELECT * FROM google_tokens WHERE id = ?", SINGLETON_ID) as Record<string, unknown> | undefined;
   return row ? mapGoogleTokens(row) : null;
 }
 
-export function saveGoogleTokensRow(input: {
+export async function saveGoogleTokensRow(input: {
   encrypted_access_token: string;
   encrypted_refresh_token: string;
   scope: string;
   expires_at: string;
 }) {
-  getDb()
-    .prepare(
-      `INSERT INTO google_tokens (
+  await dbRun(`INSERT INTO google_tokens (
          id, encrypted_access_token, encrypted_refresh_token, scope, expires_at, status
        ) VALUES (?, ?, ?, ?, ?, 'active')
-       ON CONFLICT(id) DO UPDATE SET
+       ON CONFLICT (id) DO UPDATE SET
          encrypted_access_token = excluded.encrypted_access_token,
          encrypted_refresh_token = excluded.encrypted_refresh_token,
          scope = excluded.scope,
          expires_at = excluded.expires_at,
-         status = 'active'`,
-    )
-    .run(
-      SINGLETON_ID,
+         status = 'active'`, SINGLETON_ID,
       input.encrypted_access_token,
       input.encrypted_refresh_token,
       input.scope,
-      input.expires_at,
-    );
+      input.expires_at,);
 }
 
-export function markGoogleTokensRevokedRow() {
-  getDb()
-    .prepare(`UPDATE google_tokens SET status = 'revoked' WHERE id = ?`)
-    .run(SINGLETON_ID);
+export async function markGoogleTokensRevokedRow() {
+  await dbRun(`UPDATE google_tokens SET status = 'revoked' WHERE id = ?`, SINGLETON_ID);
 }
 
-export function deleteGoogleTokensRow() {
-  getDb().prepare("DELETE FROM google_tokens WHERE id = ?").run(SINGLETON_ID);
+export async function deleteGoogleTokensRow() {
+  await dbRun("DELETE FROM google_tokens WHERE id = ?", SINGLETON_ID);
 }
 
-export function insertAuditLog(input: {
+export async function insertAuditLog(input: {
   action: string;
   entity?: string;
   entity_id?: string;
   payload?: Record<string, unknown>;
 }) {
-  getDb()
-    .prepare(
-      `INSERT INTO audit_log (id, action, entity, entity_id, payload)
-       VALUES (?, ?, ?, ?, ?)`,
-    )
-    .run(
-      randomUUID(),
+  await dbRun(`INSERT INTO audit_log (id, action, entity, entity_id, payload)
+       VALUES (?, ?, ?, ?, ?)`, randomUUID(),
       input.action,
       input.entity ?? null,
       input.entity_id ?? null,
-      input.payload ? JSON.stringify(input.payload) : null,
-    );
+      input.payload ? JSON.stringify(input.payload) : null,);
 }
 
-export function listRecentAuditLogs(limit = 20): AuditLogEntry[] {
-  const rows = getDb()
-    .prepare(`SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?`)
-    .all(limit) as Record<string, unknown>[];
+export async function listRecentAuditLogs(limit = 20): Promise<AuditLogEntry[]> {
+  const rows = await dbAll(`SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?`, limit) as Record<string, unknown>[];
   return rows.map((row) => ({
     id: row.id as string,
     action: row.action as string,
@@ -461,92 +402,66 @@ function mapApplication(row: Record<string, unknown>): Application {
   };
 }
 
-export function insertApplication(input: {
+export async function insertApplication(input: {
   company?: string | null;
   role?: string | null;
   job_url?: string | null;
   jd_raw: string;
   notes?: string | null;
   email_instructions?: string | null;
-}): string {
+}): Promise<string> {
   const id = randomUUID();
-  getDb()
-    .prepare(
-      `INSERT INTO applications (id, company, role, job_url, jd_raw, notes, email_instructions, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')`,
-    )
-    .run(
-      id,
+  await dbRun(`INSERT INTO applications (id, company, role, job_url, jd_raw, notes, email_instructions, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')`, id,
       input.company?.trim() || null,
       input.role?.trim() || null,
       input.job_url?.trim() || null,
       input.jd_raw,
       input.notes?.trim() || null,
-      input.email_instructions?.trim() || null,
-    );
+      input.email_instructions?.trim() || null,);
   return id;
 }
 
-export function getApplicationById(id: string): Application | null {
-  const row = getDb()
-    .prepare("SELECT * FROM applications WHERE id = ?")
-    .get(id) as Record<string, unknown> | undefined;
+export async function getApplicationById(id: string): Promise<Application | null> {
+  const row = await dbGet("SELECT * FROM applications WHERE id = ?", id) as Record<string, unknown> | undefined;
   return row ? mapApplication(row) : null;
 }
 
-export function listApplications(limit = 100): Application[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM applications ORDER BY created_at DESC LIMIT ?`,
-    )
-    .all(limit) as Record<string, unknown>[];
+export async function listApplications(limit = 100): Promise<Application[]> {
+  const rows = await dbAll(`SELECT * FROM applications ORDER BY created_at DESC LIMIT ?`, limit) as Record<string, unknown>[];
   return rows.map(mapApplication);
 }
 
-export function updateApplicationStatusRow(
+export async function updateApplicationStatusRow(
   id: string,
   status: ApplicationStatus,
-): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE applications SET status = ? WHERE id = ?`,
-    )
-    .run(status, id);
+): Promise<boolean> {
+  const result = await dbRun(`UPDATE applications SET status = ? WHERE id = ?`, status, id);
   return result.changes > 0;
 }
 
-export function updateApplicationJdParsed(
+export async function updateApplicationJdParsed(
   id: string,
   jdParsed: JdParsed,
   meta?: { company?: string; role?: string },
-): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE applications
+): Promise<boolean> {
+  const result = await dbRun(`UPDATE applications
        SET jd_parsed = ?,
            company = COALESCE(?, company),
            role = COALESCE(?, role)
-       WHERE id = ?`,
-    )
-    .run(
-      JSON.stringify(jdParsed),
+       WHERE id = ?`, JSON.stringify(jdParsed),
       meta?.company?.trim() || null,
       meta?.role?.trim() || null,
-      id,
-    );
+      id,);
   return result.changes > 0;
 }
 
-export function listApplicationStatusTransitions(applicationId: string) {
-  const rows = getDb()
-    .prepare(
-      `SELECT action, payload, created_at
+export async function listApplicationStatusTransitions(applicationId: string) {
+  const rows = await dbAll(`SELECT action, payload, created_at
        FROM audit_log
        WHERE entity = 'applications' AND entity_id = ?
          AND action = 'application.status_changed'
-       ORDER BY created_at ASC`,
-    )
-    .all(applicationId) as Record<string, unknown>[];
+       ORDER BY created_at ASC`, applicationId) as Record<string, unknown>[];
   return rows.map((row) => ({
     action: row.action as string,
     payload: parseJson(row.payload as string | null, null),
@@ -575,97 +490,67 @@ function mapResumeVersion(row: Record<string, unknown>): ResumeVersion {
   };
 }
 
-export function getNextResumeVersionNumber(applicationId: string): number {
-  const row = getDb()
-    .prepare(
-      `SELECT MAX(version) AS max_version FROM resume_versions WHERE application_id = ?`,
-    )
-    .get(applicationId) as { max_version: number | null };
+export async function getNextResumeVersionNumber(applicationId: string): Promise<number> {
+  const row = await dbGet(`SELECT MAX(version) AS max_version FROM resume_versions WHERE application_id = ?`, applicationId) as { max_version: number | null };
   return (row.max_version ?? 0) + 1;
 }
 
-export function insertResumeVersion(input: {
+export async function insertResumeVersion(input: {
   id: string;
   application_id: string;
   version: number;
   content: Record<string, unknown>;
   prompt_run_id: string;
   status?: ResumeVersionStatus;
-}): void {
-  getDb()
-    .prepare(
-      `INSERT INTO resume_versions (id, application_id, version, content, prompt_run_id, status)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      input.id,
+}): Promise<void> {
+  await dbRun(`INSERT INTO resume_versions (id, application_id, version, content, prompt_run_id, status)
+       VALUES (?, ?, ?, ?, ?, ?)`, input.id,
       input.application_id,
       input.version,
       JSON.stringify(input.content),
       input.prompt_run_id,
-      input.status ?? "uploading",
-    );
+      input.status ?? "uploading",);
 }
 
-export function updateResumeVersionDriveIds(
+export async function updateResumeVersionDriveIds(
   id: string,
   drivePdfId: string | null,
   driveDocxId: string | null,
   driveDocId?: string | null,
-): void {
-  getDb()
-    .prepare(
-      `UPDATE resume_versions
+): Promise<void> {
+  await dbRun(`UPDATE resume_versions
        SET drive_pdf_id = ?, drive_docx_id = ?, drive_doc_id = ?, status = 'ready'
-       WHERE id = ?`,
-    )
-    .run(drivePdfId, driveDocxId, driveDocId ?? null, id);
+       WHERE id = ?`, drivePdfId, driveDocxId, driveDocId ?? null, id);
 }
 
-export function markResumeVersionUploadFailed(id: string): void {
-  getDb()
-    .prepare(`UPDATE resume_versions SET status = 'upload_failed' WHERE id = ?`)
-    .run(id);
+export async function markResumeVersionUploadFailed(id: string): Promise<void> {
+  await dbRun(`UPDATE resume_versions SET status = 'upload_failed' WHERE id = ?`, id);
 }
 
-export function updateResumeVersionContentForRetry(
+export async function updateResumeVersionContentForRetry(
   id: string,
   content: Record<string, unknown> | object,
-): void {
-  getDb()
-    .prepare(
-      `UPDATE resume_versions
+): Promise<void> {
+  await dbRun(`UPDATE resume_versions
        SET content = ?, status = 'uploading'
-       WHERE id = ?`,
-    )
-    .run(JSON.stringify(content), id);
+       WHERE id = ?`, JSON.stringify(content), id);
 }
 
-export function getResumeVersion(
+export async function getResumeVersion(
   applicationId: string,
   version: number,
-): ResumeVersion | null {
-  const row = getDb()
-    .prepare(
-      `SELECT * FROM resume_versions WHERE application_id = ? AND version = ?`,
-    )
-    .get(applicationId, version) as Record<string, unknown> | undefined;
+): Promise<ResumeVersion | null> {
+  const row = await dbGet(`SELECT * FROM resume_versions WHERE application_id = ? AND version = ?`, applicationId, version) as Record<string, unknown> | undefined;
   return row ? mapResumeVersion(row) : null;
 }
 
-export function listResumeVersions(applicationId: string): ResumeVersion[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM resume_versions WHERE application_id = ? ORDER BY version DESC`,
-    )
-    .all(applicationId) as Record<string, unknown>[];
+export async function listResumeVersions(applicationId: string): Promise<ResumeVersion[]> {
+  const rows = await dbAll(`SELECT * FROM resume_versions WHERE application_id = ? ORDER BY version DESC`, applicationId) as Record<string, unknown>[];
   return rows.map(mapResumeVersion);
 }
 
-export function getResumeVersionById(id: string): ResumeVersion | null {
-  const row = getDb()
-    .prepare("SELECT * FROM resume_versions WHERE id = ?")
-    .get(id) as Record<string, unknown> | undefined;
+export async function getResumeVersionById(id: string): Promise<ResumeVersion | null> {
+  const row = await dbGet("SELECT * FROM resume_versions WHERE id = ?", id) as Record<string, unknown> | undefined;
   return row ? mapResumeVersion(row) : null;
 }
 
@@ -694,16 +579,12 @@ function mapCoverLetterVersion(row: Record<string, unknown>): CoverLetterVersion
   };
 }
 
-export function getNextCoverLetterVersionNumber(applicationId: string): number {
-  const row = getDb()
-    .prepare(
-      `SELECT MAX(version) AS max_version FROM cover_letter_versions WHERE application_id = ?`,
-    )
-    .get(applicationId) as { max_version: number | null };
+export async function getNextCoverLetterVersionNumber(applicationId: string): Promise<number> {
+  const row = await dbGet(`SELECT MAX(version) AS max_version FROM cover_letter_versions WHERE application_id = ?`, applicationId) as { max_version: number | null };
   return (row.max_version ?? 0) + 1;
 }
 
-export function insertCoverLetterVersion(input: {
+export async function insertCoverLetterVersion(input: {
   id: string;
   application_id: string;
   resume_version_id?: string | null;
@@ -712,135 +593,129 @@ export function insertCoverLetterVersion(input: {
   prompt_run_id?: string | null;
   edited_from_version_id?: string | null;
   status?: CoverLetterVersionStatus;
-}): void {
-  getDb()
-    .prepare(
-      `INSERT INTO cover_letter_versions (
+}): Promise<void> {
+  await dbRun(`INSERT INTO cover_letter_versions (
          id, application_id, resume_version_id, version, content,
          prompt_run_id, edited_from_version_id, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      input.id,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, input.id,
       input.application_id,
       input.resume_version_id ?? null,
       input.version,
       JSON.stringify(input.content),
       input.prompt_run_id ?? null,
       input.edited_from_version_id ?? null,
-      input.status ?? "uploading",
-    );
+      input.status ?? "uploading",);
 }
 
-export function updateCoverLetterVersionDriveIds(
+export async function updateCoverLetterVersionDriveIds(
   id: string,
   drivePdfId: string | null,
   driveDocxId: string | null,
   driveDocId?: string | null,
-): void {
-  getDb()
-    .prepare(
-      `UPDATE cover_letter_versions
+): Promise<void> {
+  await dbRun(`UPDATE cover_letter_versions
        SET drive_pdf_id = ?, drive_docx_id = ?, drive_doc_id = ?, status = 'ready'
-       WHERE id = ?`,
-    )
-    .run(drivePdfId, driveDocxId, driveDocId ?? null, id);
+       WHERE id = ?`, drivePdfId, driveDocxId, driveDocId ?? null, id);
 }
 
-export function markCoverLetterVersionUploadFailed(id: string): void {
-  getDb()
-    .prepare(`UPDATE cover_letter_versions SET status = 'upload_failed' WHERE id = ?`)
-    .run(id);
+export async function markCoverLetterVersionUploadFailed(id: string): Promise<void> {
+  await dbRun(`UPDATE cover_letter_versions SET status = 'upload_failed' WHERE id = ?`, id);
 }
 
-export function updateCoverLetterVersionContentForRetry(
+export async function updateCoverLetterVersionContentForRetry(
   id: string,
   content: Record<string, unknown> | object,
-): void {
-  getDb()
-    .prepare(
-      `UPDATE cover_letter_versions
+): Promise<void> {
+  await dbRun(`UPDATE cover_letter_versions
        SET content = ?, status = 'uploading'
-       WHERE id = ?`,
-    )
-    .run(JSON.stringify(content), id);
+       WHERE id = ?`, JSON.stringify(content), id);
 }
 
-export function listCoverLetterVersions(
+export async function listCoverLetterVersions(
   applicationId: string,
-): CoverLetterVersion[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM cover_letter_versions WHERE application_id = ? ORDER BY version DESC`,
-    )
-    .all(applicationId) as Record<string, unknown>[];
+): Promise<CoverLetterVersion[]> {
+  const rows = await dbAll(`SELECT * FROM cover_letter_versions WHERE application_id = ? ORDER BY version DESC`, applicationId) as Record<string, unknown>[];
   return rows.map(mapCoverLetterVersion);
 }
 
-export function getCoverLetterVersion(
+export async function getCoverLetterVersion(
   applicationId: string,
   version: number,
-): CoverLetterVersion | null {
-  const row = getDb()
-    .prepare(
-      `SELECT * FROM cover_letter_versions WHERE application_id = ? AND version = ?`,
-    )
-    .get(applicationId, version) as Record<string, unknown> | undefined;
+): Promise<CoverLetterVersion | null> {
+  const row = await dbGet(`SELECT * FROM cover_letter_versions WHERE application_id = ? AND version = ?`, applicationId, version) as Record<string, unknown> | undefined;
   return row ? mapCoverLetterVersion(row) : null;
 }
 
-export function getCoverLetterVersionById(id: string): CoverLetterVersion | null {
-  const row = getDb()
-    .prepare("SELECT * FROM cover_letter_versions WHERE id = ?")
-    .get(id) as Record<string, unknown> | undefined;
+export async function getCoverLetterVersionById(id: string): Promise<CoverLetterVersion | null> {
+  const row = await dbGet("SELECT * FROM cover_letter_versions WHERE id = ?", id) as Record<string, unknown> | undefined;
   return row ? mapCoverLetterVersion(row) : null;
 }
 
-export function updateApplicationCompanyBlurb(
+export async function updateApplicationCompanyBlurb(
   id: string,
   companyBlurb: string | null,
-): boolean {
-  const result = getDb()
-    .prepare(`UPDATE applications SET company_blurb = ? WHERE id = ?`)
-    .run(companyBlurb?.trim() || null, id);
+): Promise<boolean> {
+  const result = await dbRun(`UPDATE applications SET company_blurb = ? WHERE id = ?`, companyBlurb?.trim() || null, id);
   return result.changes > 0;
 }
 
-export function updateApplicationEmailInstructions(
+export async function updateApplicationEmailInstructions(
   id: string,
   emailInstructions: string | null,
-): boolean {
-  const result = getDb()
-    .prepare(`UPDATE applications SET email_instructions = ? WHERE id = ?`)
-    .run(emailInstructions?.trim() || null, id);
+): Promise<boolean> {
+  const result = await dbRun(`UPDATE applications SET email_instructions = ? WHERE id = ?`, emailInstructions?.trim() || null, id);
   return result.changes > 0;
 }
 
-export function getLatestReadyResumeVersion(
+export async function getLatestReadyResumeVersion(
   applicationId: string,
-): ResumeVersion | null {
-  const row = getDb()
-    .prepare(
-      `SELECT * FROM resume_versions
+): Promise<ResumeVersion | null> {
+  const row = await dbGet(`SELECT * FROM resume_versions
        WHERE application_id = ? AND status = 'ready'
        ORDER BY version DESC
-       LIMIT 1`,
-    )
-    .get(applicationId) as Record<string, unknown> | undefined;
+       LIMIT 1`, applicationId) as Record<string, unknown> | undefined;
   return row ? mapResumeVersion(row) : null;
 }
 
-export function getLatestReadyCoverLetterVersion(
+/** Latest resume with accepted content (Drive may still be uploading). */
+export async function getLatestUsableResumeVersion(
   applicationId: string,
-): CoverLetterVersion | null {
-  const row = getDb()
-    .prepare(
-      `SELECT * FROM cover_letter_versions
+): Promise<ResumeVersion | null> {
+  const row = await dbGet(
+    `SELECT * FROM resume_versions
+       WHERE application_id = ? AND status IN ('ready', 'uploading')
+       ORDER BY
+         CASE status WHEN 'ready' THEN 0 WHEN 'uploading' THEN 1 ELSE 2 END,
+         version DESC
+       LIMIT 1`,
+    applicationId,
+  ) as Record<string, unknown> | undefined;
+  return row ? mapResumeVersion(row) : null;
+}
+
+export async function getLatestReadyCoverLetterVersion(
+  applicationId: string,
+): Promise<CoverLetterVersion | null> {
+  const row = await dbGet(`SELECT * FROM cover_letter_versions
        WHERE application_id = ? AND status = 'ready'
        ORDER BY version DESC
+       LIMIT 1`, applicationId) as Record<string, unknown> | undefined;
+  return row ? mapCoverLetterVersion(row) : null;
+}
+
+/** Latest cover letter with accepted content (Drive may still be uploading). */
+export async function getLatestUsableCoverLetterVersion(
+  applicationId: string,
+): Promise<CoverLetterVersion | null> {
+  const row = await dbGet(
+    `SELECT * FROM cover_letter_versions
+       WHERE application_id = ? AND status IN ('ready', 'uploading')
+       ORDER BY
+         CASE status WHEN 'ready' THEN 0 WHEN 'uploading' THEN 1 ELSE 2 END,
+         version DESC
        LIMIT 1`,
-    )
-    .get(applicationId) as Record<string, unknown> | undefined;
+    applicationId,
+  ) as Record<string, unknown> | undefined;
   return row ? mapCoverLetterVersion(row) : null;
 }
 
@@ -863,23 +738,17 @@ function mapContact(row: Record<string, unknown>): Contact {
   };
 }
 
-export function listContacts(applicationId: string): Contact[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM contacts WHERE application_id = ? ORDER BY created_at DESC`,
-    )
-    .all(applicationId) as Record<string, unknown>[];
+export async function listContacts(applicationId: string): Promise<Contact[]> {
+  const rows = await dbAll(`SELECT * FROM contacts WHERE application_id = ? ORDER BY created_at DESC`, applicationId) as Record<string, unknown>[];
   return rows.map(mapContact);
 }
 
-export function getContactById(id: string): Contact | null {
-  const row = getDb()
-    .prepare("SELECT * FROM contacts WHERE id = ?")
-    .get(id) as Record<string, unknown> | undefined;
+export async function getContactById(id: string): Promise<Contact | null> {
+  const row = await dbGet("SELECT * FROM contacts WHERE id = ?", id) as Record<string, unknown> | undefined;
   return row ? mapContact(row) : null;
 }
 
-export function insertContact(input: {
+export async function insertContact(input: {
   application_id: string;
   name: string;
   role?: string | null;
@@ -891,17 +760,12 @@ export function insertContact(input: {
   verification_status: VerificationStatus;
   notes?: string | null;
   prompt_run_id?: string | null;
-}): string {
+}): Promise<string> {
   const id = randomUUID();
-  getDb()
-    .prepare(
-      `INSERT INTO contacts (
+  await dbRun(`INSERT INTO contacts (
          id, application_id, name, role, linkedin_url, company_domain,
          email, email_confidence, email_source, verification_status, notes, prompt_run_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      id,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id,
       input.application_id,
       input.name,
       input.role ?? null,
@@ -912,13 +776,12 @@ export function insertContact(input: {
       input.email_source ?? null,
       input.verification_status,
       input.notes ?? null,
-      input.prompt_run_id ?? null,
-    );
+      input.prompt_run_id ?? null,);
   return id;
 }
 
-export function deleteContact(id: string): boolean {
-  const result = getDb().prepare("DELETE FROM contacts WHERE id = ?").run(id);
+export async function deleteContact(id: string): Promise<boolean> {
+  const result = await dbRun("DELETE FROM contacts WHERE id = ?", id);
   return result.changes > 0;
 }
 
@@ -943,39 +806,29 @@ function mapEmail(row: Record<string, unknown>): EmailRecord {
   };
 }
 
-export function listEmails(applicationId: string): EmailRecord[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM emails WHERE application_id = ? ORDER BY created_at DESC`,
-    )
-    .all(applicationId) as Record<string, unknown>[];
+export async function listEmails(applicationId: string): Promise<EmailRecord[]> {
+  const rows = await dbAll(`SELECT * FROM emails WHERE application_id = ? ORDER BY created_at DESC`, applicationId) as Record<string, unknown>[];
   return rows.map(mapEmail);
 }
 
-export function getEmailById(id: string): EmailRecord | null {
-  const row = getDb()
-    .prepare("SELECT * FROM emails WHERE id = ?")
-    .get(id) as Record<string, unknown> | undefined;
+export async function getEmailById(id: string): Promise<EmailRecord | null> {
+  const row = await dbGet("SELECT * FROM emails WHERE id = ?", id) as Record<string, unknown> | undefined;
   return row ? mapEmail(row) : null;
 }
 
-export function listEmailsByIds(ids: string[]): EmailRecord[] {
+export async function listEmailsByIds(ids: string[]): Promise<EmailRecord[]> {
   if (ids.length === 0) return [];
   const placeholders = ids.map(() => "?").join(",");
-  const rows = getDb()
-    .prepare(`SELECT * FROM emails WHERE id IN (${placeholders})`)
-    .all(...ids) as Record<string, unknown>[];
+  const rows = await dbAll(`SELECT * FROM emails WHERE id IN (${placeholders})`, ...ids) as Record<string, unknown>[];
   return rows.map(mapEmail);
 }
 
-export function listEmailsByPromptRun(promptRunId: string): EmailRecord[] {
-  const rows = getDb()
-    .prepare(`SELECT * FROM emails WHERE prompt_run_id = ? ORDER BY created_at ASC`)
-    .all(promptRunId) as Record<string, unknown>[];
+export async function listEmailsByPromptRun(promptRunId: string): Promise<EmailRecord[]> {
+  const rows = await dbAll(`SELECT * FROM emails WHERE prompt_run_id = ? ORDER BY created_at ASC`, promptRunId) as Record<string, unknown>[];
   return rows.map(mapEmail);
 }
 
-export function insertEmail(input: {
+export async function insertEmail(input: {
   application_id: string;
   contact_id: string;
   kind?: EmailKind;
@@ -985,115 +838,110 @@ export function insertEmail(input: {
   role_template?: ColdEmailRoleTemplate | null;
   prompt_run_id?: string | null;
   draft_status?: DraftStatus;
-}): string {
+}): Promise<string> {
+  const kind = input.kind ?? "cold";
+  // One cold email per contact per application — never create duplicates.
+  if (kind === "cold") {
+    const existing = await dbGet<{ id: string }>(
+      `SELECT id FROM emails
+         WHERE application_id = ? AND contact_id = ? AND kind = 'cold'
+         LIMIT 1`,
+      input.application_id,
+      input.contact_id,
+    );
+    if (existing?.id) return existing.id;
+  }
+
   const id = randomUUID();
-  getDb()
-    .prepare(
-      `INSERT INTO emails (
+  await dbRun(
+    `INSERT INTO emails (
          id, application_id, contact_id, kind, subject, body_md, body_html,
          role_template, prompt_run_id, draft_status
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      id,
-      input.application_id,
-      input.contact_id,
-      input.kind ?? "cold",
-      input.subject,
-      input.body_md,
-      input.body_html,
-      input.role_template ?? null,
-      input.prompt_run_id ?? null,
-      input.draft_status ?? "pending",
-    );
+    id,
+    input.application_id,
+    input.contact_id,
+    kind,
+    input.subject,
+    input.body_md,
+    input.body_html,
+    input.role_template ?? null,
+    input.prompt_run_id ?? null,
+    input.draft_status ?? "pending",
+  );
   return id;
 }
 
 /** Claim a pending/failed email for draft creation. Returns false if already claimed. */
-export function claimEmailForDraftCreation(id: string): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE emails
+export async function claimEmailForDraftCreation(id: string): Promise<boolean> {
+  // Use RETURNING — postgres.js count can be unreliable for UPDATE without it.
+  const row = await dbGet<{ id: string }>(
+    `UPDATE emails
        SET draft_status = 'creating', draft_error = NULL
-       WHERE id = ? AND draft_status IN ('pending', 'failed', 'deleted_externally')`,
-    )
-    .run(id);
-  return result.changes > 0;
+       WHERE id = ? AND draft_status IN ('pending', 'failed', 'deleted_externally')
+       RETURNING id`,
+    id,
+  );
+  return Boolean(row?.id);
 }
 
-export function markEmailDraftCreated(
+export async function markEmailDraftCreated(
   id: string,
   gmailDraftId: string,
   gmailMessageId?: string | null,
-): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE emails
+): Promise<boolean> {
+  const row = await dbGet<{ id: string }>(
+    `UPDATE emails
        SET draft_status = 'created',
            gmail_draft_id = ?,
            gmail_message_id = ?,
            draft_error = NULL
-       WHERE id = ?`,
-    )
-    .run(gmailDraftId, gmailMessageId ?? null, id);
-  return result.changes > 0;
+       WHERE id = ? AND draft_status = 'creating'
+       RETURNING id`,
+    gmailDraftId,
+    gmailMessageId ?? null,
+    id,
+  );
+  return Boolean(row?.id);
 }
 
-export function markEmailDraftFailed(id: string, error: string): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE emails
+export async function markEmailDraftFailed(id: string, error: string): Promise<boolean> {
+  const result = await dbRun(`UPDATE emails
        SET draft_status = 'failed', draft_error = ?
-       WHERE id = ?`,
-    )
-    .run(error.slice(0, 500), id);
+       WHERE id = ?`, error.slice(0, 500), id);
   return result.changes > 0;
 }
 
-export function markEmailDraftDeletedExternally(id: string): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE emails
+export async function markEmailDraftDeletedExternally(id: string): Promise<boolean> {
+  const result = await dbRun(`UPDATE emails
        SET draft_status = 'deleted_externally',
            gmail_draft_id = NULL,
            gmail_message_id = NULL
-       WHERE id = ?`,
-    )
-    .run(id);
+       WHERE id = ?`, id);
   return result.changes > 0;
 }
 
-export function updateEmailContent(
+export async function updateEmailContent(
   id: string,
   input: { subject?: string; body_md?: string; body_html?: string },
-): boolean {
-  const existing = getEmailById(id);
+): Promise<boolean> {
+  const existing = await getEmailById(id);
   if (!existing) return false;
-  const result = getDb()
-    .prepare(
-      `UPDATE emails
+  const result = await dbRun(`UPDATE emails
        SET subject = ?, body_md = ?, body_html = ?
-       WHERE id = ?`,
-    )
-    .run(
-      input.subject ?? existing.subject,
+       WHERE id = ?`, input.subject ?? existing.subject,
       input.body_md ?? existing.body_md,
       input.body_html ?? existing.body_html,
-      id,
-    );
+      id,);
   return result.changes > 0;
 }
 
-export function resetEmailDraftForRecreate(id: string): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE emails
+export async function resetEmailDraftForRecreate(id: string): Promise<boolean> {
+  const result = await dbRun(`UPDATE emails
        SET draft_status = 'pending',
            gmail_draft_id = NULL,
            gmail_message_id = NULL,
            draft_error = NULL
-       WHERE id = ?`,
-    )
-    .run(id);
+       WHERE id = ?`, id);
   return result.changes > 0;
 }

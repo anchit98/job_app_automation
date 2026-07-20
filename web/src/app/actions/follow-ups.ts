@@ -51,7 +51,7 @@ function revalidateFollowUpPaths(applicationId: string) {
 }
 
 export async function getFollowUpsForApplication(applicationId: string) {
-  return listFollowUpsForApplication(applicationId);
+  return await listFollowUpsForApplication(applicationId);
 }
 
 export async function runEnqueueDueFollowUps() {
@@ -65,7 +65,7 @@ export async function runFollowUpNow(
   followUpId: string,
   options?: { force?: boolean },
 ) {
-  const followUp = getFollowUpById(followUpId);
+  const followUp = await getFollowUpById(followUpId);
   if (!followUp) {
     return { ok: false as const, error: "Follow-up not found." };
   }
@@ -78,16 +78,16 @@ export async function runFollowUpNow(
 }
 
 export async function snoozeFollowUp(followUpId: string, businessDays: number) {
-  const followUp = getFollowUpById(followUpId);
+  const followUp = await getFollowUpById(followUpId);
   if (!followUp) {
     return { ok: false as const, error: "Follow-up not found." };
   }
 
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const timezone = profile?.timezone ?? "UTC";
   const until = toUtcIso(addBusinessDays(new Date(), businessDays, timezone));
 
-  const ok = updateFollowUpStatus(followUpId, "snoozed", {
+  const ok = await updateFollowUpStatus(followUpId, "snoozed", {
     snoozed_until: until,
     due_at: until,
   });
@@ -105,17 +105,17 @@ export async function snoozeFollowUp(followUpId: string, businessDays: number) {
 }
 
 export async function skipFollowUp(followUpId: string) {
-  const followUp = getFollowUpById(followUpId);
+  const followUp = await getFollowUpById(followUpId);
   if (!followUp) {
     return { ok: false as const, error: "Follow-up not found." };
   }
 
-  updateFollowUpStatus(followUpId, "skipped");
+  await updateFollowUpStatus(followUpId, "skipped");
   await writeAuditLog("follow_up.skipped", "follow_ups", followUpId);
 
   if (followUp.sequence === 1) {
-    const profile = getProfileRow();
-    activateSecondFollowUp(followUp.email_id, profile?.timezone ?? "UTC");
+    const profile = await getProfileRow();
+    await activateSecondFollowUp(followUp.email_id, profile?.timezone ?? "UTC");
   }
 
   revalidateFollowUpPaths(followUp.application_id);
@@ -139,12 +139,12 @@ export async function submitFollowUpResponse(
     };
   }
 
-  const run = getPromptRunById(promptRunId);
+  const run = await getPromptRunById(promptRunId);
   if (!run || run.kind !== "follow_up") {
     return { ok: false as const, error: "Not a follow-up prompt run." };
   }
 
-  const followUp = getFollowUpById(followUpId);
+  const followUp = await getFollowUpById(followUpId);
   if (!followUp) {
     return { ok: false as const, error: "Follow-up not found." };
   }
@@ -154,7 +154,7 @@ export async function submitFollowUpResponse(
     jsonText = extractJsonFromText(rawResponse);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Invalid JSON";
-    updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }], rawResponse);
+    await updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }], rawResponse);
     return { ok: false as const, error: message };
   }
 
@@ -168,7 +168,7 @@ export async function submitFollowUpResponse(
   const schemaResult = followUpEmailSchema.safeParse(parsed);
   if (!schemaResult.success) {
     const issues = zodErrorsToList(schemaResult.error);
-    updatePromptRunValidationErrors(promptRunId, issues, rawResponse);
+    await updatePromptRunValidationErrors(promptRunId, issues, rawResponse);
     return {
       ok: false as const,
       error: "Follow-up failed schema validation.",
@@ -179,7 +179,7 @@ export async function submitFollowUpResponse(
 
   const contentCheck = validateFollowUpContent(schemaResult.data);
   if (!contentCheck.ok) {
-    updatePromptRunValidationErrors(promptRunId, contentCheck.issues, rawResponse);
+    await updatePromptRunValidationErrors(promptRunId, contentCheck.issues, rawResponse);
     return {
       ok: false as const,
       error: "Follow-up content validation failed.",
@@ -188,19 +188,19 @@ export async function submitFollowUpResponse(
     };
   }
 
-  const originalEmail = getEmailById(followUp.email_id);
+  const originalEmail = await getEmailById(followUp.email_id);
   if (!originalEmail) {
     return { ok: false as const, error: "Original email not found." };
   }
 
-  const contact = getContactById(originalEmail.contact_id);
-  const profile = getProfileRow();
+  const contact = await getContactById(originalEmail.contact_id);
+  const profile = await getProfileRow();
   const bodyMd = stripEmailSignature(
     schemaResult.data.body_md,
     profile?.full_name,
   );
 
-  const draftEmailId = insertEmail({
+  const draftEmailId = await insertEmail({
     application_id: followUp.application_id,
     contact_id: originalEmail.contact_id,
     kind: "follow_up",
@@ -212,12 +212,12 @@ export async function submitFollowUpResponse(
     draft_status: "pending",
   });
 
-  const completed = completePromptRun(promptRunId, rawResponse, schemaResult.data);
+  const completed = await completePromptRun(promptRunId, rawResponse, schemaResult.data);
   if (!completed) {
     return { ok: false as const, error: "Prompt run was already completed." };
   }
 
-  updateFollowUpStatus(followUpId, "enqueued", {
+  await updateFollowUpStatus(followUpId, "enqueued", {
     draft_email_id: draftEmailId,
   });
 
@@ -235,7 +235,7 @@ export async function submitFollowUpResponse(
 }
 
 export async function manualSendFollowUp(followUpId: string) {
-  const followUp = getFollowUpById(followUpId);
+  const followUp = await getFollowUpById(followUpId);
   if (!followUp) {
     return { ok: false as const, error: "Follow-up not found." };
   }
@@ -248,7 +248,7 @@ export async function manualSendFollowUp(followUpId: string) {
     };
   }
 
-  const email = getEmailById(draftEmailId);
+  const email = await getEmailById(draftEmailId);
   if (!email) {
     return { ok: false as const, error: "Follow-up email record missing." };
   }
@@ -267,13 +267,13 @@ export async function manualSendFollowUp(followUpId: string) {
     }
   }
 
-  const refreshed = getEmailById(draftEmailId);
+  const refreshed = await getEmailById(draftEmailId);
   const sentAt = new Date().toISOString();
-  updateFollowUpStatus(followUpId, "sent", { sent_at: sentAt });
+  await updateFollowUpStatus(followUpId, "sent", { sent_at: sentAt });
 
   if (followUp.sequence === 1) {
-    const profile = getProfileRow();
-    activateSecondFollowUp(followUp.email_id, profile?.timezone ?? "UTC");
+    const profile = await getProfileRow();
+    await activateSecondFollowUp(followUp.email_id, profile?.timezone ?? "UTC");
   }
 
   await writeAuditLog("follow_up.sent", "follow_ups", followUpId, {
@@ -290,7 +290,7 @@ export async function manualSendFollowUp(followUpId: string) {
 }
 
 export async function ensureFollowUpsScheduled(applicationId: string) {
-  const count = scheduleFollowUpsForApplication(applicationId);
+  const count = await scheduleFollowUpsForApplication(applicationId);
   revalidateFollowUpPaths(applicationId);
   return { ok: true as const, scheduled: count };
 }

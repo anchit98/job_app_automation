@@ -1,35 +1,35 @@
 import Link from "next/link";
-import { getDb } from "@/lib/db";
+import { dbGet } from "@/lib/db";
 import { listRecentPromptRuns } from "@/lib/db/queries";
 import { isGoogleConnected } from "@/lib/google/tokens";
 import { getActiveExtensionTokenRow } from "@/lib/extension/tokens";
 import { peekQueuedExtensionRun } from "@/lib/db/pipeline";
 
 export default async function HealthPage() {
-  let sqliteOk = true;
-  let sqliteError: string | null = null;
+  let dbOk = true;
+  let dbError: string | null = null;
   try {
-    getDb().prepare("SELECT 1").get();
+    await dbGet("SELECT 1 as ok");
   } catch (e) {
-    sqliteOk = false;
-    sqliteError = e instanceof Error ? e.message : "SQLite error";
+    dbOk = false;
+    dbError = e instanceof Error ? e.message : "Database error";
   }
 
   const [googleConnected, recentRuns, extensionToken, pendingExt] =
     await Promise.all([
       isGoogleConnected().catch(() => false),
-      Promise.resolve(listRecentPromptRuns(8)),
-      Promise.resolve(getActiveExtensionTokenRow()),
-      Promise.resolve(peekQueuedExtensionRun()),
+      listRecentPromptRuns(8),
+      getActiveExtensionTokenRow(),
+      peekQueuedExtensionRun(),
     ]);
 
   const pendingCount = recentRuns.filter((r) => r.status === "pending").length;
 
   const checks = [
     {
-      label: "SQLite",
-      ok: sqliteOk,
-      detail: sqliteOk ? "app.db reachable" : sqliteError,
+      label: "Postgres",
+      ok: dbOk,
+      detail: dbOk ? "DATABASE_URL reachable" : dbError,
     },
     {
       label: "Google OAuth",

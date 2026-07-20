@@ -157,7 +157,7 @@
 
   async function pasteAndMaybeSend(text, autoSend) {
     disableComposerExtras();
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 40));
 
     const el = findComposer();
     if (!el) {
@@ -165,15 +165,15 @@
     }
 
     let ok = insertText(el, text);
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 120));
     // ChatGPT sometimes auto-attaches Search after detecting URLs — strip it.
     disableComposerExtras();
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 40));
     let send = findSendEnabled();
 
     if (!send) {
       ok = insertChunks(el, text, 1000);
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 160));
       disableComposerExtras();
       send = findSendEnabled();
     }
@@ -189,7 +189,7 @@
           cancelable: true,
         }),
       );
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 160));
       disableComposerExtras();
       send = findSendEnabled();
     }
@@ -205,10 +205,10 @@
 
     if (autoSend) {
       disableComposerExtras();
-      await new Promise((r) => setTimeout(r, 80));
+      await new Promise((r) => setTimeout(r, 40));
       send = findSendEnabled() || send;
       send.click();
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 180));
     }
 
     return {

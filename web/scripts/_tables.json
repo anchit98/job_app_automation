@@ -1,0 +1,70 @@
+[
+  {
+    "name": "applications",
+    "sql": "CREATE TABLE applications (\n  id TEXT PRIMARY KEY,\n  company TEXT,\n  role TEXT,\n  job_url TEXT,\n  jd_raw TEXT NOT NULL,\n  jd_parsed TEXT,\n  status TEXT NOT NULL DEFAULT 'draft' CHECK (\n    status IN (\n      'draft',\n      'ready',\n      'applied',\n      'email_sent',\n      'hr_replied',\n      'interview_scheduled',\n      'rejected',\n      'offer',\n      'accepted',\n      'withdrawn'\n    )\n  ),\n  notes TEXT,\n  language TEXT,\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\n, company_blurb TEXT, notes_html TEXT, email_instructions TEXT)"
+  },
+  {
+    "name": "audit_log",
+    "sql": "CREATE TABLE audit_log (\n  id TEXT PRIMARY KEY,\n  action TEXT NOT NULL,\n  entity TEXT,\n  entity_id TEXT,\n  payload TEXT,\n  created_at TEXT NOT NULL DEFAULT (datetime('now'))\n)"
+  },
+  {
+    "name": "contacts",
+    "sql": "CREATE TABLE contacts (\r\n  id TEXT PRIMARY KEY,\r\n  application_id TEXT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,\r\n  name TEXT NOT NULL,\r\n  role TEXT,\r\n  linkedin_url TEXT,\r\n  company_domain TEXT,\r\n  email TEXT,\r\n  email_confidence REAL,\r\n  email_source TEXT CHECK (\r\n    email_source IN ('mailmeteor_manual', 'pattern_smtp', 'manual_entry')\r\n  ),\r\n  verification_status TEXT NOT NULL CHECK (\r\n    verification_status IN ('valid', 'risky', 'unverified', 'no_email_available')\r\n  ),\r\n  notes TEXT,\r\n  prompt_run_id TEXT REFERENCES prompt_runs(id),\r\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\r\n)"
+  },
+  {
+    "name": "cover_letter_versions",
+    "sql": "CREATE TABLE cover_letter_versions (\n  id TEXT PRIMARY KEY,\n  application_id TEXT NOT NULL REFERENCES applications (id) ON DELETE CASCADE,\n  resume_version_id TEXT REFERENCES resume_versions (id),\n  version INTEGER NOT NULL,\n  content TEXT NOT NULL,\n  drive_pdf_id TEXT,\n  drive_docx_id TEXT,\n  drive_doc_id TEXT,\n  prompt_run_id TEXT REFERENCES prompt_runs (id),\n  edited_from_version_id TEXT REFERENCES cover_letter_versions (id),\n  status TEXT NOT NULL DEFAULT 'uploading' CHECK (\n    status IN ('uploading', 'ready', 'upload_failed')\n  ),\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\n  UNIQUE (application_id, version)\n)"
+  },
+  {
+    "name": "emails",
+    "sql": "CREATE TABLE emails (\r\n  id TEXT PRIMARY KEY,\r\n  application_id TEXT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,\r\n  contact_id TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,\r\n  kind TEXT NOT NULL DEFAULT 'cold' CHECK (kind IN ('cold', 'follow_up')),\r\n  subject TEXT NOT NULL,\r\n  body_md TEXT NOT NULL,\r\n  body_html TEXT NOT NULL,\r\n  role_template TEXT,\r\n  gmail_draft_id TEXT,\r\n  gmail_message_id TEXT,\r\n  draft_status TEXT NOT NULL DEFAULT 'pending' CHECK (\r\n    draft_status IN ('pending', 'creating', 'created', 'failed', 'deleted_externally')\r\n  ),\r\n  draft_error TEXT,\r\n  sent_at TEXT,\r\n  prompt_run_id TEXT REFERENCES prompt_runs(id),\r\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\r\n)"
+  },
+  {
+    "name": "extension_tokens",
+    "sql": "CREATE TABLE extension_tokens (\r\n  id INTEGER PRIMARY KEY CHECK (id = 1),\r\n  token_hash TEXT NOT NULL,\r\n  token_prefix TEXT NOT NULL,\r\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  revoked_at TEXT\r\n)"
+  },
+  {
+    "name": "follow_ups",
+    "sql": "CREATE TABLE follow_ups (\r\n  id TEXT PRIMARY KEY,\r\n  application_id TEXT NOT NULL REFERENCES applications (id) ON DELETE CASCADE,\r\n  email_id TEXT NOT NULL REFERENCES emails (id) ON DELETE CASCADE,\r\n  sequence INTEGER NOT NULL CHECK (sequence IN (1, 2)),\r\n  due_at TEXT,\r\n  status TEXT NOT NULL DEFAULT 'pending' CHECK (\r\n    status IN (\r\n      'waiting',\r\n      'pending',\r\n      'processing',\r\n      'enqueued',\r\n      'snoozed',\r\n      'skipped',\r\n      'sent'\r\n    )\r\n  ),\r\n  snoozed_until TEXT,\r\n  draft_email_id TEXT REFERENCES emails (id),\r\n  prompt_run_id TEXT REFERENCES prompt_runs (id),\r\n  sent_at TEXT,\r\n  notes TEXT,\r\n  processing_started_at TEXT,\r\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  updated_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  UNIQUE (email_id, sequence)\r\n)"
+  },
+  {
+    "name": "google_tokens",
+    "sql": "CREATE TABLE google_tokens (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  encrypted_access_token TEXT NOT NULL,\n  encrypted_refresh_token TEXT NOT NULL,\n  scope TEXT NOT NULL,\n  expires_at TEXT NOT NULL,\n  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\n)"
+  },
+  {
+    "name": "master_cover_letter",
+    "sql": "CREATE TABLE master_cover_letter (\r\n  id INTEGER PRIMARY KEY CHECK (id = 1),\r\n  doc_id TEXT,\r\n  doc_layout TEXT,\r\n  doc_synced_at TEXT,\r\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\r\n)"
+  },
+  {
+    "name": "master_resume",
+    "sql": "CREATE TABLE master_resume (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  content TEXT NOT NULL DEFAULT '{}',\n  rules TEXT NOT NULL DEFAULT '{\"never_fabricate\": true}',\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\n, doc_id TEXT, doc_layout TEXT, doc_synced_at TEXT)"
+  },
+  {
+    "name": "pending_extension_runs",
+    "sql": "CREATE TABLE pending_extension_runs (\r\n  prompt_run_id TEXT PRIMARY KEY,\r\n  pipeline_run_id TEXT,\r\n  kind TEXT NOT NULL,\r\n  prompt_text TEXT NOT NULL,\r\n  chatgpt_url TEXT NOT NULL DEFAULT 'https://chat.openai.com/',\r\n  status TEXT NOT NULL DEFAULT 'pending',\r\n  error TEXT,\r\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  updated_at TEXT NOT NULL DEFAULT (datetime('now')), wake_until TEXT,\r\n  FOREIGN KEY (prompt_run_id) REFERENCES prompt_runs(id),\r\n  FOREIGN KEY (pipeline_run_id) REFERENCES pipeline_runs(id)\r\n)"
+  },
+  {
+    "name": "pipeline_runs",
+    "sql": "CREATE TABLE pipeline_runs (\r\n  id TEXT PRIMARY KEY,\r\n  application_id TEXT NOT NULL,\r\n  status TEXT NOT NULL DEFAULT 'running',\r\n  current_stage TEXT,\r\n  stages_json TEXT NOT NULL,\r\n  contacts_json TEXT,\r\n  error TEXT,\r\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  updated_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  FOREIGN KEY (application_id) REFERENCES applications(id)\r\n)"
+  },
+  {
+    "name": "profiles",
+    "sql": "CREATE TABLE profiles (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  full_name TEXT,\n  headline TEXT,\n  location TEXT,\n  timezone TEXT NOT NULL DEFAULT 'UTC',\n  drive_root_id TEXT,\n  preferred_tone TEXT,\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\n, phone TEXT, linkedin_url TEXT, github_url TEXT, portfolio_url TEXT)"
+  },
+  {
+    "name": "prompt_runs",
+    "sql": "CREATE TABLE prompt_runs (\n  id TEXT PRIMARY KEY,\n  kind TEXT NOT NULL CHECK (\n    kind IN (\n      'hello_world',\n      'jd_parse',\n      'resume',\n      'cover_letter',\n      'cold_email',\n      'follow_up',\n      'repair',\n      'email_discovery'\n    )\n  ),\n  prompt_text TEXT NOT NULL,\n  target_entity TEXT,\n  target_entity_id TEXT,\n  status TEXT NOT NULL DEFAULT 'pending' CHECK (\n    status IN ('pending', 'completed', 'abandoned')\n  ),\n  exported_at TEXT NOT NULL DEFAULT (datetime('now')),\n  completed_at TEXT,\n  raw_response TEXT,\n  parsed_response TEXT,\n  validation_errors TEXT,\n  created_at TEXT NOT NULL DEFAULT (datetime('now'))\n)"
+  },
+  {
+    "name": "prompt_templates",
+    "sql": "CREATE TABLE prompt_templates (\n  id TEXT PRIMARY KEY,\n  kind TEXT NOT NULL,\n  version INTEGER NOT NULL DEFAULT 1,\n  body TEXT NOT NULL,\n  variables TEXT NOT NULL DEFAULT '[]',\n  output_schema TEXT,\n  active INTEGER NOT NULL DEFAULT 1,\n  notes TEXT,\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\n  UNIQUE (kind, version)\n)"
+  },
+  {
+    "name": "resume_versions",
+    "sql": "CREATE TABLE resume_versions (\n  id TEXT PRIMARY KEY,\n  application_id TEXT NOT NULL REFERENCES applications (id) ON DELETE CASCADE,\n  version INTEGER NOT NULL,\n  content TEXT NOT NULL,\n  drive_pdf_id TEXT,\n  drive_docx_id TEXT,\n  prompt_run_id TEXT REFERENCES prompt_runs (id),\n  user_rating INTEGER,\n  status TEXT NOT NULL DEFAULT 'uploading' CHECK (\n    status IN ('uploading', 'ready', 'upload_failed')\n  ),\n  created_at TEXT NOT NULL DEFAULT (datetime('now')), drive_doc_id TEXT,\n  UNIQUE (application_id, version)\n)"
+  },
+  {
+    "name": "schema_migrations",
+    "sql": "CREATE TABLE schema_migrations (\n      version INTEGER PRIMARY KEY,\n      applied_at TEXT NOT NULL DEFAULT (datetime('now'))\n    )"
+  }
+]

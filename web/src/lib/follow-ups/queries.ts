@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getDb } from "@/lib/db";
+import { dbGet, dbAll, dbRun } from "@/lib/db";
 import type { FollowUp, FollowUpStatus } from "@/lib/db/types";
 import {
   addBusinessDays,
@@ -24,77 +24,59 @@ function mapFollowUp(row: Record<string, unknown>): FollowUp {
   };
 }
 
-export function listFollowUpsForApplication(applicationId: string): FollowUp[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM follow_ups
+export async function listFollowUpsForApplication(applicationId: string): Promise<FollowUp[]> {
+  const rows = await dbAll(`SELECT * FROM follow_ups
        WHERE application_id = ?
-       ORDER BY email_id, sequence`,
-    )
-    .all(applicationId) as Record<string, unknown>[];
+       ORDER BY email_id, sequence`, applicationId) as Record<string, unknown>[];
   return rows.map(mapFollowUp);
 }
 
-export function getFollowUpById(id: string): FollowUp | null {
-  const row = getDb()
-    .prepare("SELECT * FROM follow_ups WHERE id = ?")
-    .get(id) as Record<string, unknown> | undefined;
+export async function getFollowUpById(id: string): Promise<FollowUp | null> {
+  const row = await dbGet("SELECT * FROM follow_ups WHERE id = ?", id) as Record<string, unknown> | undefined;
   return row ? mapFollowUp(row) : null;
 }
 
-export function getFollowUpByEmailSequence(
+export async function getFollowUpByEmailSequence(
   emailId: string,
   sequence: 1 | 2,
-): FollowUp | null {
-  const row = getDb()
-    .prepare(
-      `SELECT * FROM follow_ups WHERE email_id = ? AND sequence = ?`,
-    )
-    .get(emailId, sequence) as Record<string, unknown> | undefined;
+): Promise<FollowUp | null> {
+  const row = await dbGet(`SELECT * FROM follow_ups WHERE email_id = ? AND sequence = ?`, emailId, sequence) as Record<string, unknown> | undefined;
   return row ? mapFollowUp(row) : null;
 }
 
-export function insertFollowUp(input: {
+export async function insertFollowUp(input: {
   application_id: string;
   email_id: string;
   sequence: 1 | 2;
   due_at: string | null;
   status: FollowUpStatus;
-}): string {
+}): Promise<string> {
   const id = randomUUID();
-  getDb()
-    .prepare(
-      `INSERT INTO follow_ups (
+  await dbRun(`INSERT INTO follow_ups (
          id, application_id, email_id, sequence, due_at, status
-       ) VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      id,
+       ) VALUES (?, ?, ?, ?, ?, ?)`, id,
       input.application_id,
       input.email_id,
       input.sequence,
       input.due_at,
-      input.status,
-    );
+      input.status,);
   return id;
 }
 
-export function followUpsExistForEmail(emailId: string): boolean {
-  const row = getDb()
-    .prepare(`SELECT 1 AS ok FROM follow_ups WHERE email_id = ? LIMIT 1`)
-    .get(emailId);
+export async function followUpsExistForEmail(emailId: string): Promise<boolean> {
+  const row = await dbGet(`SELECT 1 AS ok FROM follow_ups WHERE email_id = ? LIMIT 1`, emailId);
   return Boolean(row);
 }
 
-export function scheduleFollowUpsForColdEmail(
+export async function scheduleFollowUpsForColdEmail(
   applicationId: string,
   emailId: string,
   timezone: string,
   fromDate = new Date(),
-): { followUp1Id: string; followUp2Id: string } {
-  if (followUpsExistForEmail(emailId)) {
-    const existing1 = getFollowUpByEmailSequence(emailId, 1);
-    const existing2 = getFollowUpByEmailSequence(emailId, 2);
+): Promise<{ followUp1Id: string; followUp2Id: string }> {
+  if (await followUpsExistForEmail(emailId)) {
+    const existing1 = await getFollowUpByEmailSequence(emailId, 1);
+    const existing2 = await getFollowUpByEmailSequence(emailId, 2);
     return {
       followUp1Id: existing1!.id,
       followUp2Id: existing2!.id,
@@ -102,14 +84,14 @@ export function scheduleFollowUpsForColdEmail(
   }
 
   const due1 = toUtcIso(addBusinessDays(fromDate, 5, timezone));
-  const followUp1Id = insertFollowUp({
+  const followUp1Id = await insertFollowUp({
     application_id: applicationId,
     email_id: emailId,
     sequence: 1,
     due_at: due1,
     status: "pending",
   });
-  const followUp2Id = insertFollowUp({
+  const followUp2Id = await insertFollowUp({
     application_id: applicationId,
     email_id: emailId,
     sequence: 2,
@@ -119,62 +101,49 @@ export function scheduleFollowUpsForColdEmail(
   return { followUp1Id, followUp2Id };
 }
 
-export function activateSecondFollowUp(emailId: string, timezone: string): void {
-  const second = getFollowUpByEmailSequence(emailId, 2);
+export async function activateSecondFollowUp(emailId: string, timezone: string): Promise<void> {
+  const second = await getFollowUpByEmailSequence(emailId, 2);
   if (!second || second.status !== "waiting") return;
 
   const due2 = toUtcIso(addBusinessDays(new Date(), 10, timezone));
-  getDb()
-    .prepare(
-      `UPDATE follow_ups
+  await dbRun(`UPDATE follow_ups
        SET status = 'pending', due_at = ?
-       WHERE id = ? AND status = 'waiting'`,
-    )
-    .run(due2, second.id);
+       WHERE id = ? AND status = 'waiting'`, due2, second.id);
 }
 
-export function claimFollowUpForProcessing(id: string): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE follow_ups
+export async function claimFollowUpForProcessing(id: string): Promise<boolean> {
+  const result = await dbRun(`UPDATE follow_ups
        SET status = 'processing',
-           processing_started_at = datetime('now')
+           processing_started_at = (NOW() AT TIME ZONE 'utc')::text
        WHERE id = ?
          AND status IN ('pending', 'snoozed')
-         AND (due_at IS NULL OR due_at <= datetime('now'))
-         AND (snoozed_until IS NULL OR snoozed_until <= datetime('now'))`,
-    )
-    .run(id);
+         AND (due_at IS NULL OR due_at <= (NOW() AT TIME ZONE 'utc')::text)
+         AND (snoozed_until IS NULL OR snoozed_until <= (NOW() AT TIME ZONE 'utc')::text)`, id);
   return result.changes > 0;
 }
 
-export function markFollowUpEnqueued(
+export async function markFollowUpEnqueued(
   id: string,
   promptRunId: string,
-): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE follow_ups
+): Promise<boolean> {
+  const result = await dbRun(`UPDATE follow_ups
        SET status = 'enqueued',
            prompt_run_id = ?,
            processing_started_at = NULL
-       WHERE id = ? AND status = 'processing'`,
-    )
-    .run(promptRunId, id);
+       WHERE id = ? AND status = 'processing'`, promptRunId, id);
   return result.changes > 0;
 }
 
-export function releaseFollowUpProcessing(id: string): void {
-  getDb()
-    .prepare(
-      `UPDATE follow_ups
+export async function releaseFollowUpProcessing(id: string): Promise<void> {
+  await dbRun(
+    `UPDATE follow_ups
        SET status = 'pending', processing_started_at = NULL
        WHERE id = ? AND status = 'processing'`,
-    )
-    .run(id);
+    id,
+  );
 }
 
-export function updateFollowUpStatus(
+export async function updateFollowUpStatus(
   id: string,
   status: FollowUpStatus,
   extra?: {
@@ -183,39 +152,31 @@ export function updateFollowUpStatus(
     due_at?: string | null;
     snoozed_until?: string | null;
   },
-): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE follow_ups
+): Promise<boolean> {
+  const result = await dbRun(`UPDATE follow_ups
        SET status = ?,
            sent_at = COALESCE(?, sent_at),
            draft_email_id = COALESCE(?, draft_email_id),
            due_at = COALESCE(?, due_at),
            snoozed_until = COALESCE(?, snoozed_until)
-       WHERE id = ?`,
-    )
-    .run(
-      status,
+       WHERE id = ?`, status,
       extra?.sent_at ?? null,
       extra?.draft_email_id ?? null,
       extra?.due_at ?? null,
       extra?.snoozed_until ?? null,
-      id,
-    );
+      id,);
   return result.changes > 0;
 }
 
-export function listDueFollowUps(limit = 20): FollowUp[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT fu.*
+export async function listDueFollowUps(limit = 20): Promise<FollowUp[]> {
+  const rows = await dbAll(`SELECT fu.*
        FROM follow_ups fu
        INNER JOIN emails e ON e.id = fu.email_id
        INNER JOIN applications a ON a.id = fu.application_id
        WHERE fu.status IN ('pending', 'snoozed')
          AND fu.due_at IS NOT NULL
-         AND fu.due_at <= datetime('now')
-         AND (fu.snoozed_until IS NULL OR fu.snoozed_until <= datetime('now'))
+         AND fu.due_at <= (NOW() AT TIME ZONE 'utc')::text
+         AND (fu.snoozed_until IS NULL OR fu.snoozed_until <= (NOW() AT TIME ZONE 'utc')::text)
          AND a.status NOT IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted', 'rejected', 'withdrawn')
          AND (
            fu.sequence = 1
@@ -241,33 +202,23 @@ export function listDueFollowUps(limit = 20): FollowUp[] {
              AND fe.status IN ('enqueued', 'processing')
          )
        ORDER BY fu.due_at ASC
-       LIMIT ?`,
-    )
-    .all(limit) as Record<string, unknown>[];
+       LIMIT ?`, limit) as Record<string, unknown>[];
 
   return rows.map(mapFollowUp);
 }
 
-export function countPendingFollowUps(): number {
-  const row = getDb()
-    .prepare(
-      `SELECT COUNT(*) AS c FROM follow_ups
+export async function countPendingFollowUps(): Promise<number> {
+  const row = await dbGet(`SELECT COUNT(*) AS c FROM follow_ups
        WHERE status IN ('pending', 'enqueued', 'snoozed', 'processing')
          AND status != 'skipped'
          AND (
            status = 'enqueued'
-           OR (due_at IS NOT NULL AND due_at <= datetime('now', '+7 days'))
-         )`,
-    )
-    .get() as { c: number };
+           OR (due_at IS NOT NULL AND due_at <= (NOW() AT TIME ZONE 'utc' + INTERVAL '7 days')::text)
+         )`) as { c: number };
   return row.c;
 }
 
-export function countSnoozedFollowUps(): number {
-  const row = getDb()
-    .prepare(
-      `SELECT COUNT(*) AS c FROM follow_ups WHERE status = 'snoozed'`,
-    )
-    .get() as { c: number };
+export async function countSnoozedFollowUps(): Promise<number> {
+  const row = await dbGet(`SELECT COUNT(*) AS c FROM follow_ups WHERE status = 'snoozed'`) as { c: number };
   return row.c;
 }

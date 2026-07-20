@@ -1,37 +1,49 @@
-# Setup Guide — Phase 0
+# Setup Guide
 
-Follow these steps to run the app locally. The app is **local-first**: no Supabase, no app login, no cloud database. Metadata lives in **SQLite** (`web/data/app.db`); files live in **Google Drive**.
+Single-user app. **App metadata** lives in **Supabase Postgres**. **Files** live in **Google Drive**. ChatGPT is used via paste / JobApp Bridge extension.
 
-## 1. Google Cloud (Gmail + Drive)
+## 1. Supabase (database)
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor** → New query → paste and run [`supabase/schema.sql`](../supabase/schema.sql).
+3. **Project Settings → Database** → copy the connection string:
+   - Local / long-running Node: **Direct** or **Session** URI (port `5432`)
+   - Vercel / serverless: **Transaction** pooler URI (port `6543`)
+4. Seed prompt templates (from this machine, after `DATABASE_URL` is set):
+
+```bash
+cd web
+# Ensure scripts/_prompt_templates.json exists (already in repo if you pulled latest)
+set DATABASE_URL=postgresql://...   # PowerShell: $env:DATABASE_URL="..."
+node scripts/seed-prompt-templates.mjs
+```
+
+## 2. Google Cloud (Gmail + Drive)
 
 See [`architecture.md`](architecture.md) §10 for the full walkthrough. Summary:
 
-1. Create project → enable **Gmail API** and **Google Drive API**.
-2. **Google Auth Platform** (or OAuth consent screen):
-   - User type: **External**
-   - **Data Access** → add scopes:
-     - `https://www.googleapis.com/auth/gmail.compose`
-     - `https://www.googleapis.com/auth/drive.readonly`
-     - `https://www.googleapis.com/auth/drive.file`
-     - `https://www.googleapis.com/auth/documents`
-   - **Audience** → add your email as **Test user**
-3. **Also enable Google Docs API** in the API library.
-4. **Credentials** → **OAuth client ID** → type **Web application**:
-   - Origins: `http://localhost:3000`
+1. Create project → enable **Gmail API**, **Google Drive API**, and **Google Docs API**.
+2. **OAuth consent screen** (External) → add scopes:
+   - `https://www.googleapis.com/auth/gmail.compose`
+   - `https://www.googleapis.com/auth/drive.readonly`
+   - `https://www.googleapis.com/auth/drive.file`
+   - `https://www.googleapis.com/auth/documents`
+3. Add your email as a **Test user**.
+4. **Credentials** → **OAuth client ID** → **Web application**:
+   - Origins: `http://localhost:3000` (add production URL later)
    - Redirect: `http://localhost:3000/api/auth/google/callback`
-5. On first connect, click **Advanced → Go to … (unsafe)** if Google shows unverified app (normal for Testing mode).
 
-## 2. Local environment
+## 3. Local environment
 
 ```bash
 cd web
 cp .env.example .env.local
-# Fill in Google OAuth values + encryption key
+# Fill DATABASE_URL + Google OAuth + encryption key
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — you land on the dashboard immediately (no login).
+Open [http://localhost:3000](http://localhost:3000).
 
 Generate encryption key:
 
@@ -43,50 +55,48 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 | Variable | Required | Purpose |
 |---|---|---|
+| `DATABASE_URL` | Yes | Supabase Postgres connection string |
 | `GOOGLE_OAUTH_CLIENT_ID` | Yes | OAuth client ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Yes | OAuth client secret |
 | `GOOGLE_OAUTH_REDIRECT_URI` | Yes | Must match Google Console |
-| `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypts Google tokens in SQLite |
-| `NEXT_PUBLIC_APP_URL` | Yes | `http://localhost:3000` for local dev |
-| `SQLITE_DB_PATH` | No | Defaults to `web/data/app.db` |
-| `RESUME_MASTER_DOC_ID` | No | Default master resume Google Doc ID (can also be entered on `/onboarding`) |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypts Google tokens in the DB |
+| `NEXT_PUBLIC_APP_URL` | Yes | `http://localhost:3000` for local |
+| `RESUME_MASTER_DOC_ID` | No | Default master resume Google Doc ID |
 
-### Database
+**Note:** Switching from SQLite to Supabase starts a **fresh** database. Re-connect Google, re-sync master docs, and re-create the extension token. Your old `web/data/app.db` is not auto-imported.
 
-SQLite schema is applied automatically on first request via `web/db/migrations/001_phase0.sql`. The `hello_world` prompt template is seeded at migration time.
+## 4. Chrome extension (JobApp Bridge)
 
-To reset: stop the dev server, delete `web/data/app.db`, and restart.
+1. `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`
+2. Settings in the app → copy token → Extension Options → App URL `http://localhost:3000` + token
 
-## 3. Phase 0 exit checklist
+## 5. First-run checklist
 
-No sign-in required:
-
-- [ ] **Profile & master resume** saved (`/onboarding`)
-- [ ] **Connect Google** (`/dashboard`) — grants Gmail, Drive (read + app files), and Docs scopes
-- [ ] **Master Google Doc synced** (`/onboarding`) — paste your resume Google Doc URL and click **Sync from Google Doc**
-- [ ] **Upload test file to Drive** — file appears under `Job Application Automation/`
-- [ ] **Run demo prompt** (`/demo`) → ChatGPT → paste back → validated JSON stored
+- [ ] Schema applied + prompt templates seeded
+- [ ] Profile saved (`/onboarding`)
+- [ ] Connect Google
+- [ ] Master resume Google Doc synced
+- [ ] Extension detected
+- [ ] One Quick Apply smoke test
 
 ### Master resume Google Doc
 
-The tailored PDF for every application is generated by **copying** an app-owned copy of your master Google Doc (created during sync), replacing bullet/skill text with JD-tailored versions, and exporting to PDF. This means the layout in your PDF is identical to your master doc.
+Must contain uppercase headers: `WORK EXPERIENCE`, `PROJECTS` (optional), `SKILLS`, `EDUCATION`. Bullets as list items; skill lines `Category: a, b, ...`; unique bullet text.
 
-Requirements for the master doc:
-- Must contain uppercase section headers: `WORK EXPERIENCE`, `PROJECTS` (optional), `SKILLS`, `EDUCATION`
-- Each bullet must be on its own paragraph as a list item
-- Each skill line must be `Category: item1, item2, ...` on its own bullet
-- Bullet/skill text must be unique across the doc (needed for reliable text replacement)
+## 6. Hosting (Vercel) — after local works on Supabase
 
-## 4. Hosting note
-
-This app uses a **local SQLite file**. It is designed to run on your machine via `npm run dev` (or `npm run build && npm start`). Serverless hosts like Vercel cannot persist SQLite across invocations — do not deploy there without replacing the storage layer.
+1. Deploy `web/` to Vercel; set the same env vars (`DATABASE_URL` = **pooler** URI, `NEXT_PUBLIC_APP_URL` = your Vercel URL, Google redirect = production callback).
+2. Add the Vercel origin + redirect URI in Google Cloud Console.
+3. Update `extension/manifest.json` host permissions + content_scripts to include `https://your-app.vercel.app/*`, reload extension, set Options App URL to the Vercel URL, paste a token from the **hosted** Settings page.
+4. There is still **no app login** — anyone with the URL can use the app. For personal use, keep the URL private or add auth later.
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| `redirect_uri_mismatch` | Google redirect URI must match `GOOGLE_OAUTH_REDIRECT_URI` exactly |
+| `Missing DATABASE_URL` | Add it to `web/.env.local` |
+| `No active template for …` | Run `node scripts/seed-prompt-templates.mjs` |
+| `redirect_uri_mismatch` | Google redirect must match `GOOGLE_OAUTH_REDIRECT_URI` |
 | `access_denied` on Google | Add your email under OAuth **Test users** |
-| `invalid_grant` after ~7 days | Reconnect Google, or publish OAuth app (see architecture §10.4) |
-| `No active template for hello_world` | Delete `data/app.db` and restart to re-run migrations |
-| `Missing required environment variable` | Copy `.env.example` → `.env.local` and fill all Google vars |
+| `invalid_grant` | Reconnect Google, or publish the OAuth app |
+| DB connection timeout on Vercel | Use the **Transaction pooler** URI (port 6543) |

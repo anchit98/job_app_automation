@@ -26,7 +26,7 @@ export interface ProfileInput {
 }
 
 export async function upsertProfile(input: ProfileInput) {
-  upsertProfileRow({
+  await upsertProfileRow({
     full_name: input.full_name.trim(),
     headline: input.headline?.trim() || null,
     location: input.location?.trim() || null,
@@ -48,13 +48,13 @@ export async function upsertProfile(input: ProfileInput) {
 }
 
 export async function getProfile() {
-  return getProfileRow();
+  return await getProfileRow();
 }
 
 export async function syncSignatureLinksFromResume(options?: {
   overwrite?: boolean;
 }) {
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   if (!profile?.full_name?.trim()) {
     return {
       ok: false as const,
@@ -62,7 +62,7 @@ export async function syncSignatureLinksFromResume(options?: {
     };
   }
 
-  const master = getMasterResumeRow();
+  const master = await getMasterResumeRow();
   if (!master?.content) {
     return { ok: false as const, error: "No master resume found to extract from." };
   }
@@ -75,7 +75,7 @@ export async function syncSignatureLinksFromResume(options?: {
   const extracted = extractSignatureFieldsFromResume(parsed.data);
   const merged = mergeSignatureFields(profile, extracted, options?.overwrite);
 
-  upsertProfileRow({
+  await upsertProfileRow({
     full_name: profile.full_name,
     headline: profile.headline,
     location: profile.location,

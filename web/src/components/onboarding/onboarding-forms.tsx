@@ -116,7 +116,15 @@ export function OnboardingForms({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
         {/* Profile */}
         <div className="lg:col-span-4 li-card p-4 space-y-4">
-          <h2 className="li-section-title">Profile</h2>
+          <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/profile.webp"
+              alt="Profile"
+              className="h-14 w-14 rounded-full border-2 border-border-hairline object-cover"
+            />
+            <h2 className="li-section-title">Profile</h2>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
             <div className="sm:col-span-2 lg:col-span-1 2xl:col-span-2">
               <Label htmlFor="full_name">Full name *</Label>

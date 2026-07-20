@@ -32,7 +32,7 @@ export async function syncCoverLetterFromGoogleDoc(
   const templateDocId = await drive.ensureCoverLetterTemplateCopy(docId);
 
   const syncedAt = new Date().toISOString();
-  upsertMasterCoverLetterRow({
+  await upsertMasterCoverLetterRow({
     doc_id: templateDocId,
     doc_layout: layout as unknown as Record<string, unknown>,
     doc_synced_at: syncedAt,

@@ -12,9 +12,7 @@ function optional(name: string, fallback = ""): string {
 
 export const env = {
   appUrl: () => optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000"),
-  sqliteDbPath: () =>
-    optional("SQLITE_DB_PATH", "") ||
-    undefined,
+  databaseUrl: () => required("DATABASE_URL"),
   googleClientId: () => required("GOOGLE_OAUTH_CLIENT_ID"),
   googleClientSecret: () => required("GOOGLE_OAUTH_CLIENT_SECRET"),
   googleRedirectUri: () =>
@@ -40,5 +38,5 @@ export function hasGoogleConfig(): boolean {
 }
 
 export function hasCoreConfig(): boolean {
-  return hasGoogleConfig();
+  return hasGoogleConfig() && Boolean(process.env.DATABASE_URL);
 }

@@ -23,8 +23,8 @@ export async function GET(
     return NextResponse.json({ error: "Cover letter PDF not found" }, { status: 404 });
   }
 
-  const application = getApplicationById(id);
-  const profile = getProfileRow();
+  const application = await getApplicationById(id);
+  const profile = await getProfileRow();
   const firstName = (profile?.full_name ?? "Cover").split(/\s+/)[0];
   const lastName = (profile?.full_name ?? "").split(/\s+/).slice(-1)[0] ?? "";
   const company = application?.company ?? "Company";

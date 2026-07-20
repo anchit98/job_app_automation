@@ -29,16 +29,16 @@ export async function exportPrompt(
   templateKey: string,
   context: Record<string, string>,
 ) {
-  const template = getActivePromptTemplate(templateKey);
+  const template = await getActivePromptTemplate(templateKey);
   if (!template) {
     throw new Error(`No active template found for kind: ${templateKey}`);
   }
 
-  const runId = createPromptRun(templateKey as PromptRunKind);
+  const runId = await createPromptRun(templateKey as PromptRunKind);
   const promptText = composePrompt(template, context, runId);
   const lengthWarning = warnIfPromptTooLong(promptText);
 
-  updatePromptRunText(runId, promptText);
+  await updatePromptRunText(runId, promptText);
 
   await writeAuditLog("prompt.exported", "prompt_runs", runId, {
     kind: templateKey,
@@ -69,7 +69,7 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
     };
   }
 
-  const existing = getPromptRunById(promptRunId);
+  const existing = await getPromptRunById(promptRunId);
   if (!existing) {
     return { ok: false as const, error: "Prompt run not found." };
   }
@@ -95,8 +95,8 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
     jsonText = extractJsonFromText(rawResponse);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Invalid JSON";
-    updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }]);
-    const template = getActivePromptTemplate(existing.kind);
+    await updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }]);
+    const template = await getActivePromptTemplate(existing.kind);
     const schemaDesc = template?.output_schema
       ? JSON.stringify(template.output_schema, null, 2)
       : "{}";
@@ -124,9 +124,9 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
   const result = schema.safeParse(parsed);
   if (!result.success) {
     const errors = zodErrorsToList(result.error);
-    updatePromptRunValidationErrors(promptRunId, errors, rawResponse);
+    await updatePromptRunValidationErrors(promptRunId, errors, rawResponse);
 
-    const template = getActivePromptTemplate(existing.kind);
+    const template = await getActivePromptTemplate(existing.kind);
     const schemaDesc = template?.output_schema
       ? JSON.stringify(template.output_schema, null, 2)
       : "{}";
@@ -139,14 +139,14 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
     };
   }
 
-  const updated = completePromptRun(
+  const updated = await completePromptRun(
     promptRunId,
     rawResponse,
     result.data as Record<string, unknown>,
   );
 
   if (!updated) {
-    const completed = getPromptRunById(promptRunId);
+    const completed = await getPromptRunById(promptRunId);
     return {
       ok: true as const,
       already_completed: true,
@@ -186,8 +186,8 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
 }
 
 export async function abandonPromptRun(promptRunId: string) {
-  const existing = getPromptRunById(promptRunId);
-  abandonPromptRunRow(promptRunId);
+  const existing = await getPromptRunById(promptRunId);
+  await abandonPromptRunRow(promptRunId);
   revalidatePath("/demo");
   if (existing?.target_entity_id) {
     revalidatePath(`/applications/${existing.target_entity_id}`);
@@ -196,5 +196,5 @@ export async function abandonPromptRun(promptRunId: string) {
 }
 
 export async function getRecentPromptRuns(limit = 10) {
-  return listRecentPromptRuns(limit);
+  return await listRecentPromptRuns(limit);
 }

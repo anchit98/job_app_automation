@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getDb } from "@/lib/db";
+import { dbGet, dbAll, dbRun } from "@/lib/db";
 import {
   buildInitialStages,
   type PipelineContactInput,
@@ -23,10 +23,10 @@ function mapPipelineRow(row: Record<string, unknown>): PipelineRunRecord {
   };
 }
 
-export function insertPipelineRun(input: {
+export async function insertPipelineRun(input: {
   application_id: string;
   contacts: PipelineContactInput[];
-}): PipelineRunRecord {
+}): Promise<PipelineRunRecord> {
   const id = randomUUID();
   const stages = buildInitialStages();
   stages[0] = {
@@ -35,30 +35,24 @@ export function insertPipelineRun(input: {
     detail: "Application created",
   };
 
-  getDb()
-    .prepare(
-      `INSERT INTO pipeline_runs
+  await dbRun(`INSERT INTO pipeline_runs
          (id, application_id, status, current_stage, stages_json, contacts_json)
-       VALUES (?, ?, 'running', 'jd_parse', ?, ?)`,
-    )
-    .run(
-      id,
+       VALUES (?, ?, 'running', 'jd_parse', ?, ?)`, id,
       input.application_id,
       JSON.stringify(stages),
-      JSON.stringify(input.contacts),
-    );
+      JSON.stringify(input.contacts),);
 
-  return getPipelineRunById(id)!;
+  const run = await getPipelineRunById(id);
+  if (!run) throw new Error(`Pipeline run ${id} not found after insert`);
+  return run;
 }
 
-export function getPipelineRunById(id: string): PipelineRunRecord | null {
-  const row = getDb()
-    .prepare(`SELECT * FROM pipeline_runs WHERE id = ?`)
-    .get(id) as Record<string, unknown> | undefined;
+export async function getPipelineRunById(id: string): Promise<PipelineRunRecord | null> {
+  const row = await dbGet(`SELECT * FROM pipeline_runs WHERE id = ?`, id) as Record<string, unknown> | undefined;
   return row ? mapPipelineRow(row) : null;
 }
 
-export function updatePipelineRun(
+export async function updatePipelineRun(
   id: string,
   patch: {
     status?: PipelineRunStatus;
@@ -66,8 +60,8 @@ export function updatePipelineRun(
     stages?: PipelineStage[];
     error?: string | null;
   },
-): PipelineRunRecord | null {
-  const existing = getPipelineRunById(id);
+): Promise<PipelineRunRecord | null> {
+  const existing = await getPipelineRunById(id);
   if (!existing) return null;
 
   const status = patch.status ?? existing.status;
@@ -79,37 +73,30 @@ export function updatePipelineRun(
   const error =
     patch.error !== undefined ? patch.error : existing.error;
 
-  getDb()
-    .prepare(
-      `UPDATE pipeline_runs
+  await dbRun(`UPDATE pipeline_runs
        SET status = ?, current_stage = ?, stages_json = ?, error = ?,
-           updated_at = datetime('now')
-       WHERE id = ?`,
-    )
-    .run(
-      status,
+           updated_at = (NOW() AT TIME ZONE 'utc')::text
+       WHERE id = ?`, status,
       current_stage,
       JSON.stringify(stages),
       error,
-      id,
-    );
+      id,);
 
-  return getPipelineRunById(id);
+  return await getPipelineRunById(id);
 }
 
-export function upsertPendingExtensionRun(input: {
+export async function upsertPendingExtensionRun(input: {
   prompt_run_id: string;
   pipeline_run_id: string | null;
   kind: string;
   prompt_text: string;
   chatgpt_url?: string;
-}): void {
-  getDb()
-    .prepare(
-      `INSERT INTO pending_extension_runs
+}): Promise<void> {
+  await dbRun(
+    `INSERT INTO pending_extension_runs
          (prompt_run_id, pipeline_run_id, kind, prompt_text, chatgpt_url, status, wake_until)
        VALUES (?, ?, ?, ?, ?, 'pending', NULL)
-       ON CONFLICT(prompt_run_id) DO UPDATE SET
+       ON CONFLICT (prompt_run_id) DO UPDATE SET
          pipeline_run_id = excluded.pipeline_run_id,
          kind = excluded.kind,
          prompt_text = excluded.prompt_text,
@@ -117,57 +104,54 @@ export function upsertPendingExtensionRun(input: {
          status = 'pending',
          error = NULL,
          wake_until = NULL,
-         updated_at = datetime('now')`,
-    )
-    .run(
-      input.prompt_run_id,
-      input.pipeline_run_id,
-      input.kind,
-      input.prompt_text,
-      input.chatgpt_url ?? "https://chatgpt.com/",
-    );
+         updated_at = (NOW() AT TIME ZONE 'utc')::text`,
+    input.prompt_run_id,
+    input.pipeline_run_id,
+    input.kind,
+    input.prompt_text,
+    input.chatgpt_url ?? "https://chatgpt.com/",
+  );
 }
 
 /** Short-lived arm so ChatGPT only opens after an explicit Quick Apply signal. */
-export function armExtensionWake(promptRunId: string, seconds = 60): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE pending_extension_runs
-       SET wake_until = datetime('now', ?),
+export async function armExtensionWake(promptRunId: string, seconds = 60): Promise<boolean> {
+  const secs = Math.max(5, Math.floor(seconds));
+  // Use RETURNING — postgres.js `count` is unreliable for UPDATE without it.
+  const row = await dbGet<{ prompt_run_id: string }>(
+    `UPDATE pending_extension_runs
+       SET wake_until = ((NOW() AT TIME ZONE 'utc') + make_interval(secs => ?::int))::text,
            status = CASE
              WHEN status IN ('pending', 'claimed') THEN status
              ELSE 'pending'
            END,
            error = NULL,
-           updated_at = datetime('now')
+           updated_at = (NOW() AT TIME ZONE 'utc')::text
        WHERE prompt_run_id = ?
-         AND status IN ('pending', 'claimed')`,
-    )
-    .run(`+${Math.max(5, seconds)} seconds`, promptRunId);
-  return result.changes > 0;
+         AND status IN ('pending', 'claimed')
+       RETURNING prompt_run_id`,
+    secs,
+    promptRunId,
+  );
+  return Boolean(row?.prompt_run_id);
 }
 
 /**
  * Atomically consume a wake arm. Returns the run payload only when armed;
  * otherwise null. Prevents refresh / background polls from opening ChatGPT.
  */
-export function consumeExtensionWake(promptRunId: string): {
+export async function consumeExtensionWake(promptRunId: string): Promise<{
   prompt_run_id: string;
   pipeline_run_id: string | null;
   kind: string;
   prompt_text: string;
   chatgpt_url: string;
-} | null {
-  const row = getDb()
-    .prepare(
-      `SELECT prompt_run_id, pipeline_run_id, kind, prompt_text, chatgpt_url
+} | null> {
+  const row = await dbGet(`SELECT prompt_run_id, pipeline_run_id, kind, prompt_text, chatgpt_url
        FROM pending_extension_runs
        WHERE prompt_run_id = ?
          AND status IN ('pending', 'claimed')
          AND wake_until IS NOT NULL
-         AND datetime(wake_until) > datetime('now')`,
-    )
-    .get(promptRunId) as
+         AND (wake_until::timestamp without time zone) > (NOW() AT TIME ZONE 'utc')`, promptRunId) as
     | {
         prompt_run_id: string;
         pipeline_run_id: string | null;
@@ -179,13 +163,9 @@ export function consumeExtensionWake(promptRunId: string): {
 
   if (!row) return null;
 
-  getDb()
-    .prepare(
-      `UPDATE pending_extension_runs
-       SET wake_until = NULL, updated_at = datetime('now')
-       WHERE prompt_run_id = ?`,
-    )
-    .run(promptRunId);
+  await dbRun(`UPDATE pending_extension_runs
+       SET wake_until = NULL, updated_at = (NOW() AT TIME ZONE 'utc')::text
+       WHERE prompt_run_id = ?`, promptRunId);
 
   return row;
 }
@@ -205,88 +185,72 @@ export function getLatestPendingExtensionRun(): {
 }
 
 /** Health / UI only — does not arm or open ChatGPT. */
-export function peekQueuedExtensionRun(): {
+export async function peekQueuedExtensionRun(): Promise<{
   prompt_run_id: string;
   kind: string;
   status: string;
-} | null {
-  const row = getDb()
-    .prepare(
-      `SELECT prompt_run_id, kind, status
+} | null> {
+  const row = await dbGet(`SELECT prompt_run_id, kind, status
        FROM pending_extension_runs
        WHERE status IN ('pending', 'claimed')
-       ORDER BY datetime(updated_at) DESC
-       LIMIT 1`,
-    )
-    .get() as
+       ORDER BY updated_at::timestamptz DESC
+       LIMIT 1`) as
     | { prompt_run_id: string; kind: string; status: string }
     | undefined;
   return row ?? null;
 }
 
-export function reclaimPendingExtensionRun(promptRunId: string): void {
-  getDb()
-    .prepare(
-      `UPDATE pending_extension_runs
-       SET status = 'pending', error = NULL, updated_at = datetime('now')
+export async function reclaimPendingExtensionRun(promptRunId: string): Promise<void> {
+  await dbRun(
+    `UPDATE pending_extension_runs
+       SET status = 'pending', error = NULL, updated_at = (NOW() AT TIME ZONE 'utc')::text
        WHERE prompt_run_id = ? AND status IN ('claimed', 'failed', 'timed_out')`,
-    )
-    .run(promptRunId);
+    promptRunId,
+  );
 }
 
-export function claimPendingExtensionRun(promptRunId: string): boolean {
-  const result = getDb()
-    .prepare(
-      `UPDATE pending_extension_runs
-       SET status = 'claimed', updated_at = datetime('now')
-       WHERE prompt_run_id = ? AND status = 'pending'`,
-    )
-    .run(promptRunId);
+export async function claimPendingExtensionRun(promptRunId: string): Promise<boolean> {
+  const result = await dbRun(`UPDATE pending_extension_runs
+       SET status = 'claimed', updated_at = (NOW() AT TIME ZONE 'utc')::text
+       WHERE prompt_run_id = ? AND status = 'pending'`, promptRunId);
   return result.changes > 0;
 }
 
-export function cancelAllPendingExtensionRuns(reason = "cancelled"): number {
-  const result = getDb()
-    .prepare(
-      `UPDATE pending_extension_runs
+export async function cancelAllPendingExtensionRuns(reason = "cancelled"): Promise<number> {
+  const result = await dbRun(`UPDATE pending_extension_runs
        SET status = 'completed',
            error = ?,
            wake_until = NULL,
-           updated_at = datetime('now')
-       WHERE status IN ('pending', 'claimed')`,
-    )
-    .run(reason);
+           updated_at = (NOW() AT TIME ZONE 'utc')::text
+       WHERE status IN ('pending', 'claimed')`, reason);
   return result.changes;
 }
 
-export function completePendingExtensionRun(
+export async function completePendingExtensionRun(
   promptRunId: string,
   status: "completed" | "failed" | "timed_out" = "completed",
   error?: string | null,
-): void {
-  getDb()
-    .prepare(
-      `UPDATE pending_extension_runs
-       SET status = ?, error = ?, updated_at = datetime('now')
+): Promise<void> {
+  await dbRun(
+    `UPDATE pending_extension_runs
+       SET status = ?, error = ?, updated_at = (NOW() AT TIME ZONE 'utc')::text
        WHERE prompt_run_id = ?`,
-    )
-    .run(status, error ?? null, promptRunId);
+    status,
+    error ?? null,
+    promptRunId,
+  );
 }
 
-export function getPendingExtensionRun(
+export async function getPendingExtensionRun(
   promptRunId: string,
-): {
+): Promise<{
   prompt_run_id: string;
   pipeline_run_id: string | null;
   kind: string;
   status: string;
-} | null {
-  const row = getDb()
-    .prepare(
-      `SELECT prompt_run_id, pipeline_run_id, kind, status
-       FROM pending_extension_runs WHERE prompt_run_id = ?`,
-    )
-    .get(promptRunId) as
+} | null> {
+  const row = await dbGet(`SELECT prompt_run_id, pipeline_run_id, kind, status
+       FROM pending_extension_runs WHERE prompt_run_id = ?`, promptRunId) as
     | {
         prompt_run_id: string;
         pipeline_run_id: string | null;
@@ -297,16 +261,14 @@ export function getPendingExtensionRun(
   return row ?? null;
 }
 
-export function findPipelineByPromptRun(
+export async function findPipelineByPromptRun(
   promptRunId: string,
-): PipelineRunRecord | null {
-  const pending = getPendingExtensionRun(promptRunId);
+): Promise<PipelineRunRecord | null> {
+  const pending = await getPendingExtensionRun(promptRunId);
   if (pending?.pipeline_run_id) {
-    return getPipelineRunById(pending.pipeline_run_id);
+    return await getPipelineRunById(pending.pipeline_run_id);
   }
-  const rows = getDb()
-    .prepare(`SELECT * FROM pipeline_runs ORDER BY datetime(created_at) DESC LIMIT 20`)
-    .all() as Record<string, unknown>[];
+  const rows = await dbAll(`SELECT * FROM pipeline_runs ORDER BY created_at::timestamptz DESC LIMIT 20`) as Record<string, unknown>[];
   for (const row of rows) {
     const run = mapPipelineRow(row);
     if (run.stages.some((s) => s.prompt_run_id === promptRunId)) {

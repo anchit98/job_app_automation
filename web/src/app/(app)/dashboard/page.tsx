@@ -1,12 +1,13 @@
+import Image from "next/image";
 import Link from "next/link";
 import { getDashboardData } from "@/app/actions/tracker";
 import { getProfile } from "@/app/actions/profile";
 import { getMasterResume } from "@/app/actions/master-resume";
-import { hasCompletedDemoPrompt } from "@/lib/db/queries";
 import { isGoogleConnected } from "@/lib/google/tokens";
 import { GoogleConnectPanel } from "@/components/google/google-connect-panel";
 import { DashboardMetricsGrid } from "@/components/dashboard/dashboard-metrics";
 import { EnqueueFollowUpsButton } from "@/components/dashboard/enqueue-follow-ups-button";
+import { ClearPendingPromptsButton } from "@/components/dashboard/clear-pending-prompts-button";
 
 export default async function DashboardPage({
   searchParams,
@@ -18,13 +19,12 @@ export default async function DashboardPage({
     typeof params.google_error === "string" ? params.google_error : null;
   const googleConnected = params.google_connected === "1";
 
-  const [{ metrics, metricsFormatted }, profile, resume, connected, demoDone] =
+  const [{ metrics, metricsFormatted }, profile, resume, connected] =
     await Promise.all([
       getDashboardData(),
       getProfile().catch(() => null),
       getMasterResume().catch(() => null),
       isGoogleConnected().catch(() => false),
-      Promise.resolve(hasCompletedDemoPrompt()),
     ]);
 
   const checklist = [
@@ -34,7 +34,6 @@ export default async function DashboardPage({
       done: Boolean(resume?.content && Object.keys(resume.content).length > 0),
     },
     { label: "Google connected", done: connected },
-    { label: "Demo completed", done: demoDone, href: "/demo" },
   ];
 
   const completedCount = checklist.filter((i) => i.done).length;
@@ -42,22 +41,20 @@ export default async function DashboardPage({
   const setupComplete = completedCount === checklist.length;
   const displayName = profile?.full_name || "Your profile";
   const headline = profile?.headline || "Job application command center";
-  const initials =
-    displayName
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase())
-      .join("") || "A";
 
   return (
     <div className="min-h-[calc(100vh-52px-2rem)] flex flex-col gap-4 lg:gap-5">
       {/* Identity + CTA row */}
       <section className="li-card p-5 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-center">
         <div className="lg:col-span-7 flex items-start gap-4 min-w-0">
-          <div className="h-16 w-16 shrink-0 rounded-full border-2 border-border-hairline bg-primary-container text-primary flex items-center justify-center text-[22px] font-semibold">
-            {initials}
-          </div>
+          <Image
+            src="/profile.webp"
+            alt={displayName}
+            width={64}
+            height={64}
+            className="h-16 w-16 shrink-0 rounded-full border-2 border-border-hairline object-cover"
+            priority
+          />
           <div className="min-w-0">
             <p className="li-meta">Home</p>
             <h1 className="li-page-title mt-0.5 truncate">{displayName}</h1>
@@ -97,18 +94,17 @@ export default async function DashboardPage({
       </section>
 
       {metrics.pendingPrompts > 0 && (
-        <Link
-          href="/settings"
-          className="li-card-flat block p-4 border-l-4 border-l-status-waiting bg-status-waiting-container no-underline"
-        >
+        <div className="li-card-flat p-4 border-l-4 border-l-status-waiting bg-status-waiting-container">
           <p className="text-[14px] font-semibold text-on-surface">
             {metrics.pendingPrompts} ChatGPT step
             {metrics.pendingPrompts === 1 ? "" : "s"} pending
           </p>
           <p className="li-meta mt-1">
-            JobApp Bridge handles these automatically — check Settings if stuck.
+            JobApp Bridge handles these automatically — clear if leftover from
+            aborted runs.
           </p>
-        </Link>
+          <ClearPendingPromptsButton count={metrics.pendingPrompts} />
+        </div>
       )}
 
       {/* Main body: metrics + side utilities */}
@@ -145,16 +141,7 @@ export default async function DashboardPage({
                     >
                       {item.done ? "check_circle" : "radio_button_unchecked"}
                     </span>
-                    {item.href && !item.done ? (
-                      <Link
-                        href={item.href}
-                        className="text-primary hover:underline font-semibold"
-                      >
-                        {item.label}
-                      </Link>
-                    ) : (
-                      <span className="text-on-surface-variant">{item.label}</span>
-                    )}
+                    <span className="text-on-surface-variant">{item.label}</span>
                   </li>
                 ))}
               </ul>

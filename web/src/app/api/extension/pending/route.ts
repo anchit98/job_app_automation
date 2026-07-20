@@ -18,7 +18,7 @@ function unauthorized() {
  * poll on refresh / tab focus cannot open ChatGPT.
  */
 export async function GET(request: Request) {
-  if (!verifyExtensionBearer(request.headers.get("authorization"))) {
+  if (!await verifyExtensionBearer(request.headers.get("authorization"))) {
     return unauthorized();
   }
   return NextResponse.json({ pending: null });
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
 /** Extension claims / consumes an explicit wake from Quick Apply. */
 export async function POST(request: Request) {
-  if (!verifyExtensionBearer(request.headers.get("authorization"))) {
+  if (!await verifyExtensionBearer(request.headers.get("authorization"))) {
     return unauthorized();
   }
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "consume_wake" && body.prompt_run_id) {
-    const armed = consumeExtensionWake(body.prompt_run_id);
+    const armed = await consumeExtensionWake(body.prompt_run_id);
     if (!armed) {
       return NextResponse.json({
         ok: false,
@@ -46,9 +46,9 @@ export async function POST(request: Request) {
         error: "No active wake — open ChatGPT only from Quick Apply.",
       });
     }
-    const run = getPromptRunById(body.prompt_run_id);
+    const run = await getPromptRunById(body.prompt_run_id);
     if (!run || run.status !== "pending") {
-      completePendingExtensionRun(body.prompt_run_id, "completed");
+      await completePendingExtensionRun(body.prompt_run_id, "completed");
       return NextResponse.json({
         ok: false,
         armed: false,
@@ -59,16 +59,16 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "claim" && body.prompt_run_id) {
-    const pending = getPendingExtensionRun(body.prompt_run_id);
+    const pending = await getPendingExtensionRun(body.prompt_run_id);
     if (pending?.status === "claimed") {
       return NextResponse.json({ ok: true, already_claimed: true });
     }
-    const claimed = claimPendingExtensionRun(body.prompt_run_id);
+    const claimed = await claimPendingExtensionRun(body.prompt_run_id);
     return NextResponse.json({ ok: claimed });
   }
 
   if (body.action === "requeue" && body.prompt_run_id) {
-    reclaimPendingExtensionRun(body.prompt_run_id);
+    await reclaimPendingExtensionRun(body.prompt_run_id);
     return NextResponse.json({ ok: true });
   }
 

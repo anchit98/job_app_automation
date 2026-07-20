@@ -105,6 +105,14 @@ export function ApplicationWorkspace({
             currentStatus={application.status}
             variant="compact"
           />
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={pending}
+            className="li-btn-ghost text-[12px] text-error border border-border-hairline disabled:opacity-50"
+          >
+            Delete
+          </button>
         </div>
       </header>
 

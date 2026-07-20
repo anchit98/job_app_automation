@@ -57,7 +57,10 @@ function pipelineStillActive(pipeline: PipelineRunRecord) {
   );
 }
 
-function publishSignal(signal: Record<string, unknown>, opts?: { clearLock?: boolean }) {
+async function publishSignal(
+  signal: Record<string, unknown>,
+  opts?: { clearLock?: boolean },
+): Promise<{ ok: boolean; error?: string; reason?: string }> {
   const payload = {
     ...signal,
     ts: Date.now(),
@@ -75,27 +78,59 @@ function publishSignal(signal: Record<string, unknown>, opts?: { clearLock?: boo
   const bridge = (
     window as unknown as {
       __JOBAPP_BRIDGE__?: {
-        wake?: (s: Record<string, unknown>) => Promise<unknown>;
+        wake?: (s: Record<string, unknown>) => Promise<{
+          ok?: boolean;
+          error?: string;
+          reason?: string;
+          opened?: boolean;
+        }>;
         clearLock?: () => Promise<unknown>;
       };
     }
   ).__JOBAPP_BRIDGE__;
-  void (async () => {
-    // Manual retry only — periodic re-arms must not kill an in-flight ChatGPT tab.
-    if (opts?.clearLock) {
-      try {
-        await bridge?.clearLock?.();
-      } catch {
-        /* ignore */
-      }
+
+  // Manual retry only — periodic re-arms must not kill an in-flight ChatGPT tab.
+  if (opts?.clearLock) {
+    try {
+      await bridge?.clearLock?.();
+    } catch {
+      /* ignore */
     }
-    if (bridge?.wake) {
-      await bridge.wake(payload);
-      return;
-    }
+  }
+
+  if (!bridge?.wake) {
     // Fallback if app-bridge.js hasn't injected yet (reload extension).
     window.dispatchEvent(new CustomEvent("jobapp-pending", { detail: payload }));
-  })();
+    return {
+      ok: false,
+      error:
+        "JobApp Bridge not detected on this page. Load/reload the unpacked extension, then hard-refresh this tab.",
+    };
+  }
+
+  try {
+    const res = await bridge.wake(payload);
+    if (res?.ok === false || res?.opened === false) {
+      const detail =
+        res?.error ||
+        res?.reason ||
+        "Extension did not open ChatGPT.";
+      return {
+        ok: false,
+        error:
+          /token/i.test(detail)
+            ? `${detail} Open extension Options → paste the token from Settings → Save → reload this page.`
+            : detail,
+        reason: res?.reason,
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Extension wake failed.",
+    };
+  }
 }
 
 function clearPendingSignal() {
@@ -236,8 +271,33 @@ export function PipelineProgress({
       }
     };
     void check();
+    const onReady = () => void check();
+    window.addEventListener("jobapp-bridge-ready", onReady);
+    window.addEventListener("focus", onReady);
+    // Faster checks for the first ~12s after mount (extension inject can lag).
+    const fast = setInterval(check, 1000);
+    const fastStop = setTimeout(() => clearInterval(fast), 12000);
     const id = setInterval(check, 4000);
-    return () => clearInterval(id);
+    return () => {
+      window.removeEventListener("jobapp-bridge-ready", onReady);
+      window.removeEventListener("focus", onReady);
+      clearInterval(fast);
+      clearTimeout(fastStop);
+      clearInterval(id);
+    };
+  }, []);
+
+  // Drop stale bridge/arm banners left from a previous tick.
+  useEffect(() => {
+    if (
+      error &&
+      (/No pending extension run to arm/i.test(error) ||
+        /Bridge not detected|not detected on this page/i.test(error))
+    ) {
+      setError(null);
+    }
+    // Only on mount / when those specific errors appear once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -313,19 +373,63 @@ export function PipelineProgress({
         const already = wasAlreadySignaled(promptRunId);
         // Re-arm wake window so a dead tab can still open later; only re-signal
         // ChatGPT on first arm or manual force (interval must not abort paste).
-        const armed = await armExtensionForPromptRun(promptRunId);
+        const armed = await armExtensionForPromptRun(promptRunId, {
+          pipeline_run_id: pipeline.id,
+          kind: activeStage!.id,
+          prompt_text: activeStage!.prompt_text!,
+          chatgpt_url: activeStage!.chatgpt_url || "https://chatgpt.com/",
+        });
         if (cancelled) return;
         if (!armed.ok) {
-          setError(armed.error);
+          // Soft warn only — do not paint a hard error while the stage is still recoverable.
+          console.warn("[pipeline] arm failed", armed.error);
           return;
         }
-        setError(null);
         if (already && !opts?.forceSignal) {
+          return;
+        }
+        // Retry briefly — race between arm commit and extension consume.
+        let woke: { ok: boolean; error?: string; reason?: string } = {
+          ok: false,
+        };
+        for (let attempt = 0; attempt < 4; attempt++) {
+          woke = await publishSignal(
+            signal,
+            attempt === 0 && opts?.forceSignal
+              ? { clearLock: true }
+              : undefined,
+          );
+          if (cancelled) return;
+          if (woke.ok) break;
+          if (
+            woke.reason === "not_armed" ||
+            /no active wake/i.test(woke.error || "")
+          ) {
+            await armExtensionForPromptRun(promptRunId, {
+              pipeline_run_id: pipeline.id,
+              kind: activeStage!.id,
+              prompt_text: activeStage!.prompt_text!,
+              chatgpt_url: activeStage!.chatgpt_url || "https://chatgpt.com/",
+            });
+            await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+            continue;
+          }
+          break;
+        }
+        if (!woke.ok) {
+          // Bridge missing on this tab is common after SPA nav — keep muted, allow manual open.
+          if (
+            /bridge|extension|not detected|__JOBAPP/i.test(woke.error || "") ||
+            woke.reason === "no_bridge"
+          ) {
+            return;
+          }
+          setError(woke.error ?? "Could not wake JobApp Bridge.");
           return;
         }
         markSignaled(promptRunId);
         setOpenedChatGptFor(promptRunId);
-        publishSignal(signal);
+        setError(null);
       } finally {
         inFlight = false;
       }
@@ -335,7 +439,7 @@ export function PipelineProgress({
     // Keep wake_until fresh; do not re-open/reinject ChatGPT every tick.
     const interval = setInterval(() => {
       void wakeExtension({ forceSignal: false });
-    }, 45000);
+    }, 20000);
 
     return () => {
       cancelled = true;
@@ -368,14 +472,19 @@ export function PipelineProgress({
     clearSignaled(activeStage.prompt_run_id);
     setOpenedChatGptFor(null);
     startTransition(async () => {
-      const armed = await armExtensionForPromptRun(activeStage.prompt_run_id!);
+      const armed = await armExtensionForPromptRun(activeStage.prompt_run_id!, {
+        pipeline_run_id: pipeline.id,
+        kind: activeStage.id,
+        prompt_text: activeStage.prompt_text!,
+        chatgpt_url: activeStage.chatgpt_url || "https://chatgpt.com/",
+      });
       if (!armed.ok) {
         setError(armed.error);
         return;
       }
       markSignaled(activeStage.prompt_run_id!);
       setOpenedChatGptFor(activeStage.prompt_run_id!);
-      publishSignal(
+      const woke = await publishSignal(
         {
           prompt_run_id: activeStage.prompt_run_id,
           pipeline_run_id: pipeline.id,
@@ -385,6 +494,11 @@ export function PipelineProgress({
         },
         { clearLock: true },
       );
+      if (!woke.ok) {
+        setError(woke.error ?? "Could not wake JobApp Bridge.");
+        return;
+      }
+      setError(null);
     });
   }
   return (
@@ -462,10 +576,11 @@ export function PipelineProgress({
       </div>
 
       <div className="lg:col-span-5 flex flex-col gap-3">
-      {(bridgeToken || bridgeDetected === false) && (
+      {/* Full setup card only when a brand-new token must be pasted into Options. */}
+      {bridgeToken && (
         <div className="li-card-flat border-l-4 border-l-primary bg-info-container p-4 space-y-3">
           <h3 className="li-section-title">
-            Connect JobApp Bridge (one-time)
+            Connect JobApp Bridge (required for ChatGPT)
           </h3>
           <ol className="list-decimal pl-5 text-[13px] text-on-surface-variant space-y-1">
             <li>
@@ -477,41 +592,39 @@ export function PipelineProgress({
             <li>
               App URL: <code className="text-[12px]">http://localhost:3000</code>
             </li>
-            {bridgeToken ? (
-              <li>
-                Paste this token (shown once):
-                <code className="block mt-2 text-[11px] break-all bg-surface-container-highest p-2 rounded">
-                  {bridgeToken}
-                </code>
-                <button
-                  type="button"
-                  className="text-[12px] text-primary underline mt-1"
-                  onClick={() => navigator.clipboard.writeText(bridgeToken)}
-                >
-                  Copy token
-                </button>
-              </li>
-            ) : (
-              <li>
-                Token already exists — open{" "}
-                <Link href="/settings" className="text-primary hover:underline">
-                  Settings
-                </Link>{" "}
-                to rotate if the extension is not authorized.
-              </li>
-            )}
+            <li>
+              Paste this token (shown once):
+              <code className="block mt-2 text-[11px] break-all bg-surface-container-highest p-2 rounded">
+                {bridgeToken}
+              </code>
+              <button
+                type="button"
+                className="text-[12px] text-primary underline mt-1"
+                onClick={() => navigator.clipboard.writeText(bridgeToken)}
+              >
+                Copy token
+              </button>
+            </li>
             <li>Save options, then reload this page. The pipeline will continue automatically.</li>
           </ol>
-          <p className="text-[12px] text-on-surface-variant">
-            Extension detected on this page:{" "}
-            {bridgeDetected == null
-              ? "checking…"
-              : bridgeDetected
-                ? "yes"
-                : "no — load/reload the unpacked extension"}
-            {bridgeConfigured ? " · app token: ready" : ""}
-          </p>
         </div>
+      )}
+
+      {/* Compact bridge status — not an error banner. */}
+      {pipeline.status === "awaiting_chatgpt" && (
+        <p className="text-[12px] text-on-surface-variant px-1">
+          JobApp Bridge on this tab:{" "}
+          {bridgeDetected == null
+            ? "checking…"
+            : bridgeDetected
+              ? "connected"
+              : "not injected — hard-refresh this tab after reloading the extension"}
+          {bridgeConfigured ? " · token ready" : ""}
+          {" · "}
+          <Link href="/settings" className="text-primary hover:underline">
+            Settings
+          </Link>
+        </p>
       )}
 
       {pipeline.status === "awaiting_chatgpt" && (
@@ -553,9 +666,10 @@ export function PipelineProgress({
                 Open ChatGPT for this stage
               </button>
               {bridgeDetected === false && (
-                <p className="text-[13px] text-error">
-                  Extension not detected. Complete the setup above or the pipeline cannot leave
-                  this step.
+                <p className="text-[12px] text-on-surface-variant">
+                  If ChatGPT did not open: reload JobApp Bridge in{" "}
+                  <code className="text-[11px]">chrome://extensions</code>, then
+                  hard-refresh this tab (Ctrl+Shift+R) and click the button again.
                 </p>
               )}
             </>
@@ -568,7 +682,9 @@ export function PipelineProgress({
         </div>
       )}
 
-      {error && (
+      {error &&
+        !/No pending extension run to arm/i.test(error) &&
+        !(bridgeDetected === false && /Bridge not detected|not detected on this page/i.test(error)) && (
         <div className="rounded-xl bg-error-container text-on-error-container p-4 space-y-3">
           <p className="text-[13px]">{error}</p>
           {pipeline.status === "failed" && (

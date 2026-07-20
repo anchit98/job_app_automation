@@ -66,12 +66,12 @@ export async function createApplication(input: CreateApplicationInput) {
     };
   }
 
-  const similar = findSimilarApplications(
+  const similar = await findSimilarApplications(
     parsed.data.company,
     parsed.data.role,
   );
 
-  const id = insertApplication({
+  const id = await insertApplication({
     company: parsed.data.company,
     role: parsed.data.role,
     job_url: parsed.data.job_url || null,
@@ -97,11 +97,11 @@ export async function createApplication(input: CreateApplicationInput) {
 }
 
 export async function getApplication(id: string) {
-  return getApplicationById(id);
+  return await getApplicationById(id);
 }
 
 export async function getApplications() {
-  return listApplications();
+  return await listApplications();
 }
 
 export async function confirmStatusAdvance(
@@ -120,7 +120,7 @@ export async function maybeAdvanceApplicationStatus(
 
   // Chain auto steps (e.g. ready → applied → email_sent on gmail drafts).
   for (let i = 0; i < 4; i++) {
-    const existing = getApplicationById(applicationId);
+    const existing = await getApplicationById(applicationId);
     if (!existing) {
       return { outcome: "error", error: "Application not found." };
     }
@@ -166,12 +166,12 @@ export async function updateApplicationStatus(
     return { ok: false as const, error: "Invalid status." };
   }
 
-  const existing = getApplicationById(id);
+  const existing = await getApplicationById(id);
   if (!existing) {
     return { ok: false as const, error: "Application not found." };
   }
 
-  const updated = updateApplicationStatusRow(id, status);
+  const updated = await updateApplicationStatusRow(id, status);
   if (!updated) {
     return { ok: false as const, error: "Failed to update status." };
   }
@@ -183,7 +183,7 @@ export async function updateApplicationStatus(
 
   if (status === "email_sent" && existing.status !== "email_sent") {
     try {
-      scheduleFollowUpsForApplication(id);
+      await scheduleFollowUpsForApplication(id);
       await writeAuditLog("follow_ups.scheduled", "applications", id);
     } catch (e) {
       console.error("Follow-up scheduling failed after status change:", e);
@@ -197,17 +197,17 @@ export async function updateApplicationStatus(
 }
 
 export async function exportJdParsePrompt(applicationId: string) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) {
     throw new Error("Application not found.");
   }
 
-  const template = getActivePromptTemplate("jd_parse");
+  const template = await getActivePromptTemplate("jd_parse");
   if (!template) {
     throw new Error("No active template found for kind: jd_parse");
   }
 
-  const runId = createPromptRun("jd_parse", {
+  const runId = await createPromptRun("jd_parse", {
     entity: "applications",
     entityId: applicationId,
   });
@@ -216,7 +216,7 @@ export async function exportJdParsePrompt(applicationId: string) {
   const promptText = composePrompt(template, { jd_wrapped: jdWrapped }, runId);
   const lengthWarning = warnIfPromptTooLong(promptText);
 
-  updatePromptRunText(runId, promptText);
+  await updatePromptRunText(runId, promptText);
 
   await writeAuditLog("prompt.exported", "prompt_runs", runId, {
     kind: "jd_parse",
@@ -236,7 +236,7 @@ export async function applyJdParseResult(
   applicationId: string,
   parsed: Record<string, unknown>,
 ) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
@@ -250,7 +250,7 @@ export async function applyJdParseResult(
     application.role ||
     undefined;
 
-  updateApplicationJdParsed(applicationId, parsed as import("@/lib/db/types").JdParsed, {
+  await updateApplicationJdParsed(applicationId, parsed as import("@/lib/db/types").JdParsed, {
     company,
     role,
   });

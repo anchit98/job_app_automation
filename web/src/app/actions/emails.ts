@@ -30,6 +30,7 @@ import {
   getEmailById,
   getLatestReadyCoverLetterVersion,
   getLatestReadyResumeVersion,
+  getLatestUsableResumeVersion,
   getMasterResumeRow,
   getProfileRow,
   getPromptRunById,
@@ -73,16 +74,16 @@ import { buildJdContent } from "@/lib/resume/context";
 import { resumeContentSchema } from "@/lib/resume/fabrication";
 import { getActivePromptTemplate } from "@/lib/db/queries";
 
-function resolveSignatureForDraft(
-  profile: ReturnType<typeof getProfileRow>,
-): {
+async function resolveSignatureForDraft(
+  profile: Awaited<ReturnType<typeof getProfileRow>>,
+): Promise<{
   full_name: string | null;
   phone: string | null;
   linkedin_url: string | null;
   github_url: string | null;
   portfolio_url: string | null;
-} {
-  const master = getMasterResumeRow();
+}> {
+  const master = await getMasterResumeRow();
   let extracted = {
     phone: null as string | null,
     linkedin_url: null as string | null,
@@ -128,15 +129,15 @@ function isEmailable(contact: Contact): boolean {
 export async function getEmailsForApplication(
   applicationId: string,
 ): Promise<EmailRecord[]> {
-  return listEmails(applicationId);
+  return await listEmails(applicationId);
 }
 
 export async function listColdEmailCandidates(
   applicationId: string,
   options?: { includeRisky?: boolean },
 ): Promise<ContactForColdEmail[]> {
-  const contacts = listContacts(applicationId);
-  const existing = listEmails(applicationId).filter((e) => e.kind === "cold");
+  const contacts = await listContacts(applicationId);
+  const existing = (await listEmails(applicationId)).filter((e) => e.kind === "cold");
   const usedContactIds = new Set(existing.map((e) => e.contact_id));
   const includeRisky = options?.includeRisky ?? false;
 
@@ -158,15 +159,15 @@ export async function listColdEmailCandidates(
   });
 }
 
-function selectContactsForBatch(
+async function selectContactsForBatch(
   applicationId: string,
   contactIds: string[] | undefined,
   includeRisky: boolean,
-): { ok: true; contacts: Contact[] } | { ok: false; error: string } {
-  const candidates = listContacts(applicationId);
+): Promise<{ ok: true; contacts: Contact[] } | { ok: false; error: string }> {
+  const candidates = await listContacts(applicationId);
   const byId = new Map(candidates.map((c) => [c.id, c]));
   const existingCold = new Set(
-    listEmails(applicationId)
+    (await listEmails(applicationId))
       .filter((e) => e.kind === "cold")
       .map((e) => e.contact_id),
   );
@@ -217,10 +218,10 @@ export async function exportColdEmailsPrompt(
     resumeVersion?: number;
   },
 ) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found.");
 
-  const selection = selectContactsForBatch(
+  const selection = await selectContactsForBatch(
     applicationId,
     options?.contactIds,
     options?.includeRisky ?? false,
@@ -236,11 +237,14 @@ export async function exportColdEmailsPrompt(
 
   const resumeVersion =
     options?.resumeVersion != null
-      ? getResumeVersion(applicationId, options.resumeVersion)
-      : getLatestReadyResumeVersion(applicationId);
-  if (!resumeVersion || resumeVersion.status !== "ready") {
+      ? await getResumeVersion(applicationId, options.resumeVersion)
+      : await getLatestUsableResumeVersion(applicationId);
+  if (
+    !resumeVersion ||
+    (resumeVersion.status !== "ready" && resumeVersion.status !== "uploading")
+  ) {
     throw new Error(
-      "Generate a ready resume version before drafting cold emails.",
+      "Generate a tailored resume before drafting cold emails.",
     );
   }
   const resumeParsed = resumeContentSchema.safeParse(resumeVersion.content);
@@ -248,10 +252,10 @@ export async function exportColdEmailsPrompt(
     throw new Error("Selected resume version has invalid content.");
   }
 
-  const template = getActivePromptTemplate("cold_email");
+  const template = await getActivePromptTemplate("cold_email");
   if (!template) throw new Error("No active cold email prompt template.");
 
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const targetCompany =
     application.company?.trim() ||
     application.jd_parsed?.company?.trim() ||
@@ -277,7 +281,7 @@ export async function exportColdEmailsPrompt(
   }[] = [];
 
   for (const batch of batches) {
-    const runId = createPromptRun("cold_email", {
+    const runId = await createPromptRun("cold_email", {
       entity: "applications",
       entityId: applicationId,
     });
@@ -319,7 +323,7 @@ export async function exportColdEmailsPrompt(
       runId,
     );
 
-    updatePromptRunText(runId, promptText);
+    await updatePromptRunText(runId, promptText);
     await writeAuditLog("prompt.exported", "prompt_runs", runId, {
       kind: "cold_email",
       application_id: applicationId,
@@ -366,7 +370,7 @@ export async function submitColdEmailsResponse(
     };
   }
 
-  const existing = getPromptRunById(promptRunId);
+  const existing = await getPromptRunById(promptRunId);
   if (!existing) {
     return { ok: false as const, error: "Prompt run not found." };
   }
@@ -383,7 +387,7 @@ export async function submitColdEmailsResponse(
   const applicationId = existing.target_entity_id;
 
   if (existing.status === "completed") {
-    const emails = listEmailsByPromptRun(promptRunId);
+    const emails = await listEmailsByPromptRun(promptRunId);
     return {
       ok: true as const,
       already_completed: true,
@@ -410,7 +414,7 @@ export async function submitColdEmailsResponse(
     jsonText = extractJsonFromText(rawResponse);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Invalid JSON";
-    updatePromptRunValidationErrors(
+    await updatePromptRunValidationErrors(
       promptRunId,
       [{ path: "root", message }],
       rawResponse,
@@ -435,7 +439,7 @@ export async function submitColdEmailsResponse(
       /\\[^"\\/bfnrtu]/i.test(jsonText) || /\\\[/i.test(jsonText)
         ? " ChatGPT may have used invalid escapes like \\[ in markdown — try pasting again or remove backslashes before [ and ]."
         : "";
-    updatePromptRunValidationErrors(
+    await updatePromptRunValidationErrors(
       promptRunId,
       [{ path: "root", message: detail + hint }],
       rawResponse,
@@ -454,7 +458,7 @@ export async function submitColdEmailsResponse(
   const schemaResult = coldEmailBatchSchema.safeParse(parsedJson);
   if (!schemaResult.success) {
     const issues = zodErrorsToList(schemaResult.error);
-    updatePromptRunValidationErrors(promptRunId, issues, rawResponse);
+    await updatePromptRunValidationErrors(promptRunId, issues, rawResponse);
     return {
       ok: false as const,
       error: "Cold email JSON failed schema validation.",
@@ -472,7 +476,7 @@ export async function submitColdEmailsResponse(
     expectedContactIds,
   );
   if (!validated.ok) {
-    updatePromptRunValidationErrors(promptRunId, validated.issues, rawResponse);
+    await updatePromptRunValidationErrors(promptRunId, validated.issues, rawResponse);
     return {
       ok: false as const,
       error: "Cold email content failed validation.",
@@ -487,14 +491,14 @@ export async function submitColdEmailsResponse(
   }
 
   const emailIds: string[] = [];
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const fullName = profile?.full_name ?? null;
 
   for (const item of validated.matched) {
-    const contact = getContactById(item.contact_id);
+    const contact = await getContactById(item.contact_id);
     if (!contact) continue;
     const bodyMd = stripEmailSignature(item.body_md, fullName);
-    const id = insertEmail({
+    const id = await insertEmail({
       application_id: applicationId,
       contact_id: item.contact_id,
       kind: "cold",
@@ -505,10 +509,11 @@ export async function submitColdEmailsResponse(
       prompt_run_id: promptRunId,
       draft_status: "pending",
     });
-    emailIds.push(id);
+    // insertEmail returns existing id if a cold email already exists for this contact.
+    if (!emailIds.includes(id)) emailIds.push(id);
   }
 
-  const completed = completePromptRun(
+  const completed = await completePromptRun(
     promptRunId,
     rawResponse,
     { emails: validated.matched, email_ids: emailIds },
@@ -535,7 +540,7 @@ export async function createGmailDrafts(emailIds: string[]) {
     return { ok: false as const, error: "No emails selected." };
   }
 
-  const emails = listEmailsByIds(emailIds);
+  const emails = await listEmailsByIds(emailIds);
   if (emails.length === 0) {
     return { ok: false as const, error: "Emails not found." };
   }
@@ -569,6 +574,15 @@ export async function createGmailDrafts(emailIds: string[]) {
   }[] = [];
 
   for (const email of emails) {
+    if (email.draft_status === "creating") {
+      results.push({
+        email_id: email.id,
+        ok: false,
+        error: "Draft creation already in progress or locked.",
+      });
+      continue;
+    }
+
     if (email.gmail_draft_id && email.draft_status === "created") {
       try {
         const exists = await gmail.getDraft(email.gmail_draft_id);
@@ -581,7 +595,7 @@ export async function createGmailDrafts(emailIds: string[]) {
           });
           continue;
         }
-        markEmailDraftDeletedExternally(email.id);
+        await markEmailDraftDeletedExternally(email.id);
       } catch (e) {
         if (e instanceof GmailScopeMissingError) {
           return {
@@ -594,9 +608,9 @@ export async function createGmailDrafts(emailIds: string[]) {
       }
     }
 
-    const claimed = claimEmailForDraftCreation(email.id);
+    const claimed = await claimEmailForDraftCreation(email.id);
     if (!claimed) {
-      const fresh = getEmailById(email.id);
+      const fresh = await getEmailById(email.id);
       if (fresh?.draft_status === "created" && fresh.gmail_draft_id) {
         results.push({
           email_id: email.id,
@@ -614,9 +628,9 @@ export async function createGmailDrafts(emailIds: string[]) {
       continue;
     }
 
-    const contact = getContactById(email.contact_id);
+    const contact = await getContactById(email.contact_id);
     if (!contact?.email) {
-      markEmailDraftFailed(email.id, "Contact has no email address.");
+      await markEmailDraftFailed(email.id, "Contact has no email address.");
       results.push({
         email_id: email.id,
         ok: false,
@@ -626,14 +640,14 @@ export async function createGmailDrafts(emailIds: string[]) {
     }
 
     try {
-      const application = getApplicationById(email.application_id);
-      const profile = getProfileRow();
+      const application = await getApplicationById(email.application_id);
+      const profile = await getProfileRow();
       const fullName = profile?.full_name ?? "Candidate";
       const company = application?.company ?? null;
       const role = application?.role ?? null;
 
-      const resume = getLatestReadyResumeVersion(email.application_id);
-      const coverLetter = getLatestReadyCoverLetterVersion(email.application_id);
+      const resume = await getLatestReadyResumeVersion(email.application_id);
+      const coverLetter = await getLatestReadyCoverLetterVersion(email.application_id);
 
       const attachments: DraftAttachment[] = [];
       const driveLinks: DraftDriveLink[] = [];
@@ -691,7 +705,7 @@ export async function createGmailDrafts(emailIds: string[]) {
         markdownToEmailHtml(
           stripEmailSignature(email.body_md || "", fullName),
         ),
-        resolveSignatureForDraft(profile),
+        await resolveSignatureForDraft(profile),
       );
 
       const created = await gmail.createDraft({
@@ -702,7 +716,7 @@ export async function createGmailDrafts(emailIds: string[]) {
         driveLinks,
       });
 
-      markEmailDraftCreated(email.id, created.draftId, created.messageId);
+      await markEmailDraftCreated(email.id, created.draftId, created.messageId);
       results.push({
         email_id: email.id,
         ok: true,
@@ -717,7 +731,7 @@ export async function createGmailDrafts(emailIds: string[]) {
       });
     } catch (e) {
       if (e instanceof GmailScopeMissingError) {
-        markEmailDraftFailed(email.id, e.message);
+        await markEmailDraftFailed(email.id, e.message);
         return {
           ok: false as const,
           error: e.message,
@@ -726,7 +740,7 @@ export async function createGmailDrafts(emailIds: string[]) {
         };
       }
       const message = e instanceof Error ? e.message : "Draft creation failed";
-      markEmailDraftFailed(email.id, message);
+      await markEmailDraftFailed(email.id, message);
       results.push({ email_id: email.id, ok: false, error: message });
     }
   }
@@ -754,7 +768,7 @@ export async function createGmailDrafts(emailIds: string[]) {
 }
 
 export async function verifyGmailDraft(emailId: string) {
-  const email = getEmailById(emailId);
+  const email = await getEmailById(emailId);
   if (!email?.gmail_draft_id) {
     return { ok: false as const, error: "No Gmail draft linked." };
   }
@@ -764,7 +778,7 @@ export async function verifyGmailDraft(emailId: string) {
     const gmail = new GmailClient(auth);
     const exists = await gmail.getDraft(email.gmail_draft_id);
     if (!exists) {
-      markEmailDraftDeletedExternally(email.id);
+      await markEmailDraftDeletedExternally(email.id);
       revalidateApplication(email.application_id);
       return {
         ok: false as const,
@@ -802,7 +816,7 @@ export async function verifyGmailDraft(emailId: string) {
 }
 
 export async function recreateGmailDraft(emailId: string) {
-  resetEmailDraftForRecreate(emailId);
+  await resetEmailDraftForRecreate(emailId);
   return createGmailDrafts([emailId]);
 }
 

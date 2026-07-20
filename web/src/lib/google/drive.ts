@@ -55,13 +55,13 @@ export class DriveClient {
   }
 
   async ensureRootFolder(): Promise<string> {
-    const profile = getProfileRow();
+    const profile = await getProfileRow();
     if (profile?.drive_root_id) {
       return profile.drive_root_id;
     }
 
     const rootId = await this.ensureFolder(DRIVE_ROOT_FOLDER_NAME);
-    setDriveRootId(rootId);
+    await setDriveRootId(rootId);
     return rootId;
   }
 

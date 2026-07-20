@@ -2,6 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { maybeAdvanceApplicationStatus } from "@/app/actions/applications";
 import { writeAuditLog } from "@/lib/audit";
 import {
@@ -72,10 +73,10 @@ function getLockedMasterResumeRules(
 }
 
 export async function getResumeVersionsForApplication(applicationId: string) {
-  return listResumeVersions(applicationId);
+  return await listResumeVersions(applicationId);
 }
 
-function assertMasterDocReady(masterRow: ReturnType<typeof getMasterResumeRow>) {
+function assertMasterDocReady(masterRow: Awaited<ReturnType<typeof getMasterResumeRow>>) {
   if (!masterRow?.content || Object.keys(masterRow.content).length === 0) {
     throw new Error(
       "Master resume not synced. Run 'Sync from Google Doc' on the onboarding page first.",
@@ -116,10 +117,10 @@ export async function exportResumePrompt(
   applicationId: string,
   options?: { condensed?: boolean },
 ) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found.");
 
-  const masterRow = getMasterResumeRow();
+  const masterRow = await getMasterResumeRow();
   assertMasterDocReady(masterRow);
 
   const masterParsed = resumeContentSchema.safeParse(masterRow!.content);
@@ -129,14 +130,14 @@ export async function exportResumePrompt(
     );
   }
 
-  const template = getActivePromptTemplate("resume");
+  const template = await getActivePromptTemplate("resume");
   if (!template) throw new Error("No active resume prompt template.");
 
   const masterContent = options?.condensed
     ? condenseMasterResume(masterParsed.data)
     : masterParsed.data;
 
-  const runId = createPromptRun("resume", {
+  const runId = await createPromptRun("resume", {
     entity: "applications",
     entityId: applicationId,
   });
@@ -159,7 +160,7 @@ export async function exportResumePrompt(
     runId,
   );
   const lengthWarning = warnIfPromptTooLong(promptText);
-  updatePromptRunText(runId, promptText);
+  await updatePromptRunText(runId, promptText);
 
   await writeAuditLog("prompt.exported", "prompt_runs", runId, {
     kind: "resume",
@@ -180,28 +181,29 @@ async function persistResumeArtifacts(
   applicationId: string,
   promptRunId: string,
   content: ResumeContent,
+  options?: { deferDrive?: boolean },
 ) {
-  const application = getApplicationById(applicationId);
+  const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found.");
 
-  const masterRow = getMasterResumeRow();
+  const masterRow = await getMasterResumeRow();
   assertMasterDocReady(masterRow);
 
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const fullName = profile?.full_name ?? "Anchit Boruah";
 
   // Reuse an existing upload_failed / uploading row for this prompt so retries
   // don't create v2…v7 clones while Google is disconnected.
-  const existing = listResumeVersions(applicationId).find(
+  const existing = (await listResumeVersions(applicationId)).find(
     (v) =>
       v.prompt_run_id === promptRunId &&
       (v.status === "upload_failed" || v.status === "uploading"),
   );
   const resumeVersionId = existing?.id ?? randomUUID();
-  const version = existing?.version ?? getNextResumeVersionNumber(applicationId);
+  const version = existing?.version ?? await getNextResumeVersionNumber(applicationId);
 
   if (!existing) {
-    insertResumeVersion({
+    await insertResumeVersion({
       id: resumeVersionId,
       application_id: applicationId,
       version,
@@ -210,47 +212,66 @@ async function persistResumeArtifacts(
       status: "uploading",
     });
   } else {
-    updateResumeVersionContentForRetry(resumeVersionId, content);
+    await updateResumeVersionContentForRetry(resumeVersionId, content);
   }
 
-  try {
-    const auth = await getGoogleAuthClient();
-    const drive = new DriveClient(auth);
-    const docs = new DocsClient(auth);
+  const finishDrive = async () => {
+    try {
+      const auth = await getGoogleAuthClient();
+      const drive = new DriveClient(auth);
+      const docs = new DocsClient(auth);
 
-    const result = await generateResumeFromDoc(drive, docs, {
-      masterDocId: masterRow!.doc_id!,
-      layout: masterRow!.doc_layout as unknown as DocLayoutMap,
-      tailored: content,
-      application,
-      version,
-      fullName,
+      const result = await generateResumeFromDoc(drive, docs, {
+        masterDocId: masterRow!.doc_id!,
+        layout: masterRow!.doc_layout as unknown as DocLayoutMap,
+        tailored: content,
+        application,
+        version,
+        fullName,
+      });
+
+      await updateResumeVersionDriveIds(
+        resumeVersionId,
+        result.drive_pdf_id,
+        null,
+        result.drive_doc_id,
+      );
+
+      await writeAuditLog("resume.generated", "resume_versions", resumeVersionId, {
+        application_id: applicationId,
+        version,
+        drive_doc_id: result.drive_doc_id,
+        drive_pdf_id: result.drive_pdf_id,
+        pdf_name: result.pdf_name,
+      });
+
+      return {
+        resume_version_id: resumeVersionId,
+        version,
+        pdf_name: result.pdf_name,
+      };
+    } catch (e) {
+      await markResumeVersionUploadFailed(resumeVersionId);
+      throw e;
+    }
+  };
+
+  if (options?.deferDrive) {
+    // ChatGPT chain continues; Drive runs after the HTTP response.
+    after(() => {
+      void finishDrive().catch((err) => {
+        console.error("[resume] deferred Drive export failed", err);
+      });
     });
-
-    updateResumeVersionDriveIds(
-      resumeVersionId,
-      result.drive_pdf_id,
-      null,
-      result.drive_doc_id,
-    );
-
-    await writeAuditLog("resume.generated", "resume_versions", resumeVersionId, {
-      application_id: applicationId,
-      version,
-      drive_doc_id: result.drive_doc_id,
-      drive_pdf_id: result.drive_pdf_id,
-      pdf_name: result.pdf_name,
-    });
-
     return {
       resume_version_id: resumeVersionId,
       version,
-      pdf_name: result.pdf_name,
+      pdf_name: null as string | null,
+      deferred: true as const,
     };
-  } catch (e) {
-    markResumeVersionUploadFailed(resumeVersionId);
-    throw e;
   }
+
+  return finishDrive();
 }
 
 export async function submitResumeResponse(
@@ -273,7 +294,7 @@ export async function submitResumeResponse(
     };
   }
 
-  const existing = getPromptRunById(promptRunId);
+  const existing = await getPromptRunById(promptRunId);
   if (!existing) {
     return { ok: false as const, error: "Prompt run not found." };
   }
@@ -285,7 +306,7 @@ export async function submitResumeResponse(
   }
 
   if (existing.status === "completed") {
-    const versions = listResumeVersions(existing.target_entity_id);
+    const versions = await listResumeVersions(existing.target_entity_id);
     const linked = versions.find((v) => v.prompt_run_id === promptRunId);
     return {
       ok: true as const,
@@ -295,7 +316,7 @@ export async function submitResumeResponse(
     };
   }
 
-  const masterRow = getMasterResumeRow();
+  const masterRow = await getMasterResumeRow();
   if (!masterRow) {
     return { ok: false as const, error: "Master resume not found." };
   }
@@ -309,8 +330,8 @@ export async function submitResumeResponse(
     jsonText = extractJsonFromText(rawResponse);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Invalid JSON";
-    updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }], rawResponse);
-    const template = getActivePromptTemplate("resume");
+    await updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }], rawResponse);
+    const template = await getActivePromptTemplate("resume");
     return {
       ok: false as const,
       error: message,
@@ -333,7 +354,7 @@ export async function submitResumeResponse(
 
   const masterRules = getLockedMasterResumeRules(masterRow.rules);
   const bulletLayout = resolveBulletLayout(masterParsed.data, masterRules);
-  const application = getApplicationById(existing.target_entity_id);
+  const application = await getApplicationById(existing.target_entity_id);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
@@ -354,8 +375,8 @@ export async function submitResumeResponse(
   const schemaResult = resumeContentSchema.safeParse(fitted);
   if (!schemaResult.success) {
     const errors = zodErrorsToList(schemaResult.error);
-    updatePromptRunValidationErrors(promptRunId, errors, rawResponse);
-    const template = getActivePromptTemplate("resume");
+    await updatePromptRunValidationErrors(promptRunId, errors, rawResponse);
+    const template = await getActivePromptTemplate("resume");
     return {
       ok: false as const,
       error: "Response failed resume schema validation.",
@@ -379,7 +400,7 @@ export async function submitResumeResponse(
   );
 
   if (fabrication.structural_errors.length > 0) {
-    updatePromptRunValidationErrors(
+    await updatePromptRunValidationErrors(
       promptRunId,
       fabrication.structural_errors.map((f) => ({
         path: f.path,
@@ -404,11 +425,18 @@ export async function submitResumeResponse(
     };
   }
 
-  // If this prompt was already finalized with a ready Drive export, don't redo work.
+  // Content already accepted — do not block ChatGPT chain on Drive.
   {
-    const versions = listResumeVersions(existing.target_entity_id);
+    const versions = await listResumeVersions(existing.target_entity_id);
     const linked = versions.find((v) => v.prompt_run_id === promptRunId);
-    if (linked?.status === "ready") {
+    if (linked?.status === "ready" || linked?.status === "uploading") {
+      if (existing.status !== "completed") {
+        await completePromptRun(
+          promptRunId,
+          rawResponse,
+          schemaResult.data as Record<string, unknown>,
+        );
+      }
       return {
         ok: true as const,
         already_completed: true,
@@ -416,24 +444,18 @@ export async function submitResumeResponse(
         resume_version_id: linked.id,
       };
     }
-    if (linked?.status === "uploading") {
-      return {
-        ok: false as const,
-        error: "Resume export still in progress. Try again in a moment.",
-      };
-    }
   }
 
-  // Persist Google Docs first, then mark the prompt complete — otherwise the
-  // pipeline poller races ahead into cover letter before a ready resume exists.
+  // Save content + complete prompt immediately; Drive export runs in background.
   try {
     const result = await persistResumeArtifacts(
       existing.target_entity_id,
       promptRunId,
       schemaResult.data,
+      { deferDrive: true },
     );
 
-    completePromptRun(
+    await completePromptRun(
       promptRunId,
       rawResponse,
       schemaResult.data as Record<string, unknown>,
@@ -451,6 +473,7 @@ export async function submitResumeResponse(
       version: result.version,
       resume_version_id: result.resume_version_id,
       status_advance,
+      drive_deferred: true as const,
     };
   } catch (e) {
     const error = formatResumeExportError(e);
@@ -508,17 +531,17 @@ function mergeTailoredWithMaster(
 }
 
 export async function retryResumeUpload(resumeVersionId: string) {
-  const versionRow = getResumeVersionById(resumeVersionId);
+  const versionRow = await getResumeVersionById(resumeVersionId);
   if (!versionRow || versionRow.status !== "upload_failed") {
     return { ok: false as const, error: "Nothing to retry." };
   }
 
-  const application = getApplicationById(versionRow.application_id);
+  const application = await getApplicationById(versionRow.application_id);
   if (!application) {
     return { ok: false as const, error: "Application not found." };
   }
 
-  const masterRow = getMasterResumeRow();
+  const masterRow = await getMasterResumeRow();
   try {
     assertMasterDocReady(masterRow);
   } catch (e) {
@@ -528,7 +551,7 @@ export async function retryResumeUpload(resumeVersionId: string) {
     };
   }
 
-  const profile = getProfileRow();
+  const profile = await getProfileRow();
   const fullName = profile?.full_name ?? "Anchit Boruah";
 
   try {
@@ -545,7 +568,7 @@ export async function retryResumeUpload(resumeVersionId: string) {
       fullName,
     });
 
-    updateResumeVersionDriveIds(
+    await updateResumeVersionDriveIds(
       versionRow.id,
       result.drive_pdf_id,
       null,
@@ -554,9 +577,9 @@ export async function retryResumeUpload(resumeVersionId: string) {
 
     // Finish the ChatGPT prompt once Drive export succeeds so the pipeline can leave resume.
     if (versionRow.prompt_run_id) {
-      const prompt = getPromptRunById(versionRow.prompt_run_id);
+      const prompt = await getPromptRunById(versionRow.prompt_run_id);
       if (prompt?.status === "pending") {
-        completePromptRun(
+        await completePromptRun(
           versionRow.prompt_run_id,
           JSON.stringify(versionRow.content),
           versionRow.content as unknown as Record<string, unknown>,
@@ -598,15 +621,15 @@ export async function recoverResumeExportForPromptRun(
   error?: string;
   reconnect_required?: boolean;
 }> {
-  const versions = listResumeVersions(applicationId)
+  const versions = (await listResumeVersions(applicationId))
     .filter((v) => v.prompt_run_id === promptRunId)
     .sort((a, b) => b.version - a.version);
 
   const ready = versions.find((v) => v.status === "ready");
   if (ready) {
-    const prompt = getPromptRunById(promptRunId);
+    const prompt = await getPromptRunById(promptRunId);
     if (prompt?.status === "pending") {
-      completePromptRun(
+      await completePromptRun(
         promptRunId,
         JSON.stringify(ready.content),
         ready.content as unknown as Record<string, unknown>,
@@ -627,5 +650,5 @@ export async function getResumeVersionForDownload(
   applicationId: string,
   version: number,
 ) {
-  return getResumeVersion(applicationId, version);
+  return await getResumeVersion(applicationId, version);
 }

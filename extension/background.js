@@ -107,6 +107,27 @@ async function clearSessionLock() {
     "startedAt",
     "activeTabId",
     "lastInjectAt",
+    "bridgeTabIds",
+  ]);
+}
+
+async function rememberBridgeTab(tabId) {
+  if (tabId == null) return;
+  const state = await chrome.storage.session.get(["bridgeTabIds"]);
+  const ids = Array.isArray(state.bridgeTabIds) ? state.bridgeTabIds : [];
+  if (!ids.includes(tabId)) {
+    await chrome.storage.session.set({ bridgeTabIds: [...ids, tabId] });
+  }
+  await chrome.storage.session.set({ activeTabId: tabId });
+}
+
+function withTimeout(promise, ms, label = "timeout") {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label)), ms);
+    }),
   ]);
 }
 
@@ -244,7 +265,7 @@ async function openAndRun(pending, { force = false } = {}) {
     const tab = await chrome.tabs.create({ url, active: true });
 
     if (tab.id != null) {
-      await chrome.storage.session.set({ activeTabId: tab.id });
+      await rememberBridgeTab(tab.id);
     } else {
       await clearSessionLock();
       return { opened: false, reason: "tab_create_failed" };
@@ -278,46 +299,88 @@ async function closeActiveBridgeTab(expectedPromptRunId) {
   const state = await chrome.storage.session.get([
     "activeTabId",
     "activePromptRunId",
+    "bridgeTabIds",
   ]);
   if (
     expectedPromptRunId &&
     state.activePromptRunId &&
     state.activePromptRunId !== expectedPromptRunId
   ) {
+    // A newer stage already owns the lock — do not clear it, but still close stale tabs.
+    await closeTrackedBridgeTabs(state, { keepActive: true });
     return;
   }
-  const tabId = state.activeTabId;
-  if (tabId == null) {
+  await closeTrackedBridgeTabs(state, { keepActive: false });
+}
+
+async function closeTrackedBridgeTabs(state, { keepActive = false } = {}) {
+  const ids = new Set();
+  if (Array.isArray(state.bridgeTabIds)) {
+    for (const id of state.bridgeTabIds) {
+      if (id != null) ids.add(id);
+    }
+  }
+  if (state.activeTabId != null) ids.add(state.activeTabId);
+
+  for (const tabId of ids) {
+    if (keepActive && tabId === state.activeTabId) continue;
+    try {
+      await chrome.tabs.remove(tabId);
+      console.info("[JobApp Bridge] closed ChatGPT tab", tabId);
+    } catch {
+      /* already closed */
+    }
+  }
+
+  if (!keepActive) {
     await clearSessionLock();
-    return;
+  } else {
+    const remaining = state.activeTabId != null ? [state.activeTabId] : [];
+    await chrome.storage.session.set({ bridgeTabIds: remaining });
   }
-  try {
-    await chrome.tabs.remove(tabId);
-    console.info("[JobApp Bridge] closed ChatGPT tab", tabId);
-  } catch {
-    /* already closed */
-  }
-  await clearSessionLock();
 }
 
 async function cleanupAndCloseTab(promptRunId) {
-  const state = await chrome.storage.session.get(["activeTabId"]);
+  const state = await chrome.storage.session.get(["activeTabId", "bridgeTabIds"]);
   const tabId = state.activeTabId;
   let deleted = false;
 
   if (tabId != null) {
     try {
-      const cleanup = await chrome.tabs.sendMessage(tabId, {
-        type: "JOBAPP_CLEANUP_SESSION",
-      });
+      const cleanup = await withTimeout(
+        chrome.tabs.sendMessage(tabId, {
+          type: "JOBAPP_CLEANUP_SESSION",
+        }),
+        20000,
+        "cleanup_timeout",
+      );
       deleted = Boolean(cleanup?.deleted);
       console.info("[JobApp Bridge] cleanup result", cleanup);
     } catch (e) {
       console.warn("[JobApp Bridge] session cleanup message failed", e);
+      // Content script may have been invalidated — reinject and retry once.
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ["content.js"],
+        });
+        await sleep(500);
+        const cleanup = await withTimeout(
+          chrome.tabs.sendMessage(tabId, {
+            type: "JOBAPP_CLEANUP_SESSION",
+          }),
+          15000,
+          "cleanup_retry_timeout",
+        );
+        deleted = Boolean(cleanup?.deleted);
+      } catch (e2) {
+        console.warn("[JobApp Bridge] cleanup retry failed", e2);
+      }
     }
-    await new Promise((r) => setTimeout(r, 1200));
+    await sleep(deleted ? 200 : 350);
   }
 
+  // Always force-close every tab this bridge opened for the stage.
   await closeActiveBridgeTab(promptRunId);
   return { deleted };
 }
@@ -358,22 +421,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "JOBAPP_SUBMIT_RESPONSE") {
     (async () => {
       let pasteOk = false;
+      let result = null;
       try {
         if (!message.raw_response?.trim()) {
           throw new Error("Empty ChatGPT response");
         }
-        const result = await api("/api/extension/paste-back", {
-          method: "POST",
-          body: JSON.stringify({
-            prompt_run_id: message.prompt_run_id,
-            raw_response: message.raw_response,
-            partial: Boolean(message.partial),
+        // Cap wait so cleanup/close still runs if Drive/Gmail work is slow.
+        result = await withTimeout(
+          api("/api/extension/paste-back", {
+            method: "POST",
+            body: JSON.stringify({
+              prompt_run_id: message.prompt_run_id,
+              raw_response: message.raw_response,
+              partial: Boolean(message.partial),
+            }),
           }),
-        });
+          120000,
+          "paste_back_timeout",
+        );
         pasteOk = Boolean(result?.ok !== false);
-        // Always delete session + close tab after a successful ChatGPT accept.
-        const cleanup = await cleanupAndCloseTab(message.prompt_run_id);
-        sendResponse({ ok: true, result, cleaned_up: true, ...cleanup });
       } catch (e) {
         const permanent =
           Boolean(e.data?.permanent) ||
@@ -393,8 +459,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         } catch {
           /* ignore */
         }
-        // Close tab after paste (content was accepted by app or failed permanently).
-        // Do not leave ChatGPT open to silently re-run Google-auth failures.
+        // Always delete + close after a real ChatGPT reply so tabs never linger.
         try {
           if (pasteOk || message.raw_response?.trim() || permanent) {
             await cleanupAndCloseTab(message.prompt_run_id);
@@ -410,6 +475,40 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           data: e.data,
           permanent,
         });
+        return;
+      }
+
+      // Cleanup/close first (now much faster), then open the next stage.
+      const cleanup = await cleanupAndCloseTab(message.prompt_run_id);
+      sendResponse({ ok: true, result, cleaned_up: true, ...cleanup });
+
+      const next = result?.next_pending;
+      if (next?.prompt_run_id && next?.prompt_text) {
+        console.info(
+          "[JobApp Bridge] chaining next stage",
+          next.kind,
+          next.prompt_run_id,
+        );
+        await sleep(150);
+        try {
+          await openAndRun(
+            {
+              prompt_run_id: next.prompt_run_id,
+              pipeline_run_id: next.pipeline_run_id,
+              kind: next.kind,
+              prompt_text: next.prompt_text,
+              chatgpt_url: next.chatgpt_url || "https://chatgpt.com/",
+              ts: Date.now(),
+              force: true,
+            },
+            { force: true },
+          );
+        } catch (chainErr) {
+          console.warn(
+            "[JobApp Bridge] next-stage chain failed",
+            chainErr?.message || chainErr,
+          );
+        }
       }
     })();
     return true;
@@ -425,15 +524,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "JOBAPP_CLEAR_LOCK") {
     (async () => {
-      const state = await chrome.storage.session.get(["activeTabId"]);
-      if (state.activeTabId != null) {
-        try {
-          await chrome.tabs.remove(state.activeTabId);
-        } catch {
-          /* ignore */
-        }
-      }
-      await clearSessionLock();
+      const state = await chrome.storage.session.get([
+        "activeTabId",
+        "bridgeTabIds",
+      ]);
+      await closeTrackedBridgeTabs(state, { keepActive: false });
       sendResponse({ ok: true });
     })();
     return true;
@@ -473,7 +568,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         enabled: s.enabled,
         hasToken: Boolean(s.token),
         appUrl: s.appUrl,
-        version: "1.3.11",
+        version: "1.3.16",
       });
     });
     return true;

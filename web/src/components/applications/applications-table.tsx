@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { APPLICATION_STATUS_LABELS } from "@/lib/applications/status";
 import { QuickApplyExistingButton } from "@/components/pipeline/quick-apply-existing-button";
+import { deleteApplication } from "@/app/actions/tracker";
 import type { ApplicationSearchResult } from "@/lib/tracker/search";
 
 function formatRelativeTime(dateString: string) {
@@ -78,6 +79,24 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
   }, [query, pushParams, searchParams]);
 
   const { items, total, page, totalPages } = initial;
+
+  function handleDelete(appId: string, label: string) {
+    if (
+      !window.confirm(
+        `Delete "${label}" and all related resumes, contacts, and emails? Drive files are not removed automatically.`,
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      const result = await deleteApplication(appId);
+      if (!result.ok) {
+        window.alert(result.error ?? "Failed to delete application.");
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   return (
     <>
@@ -187,12 +206,28 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                     <div className="col-span-1 text-right text-[12px] text-on-surface-variant">
                       {formatRelativeTime(app.updated_at)}
                     </div>
-                    <div className="col-span-2 flex justify-end">
+                    <div className="col-span-2 flex justify-end items-center gap-1">
                       <QuickApplyExistingButton
                         applicationId={app.id}
                         contacts={[]}
                         compact
                       />
+                      <button
+                        type="button"
+                        title="Delete application"
+                        disabled={pending}
+                        onClick={() =>
+                          handleDelete(
+                            app.id,
+                            `${app.company || "Unknown"} — ${app.role || "role"}`,
+                          )
+                        }
+                        className="p-1.5 rounded-md text-on-surface-variant hover:text-error hover:bg-error-container/40 disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">
+                          delete
+                        </span>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -241,11 +276,29 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                         <span className="text-error">No resume</span>
                       )}
                     </div>
-                    <QuickApplyExistingButton
-                      applicationId={app.id}
-                      contacts={[]}
-                      compact
-                    />
+                    <div className="flex items-center gap-1">
+                      <QuickApplyExistingButton
+                        applicationId={app.id}
+                        contacts={[]}
+                        compact
+                      />
+                      <button
+                        type="button"
+                        title="Delete application"
+                        disabled={pending}
+                        onClick={() =>
+                          handleDelete(
+                            app.id,
+                            `${app.company || "Unknown"} — ${app.role || "role"}`,
+                          )
+                        }
+                        className="p-1.5 rounded-md text-on-surface-variant hover:text-error hover:bg-error-container/40 disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">
+                          delete
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

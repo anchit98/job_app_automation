@@ -36,6 +36,7 @@ export interface ApplicationSearchResult {
   totalPages: number;
 }
 
+/** Clean plain text for Postgres plainto_tsquery (no FTS5 quote syntax). */
 export function buildFtsMatchQuery(q: string): string {
   const terms = q
     .trim()
@@ -43,7 +44,7 @@ export function buildFtsMatchQuery(q: string): string {
     .split(/\s+/)
     .filter((t) => t.length >= 2);
   if (!terms.length) return "";
-  return terms.map((t) => `"${t.replace(/"/g, '""')}"`).join(" AND ");
+  return terms.join(" ");
 }
 
 export function parseApplicationSearchParams(
