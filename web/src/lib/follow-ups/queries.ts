@@ -1,0 +1,273 @@
+import { randomUUID } from "crypto";
+import { getDb } from "@/lib/db";
+import type { FollowUp, FollowUpStatus } from "@/lib/db/types";
+import {
+  addBusinessDays,
+  toUtcIso,
+} from "@/lib/follow-ups/business-days";
+
+function mapFollowUp(row: Record<string, unknown>): FollowUp {
+  return {
+    id: row.id as string,
+    application_id: row.application_id as string,
+    email_id: row.email_id as string,
+    sequence: row.sequence as 1 | 2,
+    due_at: (row.due_at as string | null) ?? null,
+    status: row.status as FollowUpStatus,
+    snoozed_until: (row.snoozed_until as string | null) ?? null,
+    draft_email_id: (row.draft_email_id as string | null) ?? null,
+    prompt_run_id: (row.prompt_run_id as string | null) ?? null,
+    sent_at: (row.sent_at as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
+export function listFollowUpsForApplication(applicationId: string): FollowUp[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM follow_ups
+       WHERE application_id = ?
+       ORDER BY email_id, sequence`,
+    )
+    .all(applicationId) as Record<string, unknown>[];
+  return rows.map(mapFollowUp);
+}
+
+export function getFollowUpById(id: string): FollowUp | null {
+  const row = getDb()
+    .prepare("SELECT * FROM follow_ups WHERE id = ?")
+    .get(id) as Record<string, unknown> | undefined;
+  return row ? mapFollowUp(row) : null;
+}
+
+export function getFollowUpByEmailSequence(
+  emailId: string,
+  sequence: 1 | 2,
+): FollowUp | null {
+  const row = getDb()
+    .prepare(
+      `SELECT * FROM follow_ups WHERE email_id = ? AND sequence = ?`,
+    )
+    .get(emailId, sequence) as Record<string, unknown> | undefined;
+  return row ? mapFollowUp(row) : null;
+}
+
+export function insertFollowUp(input: {
+  application_id: string;
+  email_id: string;
+  sequence: 1 | 2;
+  due_at: string | null;
+  status: FollowUpStatus;
+}): string {
+  const id = randomUUID();
+  getDb()
+    .prepare(
+      `INSERT INTO follow_ups (
+         id, application_id, email_id, sequence, due_at, status
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      id,
+      input.application_id,
+      input.email_id,
+      input.sequence,
+      input.due_at,
+      input.status,
+    );
+  return id;
+}
+
+export function followUpsExistForEmail(emailId: string): boolean {
+  const row = getDb()
+    .prepare(`SELECT 1 AS ok FROM follow_ups WHERE email_id = ? LIMIT 1`)
+    .get(emailId);
+  return Boolean(row);
+}
+
+export function scheduleFollowUpsForColdEmail(
+  applicationId: string,
+  emailId: string,
+  timezone: string,
+  fromDate = new Date(),
+): { followUp1Id: string; followUp2Id: string } {
+  if (followUpsExistForEmail(emailId)) {
+    const existing1 = getFollowUpByEmailSequence(emailId, 1);
+    const existing2 = getFollowUpByEmailSequence(emailId, 2);
+    return {
+      followUp1Id: existing1!.id,
+      followUp2Id: existing2!.id,
+    };
+  }
+
+  const due1 = toUtcIso(addBusinessDays(fromDate, 5, timezone));
+  const followUp1Id = insertFollowUp({
+    application_id: applicationId,
+    email_id: emailId,
+    sequence: 1,
+    due_at: due1,
+    status: "pending",
+  });
+  const followUp2Id = insertFollowUp({
+    application_id: applicationId,
+    email_id: emailId,
+    sequence: 2,
+    due_at: null,
+    status: "waiting",
+  });
+  return { followUp1Id, followUp2Id };
+}
+
+export function activateSecondFollowUp(emailId: string, timezone: string): void {
+  const second = getFollowUpByEmailSequence(emailId, 2);
+  if (!second || second.status !== "waiting") return;
+
+  const due2 = toUtcIso(addBusinessDays(new Date(), 10, timezone));
+  getDb()
+    .prepare(
+      `UPDATE follow_ups
+       SET status = 'pending', due_at = ?
+       WHERE id = ? AND status = 'waiting'`,
+    )
+    .run(due2, second.id);
+}
+
+export function claimFollowUpForProcessing(id: string): boolean {
+  const result = getDb()
+    .prepare(
+      `UPDATE follow_ups
+       SET status = 'processing',
+           processing_started_at = datetime('now')
+       WHERE id = ?
+         AND status IN ('pending', 'snoozed')
+         AND (due_at IS NULL OR due_at <= datetime('now'))
+         AND (snoozed_until IS NULL OR snoozed_until <= datetime('now'))`,
+    )
+    .run(id);
+  return result.changes > 0;
+}
+
+export function markFollowUpEnqueued(
+  id: string,
+  promptRunId: string,
+): boolean {
+  const result = getDb()
+    .prepare(
+      `UPDATE follow_ups
+       SET status = 'enqueued',
+           prompt_run_id = ?,
+           processing_started_at = NULL
+       WHERE id = ? AND status = 'processing'`,
+    )
+    .run(promptRunId, id);
+  return result.changes > 0;
+}
+
+export function releaseFollowUpProcessing(id: string): void {
+  getDb()
+    .prepare(
+      `UPDATE follow_ups
+       SET status = 'pending', processing_started_at = NULL
+       WHERE id = ? AND status = 'processing'`,
+    )
+    .run(id);
+}
+
+export function updateFollowUpStatus(
+  id: string,
+  status: FollowUpStatus,
+  extra?: {
+    sent_at?: string | null;
+    draft_email_id?: string | null;
+    due_at?: string | null;
+    snoozed_until?: string | null;
+  },
+): boolean {
+  const result = getDb()
+    .prepare(
+      `UPDATE follow_ups
+       SET status = ?,
+           sent_at = COALESCE(?, sent_at),
+           draft_email_id = COALESCE(?, draft_email_id),
+           due_at = COALESCE(?, due_at),
+           snoozed_until = COALESCE(?, snoozed_until)
+       WHERE id = ?`,
+    )
+    .run(
+      status,
+      extra?.sent_at ?? null,
+      extra?.draft_email_id ?? null,
+      extra?.due_at ?? null,
+      extra?.snoozed_until ?? null,
+      id,
+    );
+  return result.changes > 0;
+}
+
+export function listDueFollowUps(limit = 20): FollowUp[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT fu.*
+       FROM follow_ups fu
+       INNER JOIN emails e ON e.id = fu.email_id
+       INNER JOIN applications a ON a.id = fu.application_id
+       WHERE fu.status IN ('pending', 'snoozed')
+         AND fu.due_at IS NOT NULL
+         AND fu.due_at <= datetime('now')
+         AND (fu.snoozed_until IS NULL OR fu.snoozed_until <= datetime('now'))
+         AND a.status NOT IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted', 'rejected', 'withdrawn')
+         AND (
+           fu.sequence = 1
+           OR (
+             fu.sequence = 2
+             AND EXISTS (
+               SELECT 1 FROM follow_ups f1
+               WHERE f1.email_id = fu.email_id
+                 AND f1.sequence = 1
+                 AND f1.status IN ('sent', 'skipped')
+             )
+           )
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM follow_ups fx
+           WHERE fx.email_id = fu.email_id
+             AND fx.sequence < fu.sequence
+             AND fx.status NOT IN ('sent', 'skipped')
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM follow_ups fe
+           WHERE fe.email_id = fu.email_id
+             AND fe.status IN ('enqueued', 'processing')
+         )
+       ORDER BY fu.due_at ASC
+       LIMIT ?`,
+    )
+    .all(limit) as Record<string, unknown>[];
+
+  return rows.map(mapFollowUp);
+}
+
+export function countPendingFollowUps(): number {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS c FROM follow_ups
+       WHERE status IN ('pending', 'enqueued', 'snoozed', 'processing')
+         AND status != 'skipped'
+         AND (
+           status = 'enqueued'
+           OR (due_at IS NOT NULL AND due_at <= datetime('now', '+7 days'))
+         )`,
+    )
+    .get() as { c: number };
+  return row.c;
+}
+
+export function countSnoozedFollowUps(): number {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS c FROM follow_ups WHERE status = 'snoozed'`,
+    )
+    .get() as { c: number };
+  return row.c;
+}

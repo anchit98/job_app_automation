@@ -1,0 +1,276 @@
+@import "tailwindcss";
+
+/* Command Precision — LinkedIn-inspired light system (DESIGN.md) */
+:root {
+  --canvas: #f4f2ee;
+  --background: #f4f2ee;
+  --foreground: #1b1f23;
+
+  --surface: #ffffff;
+  --surface-dim: #d7dae0;
+  --surface-bright: #f7f9ff;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f1f4f9;
+  --surface-container: #ebeef3;
+  --surface-container-high: #e5e8ee;
+  --surface-container-highest: #e0e3e8;
+  --surface-variant: #e0e3e8;
+
+  --on-surface: #1b1f23;
+  --on-surface-variant: #666666;
+  --on-background: #1b1f23;
+
+  --inverse-surface: #2d3135;
+  --inverse-on-surface: #eef1f6;
+
+  --outline: #727783;
+  --outline-variant: #e0e0e0;
+  --border-hairline: #e0e0e0;
+  --border-muted: #e8e6e1;
+
+  --primary: #0a66c2;
+  --on-primary: #ffffff;
+  --primary-container: #e8f0fe;
+  --on-primary-container: #004e99;
+  --surface-tint: #005eb5;
+  --inverse-primary: #a8c8ff;
+
+  --secondary: #5e5e5c;
+  --on-secondary: #ffffff;
+  --secondary-container: #e1dfdc;
+  --on-secondary-container: #1b1c1a;
+
+  --tertiary: #a94b00;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #ffe0d1;
+  --on-tertiary-container: #331200;
+
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+
+  --success: #057642;
+  --success-container: #e6f4ea;
+  --on-success-container: #057642;
+
+  --status-waiting: #d97706;
+  --status-waiting-container: #fdf1e8;
+  --info-container: #e5edf4;
+
+  --radius-sm: 0.25rem;
+  --radius: 0.5rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+
+  --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.02), 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-surface: var(--surface);
+  --color-surface-dim: var(--surface-dim);
+  --color-surface-bright: var(--surface-bright);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-surface-variant: var(--surface-variant);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-on-background: var(--on-background);
+
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-border-hairline: var(--border-hairline);
+  --color-border-muted: var(--border-muted);
+
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-inverse-primary: var(--inverse-primary);
+
+  --color-secondary: var(--secondary);
+  --color-on-secondary: var(--on-secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+
+  --color-tertiary: var(--tertiary);
+  --color-on-tertiary: var(--on-tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary-container: var(--on-tertiary-container);
+
+  --color-error: var(--error);
+  --color-on-error: var(--on-error);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+
+  --color-success: var(--success);
+  --color-success-container: var(--success-container);
+  --color-on-success-container: var(--on-success-container);
+
+  --color-status-waiting: var(--status-waiting);
+  --color-status-waiting-container: var(--status-waiting-container);
+  --color-info-container: var(--info-container);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-full: var(--radius-full);
+
+  --spacing-rail-width: 225px;
+  --spacing-nav-height: 52px;
+  --spacing-gutter: 16px;
+  --spacing-margin-desktop: 24px;
+  --spacing-margin-mobile: 12px;
+  --spacing-compact-gap: 8px;
+  --spacing-internal-padding: 16px;
+  --spacing-content-max: 1128px;
+  --max-width-content-max: 1128px;
+
+  --font-sans: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --shadow-card: var(--shadow-card);
+}
+
+body {
+  background-color: var(--canvas);
+  color: var(--on-surface);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* LinkedIn-style structural card */
+.li-card {
+  background: var(--surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.li-card-flat {
+  background: var(--surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+}
+
+.li-page-title {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+  color: var(--on-surface);
+}
+
+.li-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--on-surface);
+}
+
+.li-meta {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--on-surface-variant);
+}
+
+.li-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.li-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--primary);
+  color: var(--on-primary);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease;
+}
+.li-btn-primary:hover {
+  background: #004182;
+}
+
+.li-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--primary);
+  border-radius: 8px;
+  padding: 7px 15px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  border: 1px solid var(--primary);
+  transition: background-color 0.15s ease;
+}
+.li-btn-secondary:hover {
+  background: rgba(10, 102, 194, 0.08);
+}
+
+.li-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--on-surface);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.li-btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* Material Symbols */
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  font-size: 20px;
+  line-height: 1;
+}
+.material-symbols-outlined.filled {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c4c4c4;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}

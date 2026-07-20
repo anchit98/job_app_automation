@@ -1,0 +1,49 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { runEnqueueDueFollowUps } from "@/app/actions/follow-ups";
+
+export function EnqueueFollowUpsButton() {
+  const router = useRouter();
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function enqueue() {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await runEnqueueDueFollowUps();
+      const parts = [
+        `${result.enqueued} of ${result.processed} due follow-up(s) enqueued`,
+      ];
+      if (result.errors.length > 0) {
+        parts.push(`${result.errors.length} skipped or failed`);
+      }
+      setMessage(parts.join(" · "));
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="li-card p-4 space-y-2">
+      <p className="li-meta">
+        Due follow-ups are normally enqueued by a daily cron (
+        <code className="text-[11px]">POST /api/cron/enqueue-follow-up-prompts</code>
+        ). Run manually if your machine was off.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={enqueue}
+          className="li-btn-secondary text-[13px] disabled:opacity-50"
+        >
+          {pending ? "Enqueuing…" : "Enqueue due follow-ups"}
+        </button>
+        {message && (
+          <span className="li-meta">{message}</span>
+        )}
+      </div>
+    </div>
+  );
+}

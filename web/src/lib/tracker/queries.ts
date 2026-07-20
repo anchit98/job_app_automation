@@ -1,0 +1,384 @@
+import { getDb } from "@/lib/db";
+import type { Application, PromptRun } from "@/lib/db/types";
+import { isApplicationStatus } from "@/lib/applications/status";
+import {
+  buildFtsMatchQuery,
+  type ApplicationListItem,
+  type ApplicationSearchFilters,
+  type ApplicationSearchResult,
+  DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE,
+} from "@/lib/tracker/search";
+import {
+  labelForAuditAction,
+  labelForPromptKind,
+  statusChangeDetail,
+  type TimelineEvent,
+} from "@/lib/tracker/timeline";
+import { isLikelyDuplicate } from "@/lib/tracker/duplicates";
+import type { DashboardMetricsRow } from "@/lib/tracker/metrics";
+
+function mapApplicationRow(row: Record<string, unknown>): Application {
+  return {
+    id: row.id as string,
+    company: (row.company as string | null) ?? null,
+    role: (row.role as string | null) ?? null,
+    job_url: (row.job_url as string | null) ?? null,
+    jd_raw: row.jd_raw as string,
+    jd_parsed: row.jd_parsed
+      ? (JSON.parse(row.jd_parsed as string) as Application["jd_parsed"])
+      : null,
+    status: row.status as Application["status"],
+    notes: (row.notes as string | null) ?? null,
+    notes_html: (row.notes_html as string | null) ?? null,
+    language: (row.language as string | null) ?? null,
+    company_blurb: (row.company_blurb as string | null) ?? null,
+    email_instructions: (row.email_instructions as string | null) ?? null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
+function mapPromptRun(row: Record<string, unknown>): PromptRun {
+  return {
+    id: row.id as string,
+    kind: row.kind as PromptRun["kind"],
+    prompt_text: row.prompt_text as string,
+    target_entity: (row.target_entity as string | null) ?? null,
+    target_entity_id: (row.target_entity_id as string | null) ?? null,
+    status: row.status as PromptRun["status"],
+    exported_at: row.exported_at as string,
+    completed_at: (row.completed_at as string | null) ?? null,
+    raw_response: (row.raw_response as string | null) ?? null,
+    parsed_response: row.parsed_response
+      ? (JSON.parse(row.parsed_response as string) as Record<string, unknown>)
+      : null,
+    validation_errors: row.validation_errors
+      ? (JSON.parse(row.validation_errors as string) as unknown[])
+      : null,
+  };
+}
+
+export function searchApplications(
+  filters: ApplicationSearchFilters,
+): ApplicationSearchResult {
+  const page = filters.page ?? 1;
+  const pageSize = Math.min(
+    Math.max(filters.pageSize ?? DEFAULT_PAGE_SIZE, 1),
+    MAX_PAGE_SIZE,
+  );
+  const offset = (page - 1) * pageSize;
+
+  const conditions: string[] = ["1 = 1"];
+  const params: unknown[] = [];
+
+  const ftsQuery = filters.q ? buildFtsMatchQuery(filters.q) : "";
+  if (ftsQuery) {
+    conditions.push(
+      `a.id IN (SELECT application_id FROM applications_fts WHERE applications_fts MATCH ?)`,
+    );
+    params.push(ftsQuery);
+  }
+
+  if (filters.status === "interview_stage") {
+    conditions.push(
+      `a.status IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted')`,
+    );
+  } else if (filters.status && isApplicationStatus(filters.status)) {
+    conditions.push(`a.status = ?`);
+    params.push(filters.status);
+  }
+
+  if (filters.company?.trim()) {
+    conditions.push(`LOWER(COALESCE(a.company, '')) LIKE ?`);
+    params.push(`%${filters.company.trim().toLowerCase()}%`);
+  }
+
+  if (filters.role?.trim()) {
+    conditions.push(`LOWER(COALESCE(a.role, '')) LIKE ?`);
+    params.push(`%${filters.role.trim().toLowerCase()}%`);
+  }
+
+  if (filters.contact?.trim()) {
+    conditions.push(
+      `EXISTS (
+        SELECT 1 FROM contacts c
+        WHERE c.application_id = a.id
+          AND (
+            LOWER(COALESCE(c.name, '')) LIKE ?
+            OR LOWER(COALESCE(c.email, '')) LIKE ?
+          )
+      )`,
+    );
+    const term = `%${filters.contact.trim().toLowerCase()}%`;
+    params.push(term, term);
+  }
+
+  if (filters.dateFrom) {
+    conditions.push(`date(a.created_at) >= date(?)`);
+    params.push(filters.dateFrom);
+  }
+
+  if (filters.dateTo) {
+    conditions.push(`date(a.created_at) <= date(?)`);
+    params.push(filters.dateTo);
+  }
+
+  const where = conditions.join(" AND ");
+
+  const countRow = getDb()
+    .prepare(`SELECT COUNT(*) AS total FROM applications a WHERE ${where}`)
+    .get(...params) as { total: number };
+
+  const rows = getDb()
+    .prepare(
+      `SELECT
+         a.*,
+         (SELECT COUNT(*) FROM resume_versions rv WHERE rv.application_id = a.id) AS resume_version_count,
+         (SELECT MAX(rv.version) FROM resume_versions rv
+          WHERE rv.application_id = a.id AND rv.status = 'ready') AS latest_resume_version
+       FROM applications a
+       WHERE ${where}
+       ORDER BY a.updated_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(...params, pageSize, offset) as Record<string, unknown>[];
+
+  const items: ApplicationListItem[] = rows.map((row) => {
+    const resumeCount = Number(row.resume_version_count ?? 0);
+    const status = row.status as ApplicationListItem["status"];
+    return {
+      id: row.id as string,
+      company: (row.company as string | null) ?? null,
+      role: (row.role as string | null) ?? null,
+      status,
+      jd_parsed: Boolean(row.jd_parsed),
+      created_at: row.created_at as string,
+      updated_at: row.updated_at as string,
+      resume_version_count: resumeCount,
+      latest_resume_version:
+        row.latest_resume_version != null
+          ? Number(row.latest_resume_version)
+          : null,
+      is_incomplete: status === "applied" && resumeCount === 0,
+    };
+  });
+
+  const total = countRow.total;
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+export function getDashboardMetricsRow(): DashboardMetricsRow {
+  return getDb()
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM applications) AS total,
+         (SELECT COUNT(*) FROM applications
+          WHERE created_at >= datetime('now', '-7 days')) AS this_week,
+         (SELECT COUNT(*) FROM applications
+          WHERE status IN (
+            'applied', 'email_sent', 'hr_replied', 'interview_scheduled',
+            'offer', 'accepted', 'rejected', 'withdrawn'
+          )) AS applied_denominator,
+         (SELECT COUNT(*) FROM applications
+          WHERE status IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted')) AS responded,
+         (SELECT COUNT(*) FROM applications
+          WHERE status IN ('interview_scheduled', 'offer', 'accepted')) AS interviewed,
+         (SELECT COUNT(*) FROM applications
+          WHERE status IN ('offer', 'accepted')) AS offered,
+         (SELECT COUNT(DISTINCT company) FROM applications
+          WHERE status IN ('email_sent', 'hr_replied', 'interview_scheduled', 'offer', 'accepted')
+            AND company IS NOT NULL AND TRIM(company) != '') AS companies_contacted,
+         (SELECT COUNT(*) FROM emails WHERE draft_status = 'created') AS emails_sent,
+         (SELECT COUNT(*) FROM prompt_runs
+          WHERE status = 'pending' AND prompt_text != '') AS pending_prompts,
+         (SELECT COUNT(*) FROM follow_ups
+          WHERE status IN ('pending', 'enqueued', 'processing', 'snoozed')
+            AND status != 'skipped') AS pending_follow_ups,
+         (SELECT COUNT(*) FROM follow_ups WHERE status = 'snoozed') AS snoozed_follow_ups,
+         (SELECT COUNT(*) FROM applications a
+          WHERE a.status = 'applied'
+            AND NOT EXISTS (
+              SELECT 1 FROM resume_versions rv WHERE rv.application_id = a.id
+            )) AS incomplete_applied`,
+    )
+    .get() as DashboardMetricsRow;
+}
+
+export interface PendingPromptRunItem extends PromptRun {
+  application_id: string | null;
+  application_company: string | null;
+  application_role: string | null;
+}
+
+export function listPendingPromptRuns(): PendingPromptRunItem[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT pr.*,
+         COALESCE(a.company, a2.company) AS application_company,
+         COALESCE(a.role, a2.role) AS application_role,
+         COALESCE(
+           CASE WHEN pr.target_entity = 'applications' THEN pr.target_entity_id END,
+           fu.application_id
+         ) AS application_id
+       FROM prompt_runs pr
+       LEFT JOIN applications a
+         ON pr.target_entity = 'applications' AND pr.target_entity_id = a.id
+       LEFT JOIN follow_ups fu
+         ON pr.target_entity = 'follow_ups' AND pr.target_entity_id = fu.id
+       LEFT JOIN applications a2 ON fu.application_id = a2.id
+       WHERE pr.status = 'pending'
+         AND TRIM(pr.prompt_text) != ''
+       ORDER BY
+         CASE pr.kind
+           WHEN 'follow_up' THEN 1
+           WHEN 'cold_email' THEN 2
+           WHEN 'email_discovery' THEN 3
+           WHEN 'resume' THEN 4
+           WHEN 'cover_letter' THEN 5
+           WHEN 'jd_parse' THEN 6
+           ELSE 7
+         END,
+         pr.exported_at ASC`,
+    )
+    .all() as Record<string, unknown>[];
+
+  return rows.map((row) => ({
+    ...mapPromptRun(row),
+    application_id: (row.application_id as string | null) ?? null,
+    application_company: (row.application_company as string | null) ?? null,
+    application_role: (row.application_role as string | null) ?? null,
+  }));
+}
+
+export function listApplicationTimeline(
+  applicationId: string,
+): TimelineEvent[] {
+  const auditRows = getDb()
+    .prepare(
+      `SELECT id, action, payload, created_at
+       FROM audit_log
+       WHERE (entity = 'applications' AND entity_id = ?)
+          OR json_extract(payload, '$.application_id') = ?
+       ORDER BY created_at ASC`,
+    )
+    .all(applicationId, applicationId) as Record<string, unknown>[];
+
+  const promptRows = getDb()
+    .prepare(
+      `SELECT id, kind, status, exported_at, completed_at
+       FROM prompt_runs
+       WHERE target_entity_id = ?
+       ORDER BY exported_at ASC`,
+    )
+    .all(applicationId) as Record<string, unknown>[];
+
+  const events: TimelineEvent[] = [];
+
+  for (const row of auditRows) {
+    const payload = row.payload
+      ? (JSON.parse(row.payload as string) as Record<string, unknown>)
+      : null;
+    events.push({
+      id: `audit-${row.id as string}`,
+      kind: "audit",
+      action: row.action as string,
+      label: labelForAuditAction(row.action as string),
+      detail:
+        row.action === "application.status_changed"
+          ? statusChangeDetail(payload)
+          : null,
+      created_at: row.created_at as string,
+    });
+  }
+
+  for (const row of promptRows) {
+    const exportedAt = row.exported_at as string;
+    events.push({
+      id: `prompt-export-${row.id as string}`,
+      kind: "prompt",
+      action: "prompt.exported",
+      label: labelForPromptKind(row.kind as string, "pending"),
+      detail: null,
+      created_at: exportedAt,
+      prompt_run_id: row.id as string,
+      prompt_kind: row.kind as PromptRun["kind"],
+    });
+
+    if (row.completed_at) {
+      events.push({
+        id: `prompt-done-${row.id as string}`,
+        kind: "prompt",
+        action: "prompt.completed",
+        label: labelForPromptKind(row.kind as string, "completed"),
+        detail: null,
+        created_at: row.completed_at as string,
+        prompt_run_id: row.id as string,
+        prompt_kind: row.kind as PromptRun["kind"],
+      });
+    } else if (row.status === "abandoned") {
+      events.push({
+        id: `prompt-abandon-${row.id as string}`,
+        kind: "prompt",
+        action: "prompt.abandoned",
+        label: labelForPromptKind(row.kind as string, "abandoned"),
+        detail: null,
+        created_at: exportedAt,
+        prompt_run_id: row.id as string,
+        prompt_kind: row.kind as PromptRun["kind"],
+      });
+    }
+  }
+
+  events.sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+
+  return events;
+}
+
+export function findSimilarApplications(
+  company: string | null | undefined,
+  role: string | null | undefined,
+  excludeId?: string,
+): Application[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM applications
+       WHERE (? IS NULL OR id != ?)
+       ORDER BY updated_at DESC
+       LIMIT 50`,
+    )
+    .all(excludeId ?? null, excludeId ?? null) as Record<string, unknown>[];
+
+  const candidate = { company, role };
+  return rows
+    .map(mapApplicationRow)
+    .filter((app) => isLikelyDuplicate(candidate, app))
+    .slice(0, 5);
+}
+
+export function updateApplicationNotesRow(
+  id: string,
+  notes: string | null,
+  notesHtml: string | null,
+): boolean {
+  const result = getDb()
+    .prepare(`UPDATE applications SET notes = ?, notes_html = ? WHERE id = ?`)
+    .run(notes, notesHtml, id);
+  return result.changes > 0;
+}
+
+export function deleteApplicationRow(id: string): boolean {
+  const result = getDb()
+    .prepare(`DELETE FROM applications WHERE id = ?`)
+    .run(id);
+  return result.changes > 0;
+}

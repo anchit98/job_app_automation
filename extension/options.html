@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>JobApp Bridge Options</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 520px;
+        margin: 40px auto;
+        padding: 0 16px;
+        color: #111;
+      }
+      label { display: block; font-weight: 600; margin-top: 16px; }
+      input { width: 100%; padding: 8px; margin-top: 6px; box-sizing: border-box; }
+      button {
+        margin-top: 20px;
+        padding: 10px 16px;
+        border: 0;
+        border-radius: 999px;
+        background: #111;
+        color: #fff;
+        cursor: pointer;
+      }
+      .hint { color: #555; font-size: 13px; margin-top: 8px; }
+      #status { margin-top: 12px; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h1>JobApp Bridge</h1>
+    <p class="hint">
+      Generate a token in the app under Settings, then paste it here. App URL is usually
+      http://localhost:3000 while developing.
+    </p>
+    <label>
+      App URL
+      <input id="appUrl" type="url" placeholder="http://localhost:3000" />
+    </label>
+    <label>
+      Extension token
+      <input id="token" type="password" placeholder="jab_…" />
+    </label>
+    <label>
+      <input id="enabled" type="checkbox" checked /> Enabled
+    </label>
+    <button id="save" type="button">Save</button>
+    <div id="status"></div>
+    <script src="options.js"></script>
+  </body>
+</html>

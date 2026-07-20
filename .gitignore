@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+web/node_modules/
+
+# Next.js
+web/.next/
+web/out/
+web/build/
+
+# Env & secrets (never commit)
+.env
+.env.*
+!.env.example
+!**/.env.example
+web/.env.local
+web/.env*.local
+*.pem
+
+# Local SQLite / app data
+web/data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Vercel / misc
+.vercel/
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+web/next-env.d.ts
+
+# OS / IDE
+Thumbs.db
+.idea/
+.vscode/
+*.swp

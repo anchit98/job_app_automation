@@ -1,0 +1,85 @@
+{
+  "headline": "Product Manager | AI & Automation | 0-to-1 Products",
+  "contact_line": "Bengaluru, India, +91-99109-80793, Email: jobsforanchit.boruah@gmail.com",
+  "links_line": "LinkedIn: linkedin.com/in/anchitboruah, GitHub: github.com/anchit98, Portfolio: anchit-boruah-online-portfolio.vercel.app",
+  "experience": [
+    {
+      "company": "WPP Media",
+      "title": "Senior Business Analyst (Product Operations)",
+      "location": "Bengaluru, India",
+      "start_date": "Mar 2024",
+      "end_date": "Present",
+      "bullets": [
+        "Supervised product discovery for 250+ internal automation initiatives using voice-of-the-customer signals and data-driven prioritizations resulting in 30% FTE, 33,000+ hours & ~INR 10 Cr+ savings with 88%+ stakeholder alignment.",
+        "Spearheaded the revamp of the automation request pipeline by integrating LLM-generated BRDs/SOWs, auto discovery-calls setup, auto-status updates that reduced intake-to-handoff time by 70%, achieving 100% acceptance across the organization.",
+        "Tracked success KPIs across multiple delivered products, overall achieving 80% adoption, 90% retention, 8-10% churn, 88% CSAT, while simultaneously monitoring active users, usage rates, time spent, task completions, issues raised per product, etc.",
+        "Owned Agile sprint planning, capacity forecasting and delivery tracking for a team of 18, improving utilization by 30% using Wrike planning."
+      ]
+    },
+    {
+      "company": "Annalect India (Omnicom Group)",
+      "title": "Business Analyst",
+      "location": "Bengaluru, India",
+      "start_date": "Apr 2022",
+      "end_date": "Mar 2024",
+      "bullets": [
+        "Managed product strategy and execution of multiple AI automations saving ~INR 50 Cr+ and 176,000+ hours overall.",
+        "Directed manual tracking to Jira migration, boosting operational and delivery efficiency by 40% compared to earlier.",
+        "Introduced RTM & quality-first frameworks leading to 70% fewer defects, bug-free releases of products worth ~INR 7 Cr+.",
+        "Suggested UI/UX modifications across 3 major products (worth ~INR 4 Cr+), improving usability and end-user adoption."
+      ]
+    },
+    {
+      "company": "Servetel Communications",
+      "title": "Sales Analyst",
+      "location": "Gurugram, India",
+      "start_date": "Jan 2020",
+      "end_date": "Apr 2022",
+      "bullets": [
+        "Analyzed user behavior, campaign performance, and industry trend data to identify optimization opportunities across marketing channels. Recommended reallocation of ~INR 2 Cr+ in marketing spend, improving budget efficiency and aligning investments with high-performing audience segments and campaigns.",
+        "Conducted market and competitor research to forecast FY22–23 market trends and identify growth opportunities. Delivered strategic recommendations that informed business decisions and contributed to a 230% increase in sales within 6 months."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Groww Review Analyzer AI Agent",
+      "subtitle": "Website Link | Cursor, Google Stitch, MCP (Gmail, Google Docs), Groq LLM API, GitHub Actions",
+      "website_url": "https://groww-review-advisory.vercel.app/",
+      "bullets": [
+        "Built an AI-powered Voice of Customer agent that aggregates and analyzes weekly App Store and Play Store reviews against a rolling 3-month corpus, generating actionable sentiment insights, prioritizing user pain points, and leadership-ready reports via Google Docs and Gmail drafts, eliminating manual analysis and enabling scalable product decision-making."
+      ]
+    },
+    {
+      "name": "RAG Chatbot",
+      "subtitle": "Website Link | Cursor, bge-small-en, ChromaDB, Groq LLM API, Google Stitch, GitHub Actions",
+      "website_url": "https://growwfundgenai.vercel.app/",
+      "bullets": [
+        "Built an LLM-powered mutual fund Q&A chatbot to address fragmented access to fund information by automating data scraping, parsing, embedding generation, and vector database storage. Implemented a RAG architecture that retrieves relevant fund data and feeds it to a Groq LLM, enabling fast, citation-backed, contextually accurate responses at scale."
+      ]
+    },
+    {
+      "name": "Meta Campaign Activation (at WPP Media)",
+      "subtitle": "Product Discovery & Roadmapping, Prioritization, Stakeholder Management",
+      "bullets": [
+        "Led the end-to-end automation of Meta campaign activation for India's implementation team to eliminate costly manual-entry errors, delivering a zero-touch setup workflow through a phased product roadmap that navigated high ambiguity. The solution achieved 35% FTE savings, 86% CSAT, and ~INR 1.5 Cr+ in annual departmental savings."
+      ]
+    }
+  ],
+  "skills": [
+    "Product Management: Product Discovery, Product Strategy, Product Roadmap, PRD, Cross-Functional Leadership, Stakeholder Management, Agile/Scrum, GTM, Voice of the Customer",
+    "Product Analytics & Growth: KPI Ownership, A/B Testing, Funnel Optimization, Retention, Churn, CSAT",
+    "AI & Automation: LLM Integration, RAG, Agentic AI, MCP Integrations, Process Automation",
+    "Data & Build: Power BI, Cursor, Google Antigravity, Render, Vercel, Google Stitch, SQL, Figma, Miro, Whimsical, Jira, Wrike"
+  ],
+  "education": [
+    {
+      "institution_line": "National Public School, Guwahati, HSSLC, Science Stream, Grade - 94% (top 5%)",
+      "dates": "Apr 2014 - Apr 2016"
+    },
+    {
+      "institution_line": "University of Petroleum & Energy Studies, Dehradun, B.Tech, Petroleum Engineering",
+      "dates": "Jul 2016 - Jul 2020"
+    }
+  ]
+}
