@@ -85,6 +85,55 @@ export async function updatePipelineRun(
   return await getPipelineRunById(id);
 }
 
+/**
+ * Atomically claim a pending pipeline stage before exporting a ChatGPT prompt.
+ * Only one concurrent caller (UI poll vs paste-back on separate Vercel isolates)
+ * wins — losers get null and should reuse the winner's awaiting state.
+ */
+export async function claimPipelineStageStart(
+  id: string,
+  stageId: PipelineStageId,
+): Promise<PipelineRunRecord | null> {
+  const existing = await getPipelineRunById(id);
+  if (!existing) return null;
+
+  const stage = existing.stages.find((s) => s.id === stageId);
+  if (!stage || stage.status !== "pending") return null;
+
+  const stages = existing.stages.map((s) =>
+    s.id === stageId
+      ? {
+          ...s,
+          status: "running" as const,
+          error: null,
+          detail: "Starting…",
+        }
+      : s,
+  );
+
+  const row = (await dbGet(
+    `UPDATE pipeline_runs
+       SET status = 'running',
+           current_stage = ?,
+           stages_json = ?,
+           error = NULL,
+           updated_at = (NOW() AT TIME ZONE 'utc')::text
+     WHERE id = ?
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(stages_json::jsonb) AS e
+         WHERE e->>'id' = ? AND e->>'status' = 'pending'
+       )
+     RETURNING *`,
+    stageId,
+    JSON.stringify(stages),
+    id,
+    stageId,
+  )) as Record<string, unknown> | undefined;
+
+  return row ? mapPipelineRow(row) : null;
+}
+
 export async function upsertPendingExtensionRun(input: {
   prompt_run_id: string;
   pipeline_run_id: string | null;

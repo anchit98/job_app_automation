@@ -20,6 +20,7 @@ import {
   submitResumeResponse,
 } from "@/app/actions/resume";
 import {
+  claimPipelineStageStart,
   completePendingExtensionRun,
   getPipelineRunById,
   insertPipelineRun,
@@ -618,14 +619,54 @@ async function markAwaitingChatGpt(
   };
 }
 
+/**
+ * When another isolate already claimed this stage, wait briefly for it to
+ * finish exporting and reach awaiting_chatgpt — do not export a second prompt.
+ */
+async function awaitExistingChatGptStage(
+  pipelineId: string,
+  stageId: PipelineStageId,
+  fallback: PipelineRunRecord,
+): Promise<AdvanceResult> {
+  for (let i = 0; i < 8; i++) {
+    const fresh = await getPipelineRunById(pipelineId);
+    if (!fresh) break;
+    if (fresh.status === "awaiting_chatgpt" && fresh.current_stage === stageId) {
+      const stage = findStage(fresh, stageId);
+      if (stage?.prompt_run_id && stage.prompt_text) {
+        return {
+          ok: true as const,
+          pipeline: fresh,
+          awaiting_chatgpt: true as const,
+          prompt_run_id: stage.prompt_run_id,
+          prompt_text: stage.prompt_text,
+          chatgpt_url: stage.chatgpt_url ?? "https://chatgpt.com/",
+          repair_prompt: stage.repair_prompt ?? null,
+        };
+      }
+    }
+    // Stage already finished (winner raced ahead) — let caller re-advance.
+    if (findStage(fresh, stageId)?.status === "completed") {
+      return advancePipelineInner(pipelineId);
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  const latest = (await getPipelineRunById(pipelineId)) ?? fallback;
+  return { ok: true as const, pipeline: latest };
+}
+
 async function startJdParseStage(pipelineId: string, run: PipelineRunRecord) {
-  const exported = await exportJdParsePrompt(run.application_id);
-  return markAwaitingChatGpt(pipelineId, run, "jd_parse", exported);
+  const claimed = await claimPipelineStageStart(pipelineId, "jd_parse");
+  if (!claimed) return awaitExistingChatGptStage(pipelineId, "jd_parse", run);
+  const exported = await exportJdParsePrompt(claimed.application_id);
+  return markAwaitingChatGpt(pipelineId, claimed, "jd_parse", exported);
 }
 
 async function startResumeStage(pipelineId: string, run: PipelineRunRecord) {
-  const exported = await exportResumePrompt(run.application_id);
-  return markAwaitingChatGpt(pipelineId, run, "resume", {
+  const claimed = await claimPipelineStageStart(pipelineId, "resume");
+  if (!claimed) return awaitExistingChatGptStage(pipelineId, "resume", run);
+  const exported = await exportResumePrompt(claimed.application_id);
+  return markAwaitingChatGpt(pipelineId, claimed, "resume", {
     prompt_run_id: exported.prompt_run_id,
     prompt_text: exported.prompt_text,
     chatgpt_url: exported.chatgpt_url,
@@ -633,8 +674,12 @@ async function startResumeStage(pipelineId: string, run: PipelineRunRecord) {
 }
 
 async function startCoverLetterStage(pipelineId: string, run: PipelineRunRecord) {
-  const exported = await exportCoverLetterPrompt(run.application_id);
-  return markAwaitingChatGpt(pipelineId, run, "cover_letter", {
+  const claimed = await claimPipelineStageStart(pipelineId, "cover_letter");
+  if (!claimed) {
+    return awaitExistingChatGptStage(pipelineId, "cover_letter", run);
+  }
+  const exported = await exportCoverLetterPrompt(claimed.application_id);
+  return markAwaitingChatGpt(pipelineId, claimed, "cover_letter", {
     prompt_run_id: exported.prompt_run_id,
     prompt_text: exported.prompt_text,
     chatgpt_url: exported.chatgpt_url,
@@ -715,8 +760,13 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
     );
   }
 
-  const application = await getApplicationById(run.application_id);
-  const exported = await exportColdEmailsPrompt(run.application_id, {
+  const claimed = await claimPipelineStageStart(pipelineId, "cold_email");
+  if (!claimed) {
+    return awaitExistingChatGptStage(pipelineId, "cold_email", run);
+  }
+
+  const application = await getApplicationById(claimed.application_id);
+  const exported = await exportColdEmailsPrompt(claimed.application_id, {
     sharedContext: application?.email_instructions ?? undefined,
   });
   const first = exported.primary;
@@ -725,7 +775,7 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
 
   return markAwaitingChatGpt(
     pipelineId,
-    run,
+    claimed,
     "cold_email",
     {
       prompt_run_id: first.prompt_run_id,
