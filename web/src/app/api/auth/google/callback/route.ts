@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { writeAuditLog } from "@/lib/audit";
+import { requireUser } from "@/lib/auth/user";
 import { env } from "@/lib/env";
 import { exchangeCodeForTokens } from "@/lib/google/oauth";
 import { saveGoogleTokens } from "@/lib/google/tokens";
@@ -21,6 +22,14 @@ export async function GET(request: Request) {
   if (!code || !state) {
     return NextResponse.redirect(
       `${env.appUrl()}/dashboard?google_error=missing_code`,
+    );
+  }
+
+  try {
+    await requireUser();
+  } catch {
+    return NextResponse.redirect(
+      `${env.appUrl()}/login?next=${encodeURIComponent("/settings")}`,
     );
   }
 
@@ -47,7 +56,7 @@ export async function GET(request: Request) {
       expiresAt,
     );
 
-    await writeAuditLog("google.connected", "google_tokens", "local");
+    await writeAuditLog("google.connected", "google_tokens", "session");
 
     return NextResponse.redirect(
       `${env.appUrl()}/dashboard?google_connected=1`,

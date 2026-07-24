@@ -24,7 +24,16 @@ import type {
   EmailSource,
   VerificationStatus,
 } from "@/lib/db/types";
-import { dbGet, dbAll, dbRun, getSql, parseJson, SINGLETON_ID } from "@/lib/db/index";
+import { dbGet, dbAll, dbRun, getSql, parseJson } from "@/lib/db/index";
+import { getRequestUserId } from "@/lib/auth/request-user";
+import { requireUser } from "@/lib/auth/user";
+
+async function currentUserId(explicit?: string): Promise<string> {
+  if (explicit) return explicit;
+  const fromAls = getRequestUserId();
+  if (fromAls) return fromAls;
+  return (await requireUser()).id;
+}
 
 function mapProfile(row: Record<string, unknown>): Profile {
   return {
@@ -38,6 +47,9 @@ function mapProfile(row: Record<string, unknown>): Profile {
     linkedin_url: (row.linkedin_url as string | null) ?? null,
     github_url: (row.github_url as string | null) ?? null,
     portfolio_url: (row.portfolio_url as string | null) ?? null,
+    setup_console_done_at: (row.setup_console_done_at as string | null) ?? null,
+    setup_guide_collapsed: Boolean(row.setup_guide_collapsed),
+    has_avatar: Boolean(row.avatar_data),
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -94,8 +106,9 @@ function mapGoogleTokens(row: Record<string, unknown>): GoogleTokensRow {
   };
 }
 
-export async function getProfileRow(): Promise<Profile | null> {
-  const row = await dbGet("SELECT * FROM profiles WHERE id = ?", SINGLETON_ID) as Record<string, unknown> | undefined;
+export async function getProfileRow(userId?: string): Promise<Profile | null> {
+  const uid = await currentUserId(userId);
+  const row = await dbGet("SELECT * FROM profiles WHERE user_id = ?", uid) as Record<string, unknown> | undefined;
   return row ? mapProfile(row) : null;
 }
 
@@ -109,8 +122,10 @@ export async function upsertProfileRow(input: {
   linkedin_url?: string | null;
   github_url?: string | null;
   portfolio_url?: string | null;
+  userId?: string;
 }) {
-  const existing = await getProfileRow();
+  const uid = await currentUserId(input.userId);
+  const existing = await getProfileRow(uid);
   const phone =
     input.phone !== undefined ? input.phone : (existing?.phone ?? null);
   const linkedin_url =
@@ -127,11 +142,11 @@ export async function upsertProfileRow(input: {
       : (existing?.portfolio_url ?? null);
 
   await dbRun(`INSERT INTO profiles (
-         id, full_name, headline, location, timezone, preferred_tone,
+         user_id, full_name, headline, location, timezone, preferred_tone,
          phone, linkedin_url, github_url, portfolio_url
        )
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET
+       ON CONFLICT (user_id) DO UPDATE SET
          full_name = excluded.full_name,
          headline = excluded.headline,
          location = excluded.location,
@@ -140,7 +155,7 @@ export async function upsertProfileRow(input: {
          phone = excluded.phone,
          linkedin_url = excluded.linkedin_url,
          github_url = excluded.github_url,
-         portfolio_url = excluded.portfolio_url`, SINGLETON_ID,
+         portfolio_url = excluded.portfolio_url`, uid,
       input.full_name,
       input.headline ?? null,
       input.location ?? null,
@@ -152,10 +167,62 @@ export async function upsertProfileRow(input: {
       portfolio_url,);
 }
 
-export async function setDriveRootId(driveRootId: string) {
-  await dbRun(`INSERT INTO profiles (id, drive_root_id)
+export async function setDriveRootId(driveRootId: string, userId?: string) {
+  const uid = await currentUserId(userId);
+  await dbRun(`INSERT INTO profiles (user_id, drive_root_id)
        VALUES (?, ?)
-       ON CONFLICT (id) DO UPDATE SET drive_root_id = excluded.drive_root_id`, SINGLETON_ID, driveRootId);
+       ON CONFLICT (user_id) DO UPDATE SET drive_root_id = excluded.drive_root_id`, uid, driveRootId);
+}
+
+export async function getProfileAvatarRow(userId?: string): Promise<{
+  data: string;
+  mime: string;
+  updated_at: string;
+} | null> {
+  const uid = await currentUserId(userId);
+  const row = (await dbGet(
+    `SELECT avatar_data, avatar_mime, updated_at
+     FROM profiles
+     WHERE user_id = ? AND avatar_data IS NOT NULL AND avatar_mime IS NOT NULL`,
+    uid,
+  )) as Record<string, unknown> | undefined;
+  if (!row?.avatar_data || !row?.avatar_mime) return null;
+  return {
+    data: row.avatar_data as string,
+    mime: row.avatar_mime as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
+export async function setProfileAvatarRow(input: {
+  data: string;
+  mime: string;
+  userId?: string;
+}) {
+  const uid = await currentUserId(input.userId);
+  await dbRun(
+    `INSERT INTO profiles (user_id, avatar_data, avatar_mime, updated_at)
+     VALUES (?, ?, ?, ((NOW() AT TIME ZONE 'utc')::text))
+     ON CONFLICT (user_id) DO UPDATE SET
+       avatar_data = excluded.avatar_data,
+       avatar_mime = excluded.avatar_mime,
+       updated_at = excluded.updated_at`,
+    uid,
+    input.data,
+    input.mime,
+  );
+}
+
+export async function clearProfileAvatarRow(userId?: string) {
+  const uid = await currentUserId(userId);
+  await dbRun(
+    `UPDATE profiles
+     SET avatar_data = NULL,
+         avatar_mime = NULL,
+         updated_at = ((NOW() AT TIME ZONE 'utc')::text)
+     WHERE user_id = ?`,
+    uid,
+  );
 }
 
 function mapMasterCoverLetter(row: Record<string, unknown>): MasterCoverLetter {
@@ -168,8 +235,9 @@ function mapMasterCoverLetter(row: Record<string, unknown>): MasterCoverLetter {
   };
 }
 
-export async function getMasterCoverLetterRow(): Promise<MasterCoverLetter | null> {
-  const row = await dbGet("SELECT * FROM master_cover_letter WHERE id = ?", SINGLETON_ID) as Record<string, unknown> | undefined;
+export async function getMasterCoverLetterRow(userId?: string): Promise<MasterCoverLetter | null> {
+  const uid = await currentUserId(userId);
+  const row = await dbGet("SELECT * FROM master_cover_letter WHERE user_id = ?", uid) as Record<string, unknown> | undefined;
   return row ? mapMasterCoverLetter(row) : null;
 }
 
@@ -177,8 +245,10 @@ export async function upsertMasterCoverLetterRow(input: {
   doc_id?: string | null;
   doc_layout?: Record<string, unknown> | null;
   doc_synced_at?: string | null;
+  userId?: string;
 }) {
-  const existing = await getMasterCoverLetterRow();
+  const uid = await currentUserId(input.userId);
+  const existing = await getMasterCoverLetterRow(uid);
   const doc_id = input.doc_id !== undefined ? input.doc_id : existing?.doc_id ?? null;
   const doc_layout =
     input.doc_layout !== undefined ? input.doc_layout : existing?.doc_layout ?? null;
@@ -187,19 +257,20 @@ export async function upsertMasterCoverLetterRow(input: {
       ? input.doc_synced_at
       : existing?.doc_synced_at ?? null;
 
-  await dbRun(`INSERT INTO master_cover_letter (id, doc_id, doc_layout, doc_synced_at)
+  await dbRun(`INSERT INTO master_cover_letter (user_id, doc_id, doc_layout, doc_synced_at)
        VALUES (?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET
+       ON CONFLICT (user_id) DO UPDATE SET
          doc_id = excluded.doc_id,
          doc_layout = excluded.doc_layout,
-         doc_synced_at = excluded.doc_synced_at`, SINGLETON_ID,
+         doc_synced_at = excluded.doc_synced_at`, uid,
       doc_id,
       doc_layout ? JSON.stringify(doc_layout) : null,
       doc_synced_at,);
 }
 
-export async function getMasterResumeRow(): Promise<MasterResume | null> {
-  const row = await dbGet("SELECT * FROM master_resume WHERE id = ?", SINGLETON_ID) as Record<string, unknown> | undefined;
+export async function getMasterResumeRow(userId?: string): Promise<MasterResume | null> {
+  const uid = await currentUserId(userId);
+  const row = await dbGet("SELECT * FROM master_resume WHERE user_id = ?", uid) as Record<string, unknown> | undefined;
   return row ? mapMasterResume(row) : null;
 }
 
@@ -209,8 +280,10 @@ export async function upsertMasterResumeRow(input: {
   doc_id?: string | null;
   doc_layout?: Record<string, unknown> | null;
   doc_synced_at?: string | null;
+  userId?: string;
 }) {
-  const existing = await getMasterResumeRow();
+  const uid = await currentUserId(input.userId);
+  const existing = await getMasterResumeRow(uid);
   const doc_id = input.doc_id !== undefined ? input.doc_id : existing?.doc_id ?? null;
   const doc_layout =
     input.doc_layout !== undefined ? input.doc_layout : existing?.doc_layout ?? null;
@@ -219,14 +292,14 @@ export async function upsertMasterResumeRow(input: {
       ? input.doc_synced_at
       : existing?.doc_synced_at ?? null;
 
-  await dbRun(`INSERT INTO master_resume (id, content, rules, doc_id, doc_layout, doc_synced_at)
+  await dbRun(`INSERT INTO master_resume (user_id, content, rules, doc_id, doc_layout, doc_synced_at)
        VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET
+       ON CONFLICT (user_id) DO UPDATE SET
          content = excluded.content,
          rules = excluded.rules,
          doc_id = excluded.doc_id,
          doc_layout = excluded.doc_layout,
-         doc_synced_at = excluded.doc_synced_at`, SINGLETON_ID,
+         doc_synced_at = excluded.doc_synced_at`, uid,
       JSON.stringify(input.content),
       JSON.stringify(input.rules ?? { never_fabricate: true }),
       doc_id,
@@ -245,10 +318,12 @@ export async function getActivePromptTemplate(kind: string): Promise<PromptTempl
 export async function createPromptRun(
   kind: PromptRunKind,
   target?: { entity: string; entityId: string },
+  userId?: string,
 ): Promise<string> {
   const id = randomUUID();
-  await dbRun(`INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
-       VALUES (?, ?, '', 'pending', ?, ?)`, id, kind, target?.entity ?? null, target?.entityId ?? null);
+  const uid = await currentUserId(userId);
+  await dbRun(`INSERT INTO prompt_runs (id, user_id, kind, prompt_text, status, target_entity, target_entity_id)
+       VALUES (?, ?, ?, '', 'pending', ?, ?)`, id, uid, kind, target?.entity ?? null, target?.entityId ?? null);
   return id;
 }
 
@@ -260,8 +335,10 @@ export async function createPromptRun(
 export async function createOrReusePendingPromptRun(
   kind: PromptRunKind,
   target: { entity: string; entityId: string },
+  userId?: string,
 ): Promise<{ id: string; existingPromptText: string | null }> {
   const sql = getSql();
+  const uid = await currentUserId(userId);
   const lockKey = `${kind}:${target.entityId}`;
   return await sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
@@ -272,6 +349,7 @@ export async function createOrReusePendingPromptRun(
       WHERE kind = ${kind}
         AND target_entity_id = ${target.entityId}
         AND status = 'pending'
+        AND user_id = ${uid}
       ORDER BY exported_at DESC NULLS LAST, created_at DESC
       LIMIT 1
     `;
@@ -288,8 +366,8 @@ export async function createOrReusePendingPromptRun(
     const id = randomUUID();
     try {
       await tx`
-        INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
-        VALUES (${id}, ${kind}, '', 'pending', ${target.entity}, ${target.entityId})
+        INSERT INTO prompt_runs (id, user_id, kind, prompt_text, status, target_entity, target_entity_id)
+        VALUES (${id}, ${uid}, ${kind}, '', 'pending', ${target.entity}, ${target.entityId})
       `;
       return { id, existingPromptText: null };
     } catch (e) {
@@ -297,7 +375,6 @@ export async function createOrReusePendingPromptRun(
         e && typeof e === "object" && "code" in e
           ? String((e as { code: unknown }).code)
           : "";
-      // Unique index prompt_runs_one_pending_stage_idx — reuse the winner's row.
       if (code !== "23505") throw e;
       const again = await tx<{ id: string; prompt_text: string }[]>`
         SELECT id, prompt_text
@@ -305,6 +382,7 @@ export async function createOrReusePendingPromptRun(
         WHERE kind = ${kind}
           AND target_entity_id = ${target.entityId}
           AND status = 'pending'
+          AND user_id = ${uid}
         ORDER BY exported_at DESC NULLS LAST, created_at DESC
         LIMIT 1
       `;
@@ -374,14 +452,17 @@ export async function abandonPromptRunRow(id: string) {
 }
 
 /** Abandon every pending prompt run and close related extension wake rows. */
-export async function abandonAllPendingPromptRuns(): Promise<number> {
+export async function abandonAllPendingPromptRuns(userId?: string): Promise<number> {
+  const uid = await currentUserId(userId);
   const before = await dbGet<{ n: number | string }>(
-    `SELECT COUNT(*)::int AS n FROM prompt_runs WHERE status = 'pending'`,
+    `SELECT COUNT(*)::int AS n FROM prompt_runs WHERE status = 'pending' AND user_id = ?`,
+    uid,
   );
   await dbRun(
     `UPDATE prompt_runs
        SET status = 'abandoned'
-       WHERE status = 'pending'`,
+       WHERE status = 'pending' AND user_id = ?`,
+    uid,
   );
   await dbRun(
     `UPDATE pending_extension_runs
@@ -389,25 +470,39 @@ export async function abandonAllPendingPromptRuns(): Promise<number> {
            wake_until = NULL,
            error = 'cleared',
            updated_at = (NOW() AT TIME ZONE 'utc')::text
-       WHERE status IN ('pending', 'claimed')`,
+       WHERE status IN ('pending', 'claimed')
+         AND prompt_run_id IN (
+           SELECT id FROM prompt_runs WHERE user_id = ?
+         )`,
+    uid,
   );
   return Number(before?.n ?? 0);
 }
 
-export async function listRecentPromptRuns(limit = 10): Promise<PromptRun[]> {
-  const rows = await dbAll(`SELECT * FROM prompt_runs ORDER BY exported_at DESC LIMIT ?`, limit) as Record<string, unknown>[];
+export async function listRecentPromptRuns(
+  limit = 10,
+  userId?: string,
+): Promise<PromptRun[]> {
+  const uid = await currentUserId(userId);
+  const rows = await dbAll(
+    `SELECT * FROM prompt_runs WHERE user_id = ? ORDER BY exported_at DESC LIMIT ?`,
+    uid,
+    limit,
+  ) as Record<string, unknown>[];
   return rows.map(mapPromptRun);
 }
 
-export async function hasCompletedDemoPrompt(): Promise<boolean> {
+export async function hasCompletedDemoPrompt(userId?: string): Promise<boolean> {
+  const uid = await currentUserId(userId);
   const row = await dbGet(`SELECT 1 AS ok FROM prompt_runs
-       WHERE kind = 'hello_world' AND status = 'completed'
-       LIMIT 1`);
+       WHERE kind = 'hello_world' AND status = 'completed' AND user_id = ?
+       LIMIT 1`, uid);
   return Boolean(row);
 }
 
-export async function getGoogleTokensRow(): Promise<GoogleTokensRow | null> {
-  const row = await dbGet("SELECT * FROM google_tokens WHERE id = ?", SINGLETON_ID) as Record<string, unknown> | undefined;
+export async function getGoogleTokensRow(userId?: string): Promise<GoogleTokensRow | null> {
+  const uid = await currentUserId(userId);
+  const row = await dbGet("SELECT * FROM google_tokens WHERE user_id = ?", uid) as Record<string, unknown> | undefined;
   return row ? mapGoogleTokens(row) : null;
 }
 
@@ -416,28 +511,32 @@ export async function saveGoogleTokensRow(input: {
   encrypted_refresh_token: string;
   scope: string;
   expires_at: string;
+  userId?: string;
 }) {
+  const uid = await currentUserId(input.userId);
   await dbRun(`INSERT INTO google_tokens (
-         id, encrypted_access_token, encrypted_refresh_token, scope, expires_at, status
+         user_id, encrypted_access_token, encrypted_refresh_token, scope, expires_at, status
        ) VALUES (?, ?, ?, ?, ?, 'active')
-       ON CONFLICT (id) DO UPDATE SET
+       ON CONFLICT (user_id) DO UPDATE SET
          encrypted_access_token = excluded.encrypted_access_token,
          encrypted_refresh_token = excluded.encrypted_refresh_token,
          scope = excluded.scope,
          expires_at = excluded.expires_at,
-         status = 'active'`, SINGLETON_ID,
+         status = 'active'`, uid,
       input.encrypted_access_token,
       input.encrypted_refresh_token,
       input.scope,
       input.expires_at,);
 }
 
-export async function markGoogleTokensRevokedRow() {
-  await dbRun(`UPDATE google_tokens SET status = 'revoked' WHERE id = ?`, SINGLETON_ID);
+export async function markGoogleTokensRevokedRow(userId?: string) {
+  const uid = await currentUserId(userId);
+  await dbRun(`UPDATE google_tokens SET status = 'revoked' WHERE user_id = ?`, uid);
 }
 
-export async function deleteGoogleTokensRow() {
-  await dbRun("DELETE FROM google_tokens WHERE id = ?", SINGLETON_ID);
+export async function deleteGoogleTokensRow(userId?: string) {
+  const uid = await currentUserId(userId);
+  await dbRun("DELETE FROM google_tokens WHERE user_id = ?", uid);
 }
 
 export async function insertAuditLog(input: {
@@ -445,9 +544,21 @@ export async function insertAuditLog(input: {
   entity?: string;
   entity_id?: string;
   payload?: Record<string, unknown>;
+  userId?: string | null;
 }) {
-  await dbRun(`INSERT INTO audit_log (id, action, entity, entity_id, payload)
-       VALUES (?, ?, ?, ?, ?)`, randomUUID(),
+  let uid: string | null;
+  if (input.userId !== undefined) {
+    uid = input.userId;
+  } else {
+    try {
+      uid = await currentUserId();
+    } catch {
+      uid = null;
+    }
+  }
+  await dbRun(`INSERT INTO audit_log (id, user_id, action, entity, entity_id, payload)
+       VALUES (?, ?, ?, ?, ?, ?)`, randomUUID(),
+      uid,
       input.action,
       input.entity ?? null,
       input.entity_id ?? null,
@@ -492,10 +603,13 @@ export async function insertApplication(input: {
   jd_raw: string;
   notes?: string | null;
   email_instructions?: string | null;
+  userId?: string;
 }): Promise<string> {
   const id = randomUUID();
-  await dbRun(`INSERT INTO applications (id, company, role, job_url, jd_raw, notes, email_instructions, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')`, id,
+  const uid = await currentUserId(input.userId);
+  await dbRun(`INSERT INTO applications (id, user_id, company, role, job_url, jd_raw, notes, email_instructions, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft')`, id,
+      uid,
       input.company?.trim() || null,
       input.role?.trim() || null,
       input.job_url?.trim() || null,
@@ -505,21 +619,59 @@ export async function insertApplication(input: {
   return id;
 }
 
-export async function getApplicationById(id: string): Promise<Application | null> {
+export async function getApplicationById(
+  id: string,
+  userId?: string,
+): Promise<Application | null> {
+  const uid = await currentUserId(userId);
+  const row = await dbGet(
+    "SELECT * FROM applications WHERE id = ? AND user_id = ?",
+    id,
+    uid,
+  ) as Record<string, unknown> | undefined;
+  return row ? mapApplication(row) : null;
+}
+
+/** Unscoped lookup for extension/internal paths that already authorized ownership. */
+export async function getApplicationByIdUnsafe(id: string): Promise<Application | null> {
   const row = await dbGet("SELECT * FROM applications WHERE id = ?", id) as Record<string, unknown> | undefined;
   return row ? mapApplication(row) : null;
 }
 
-export async function listApplications(limit = 100): Promise<Application[]> {
-  const rows = await dbAll(`SELECT * FROM applications ORDER BY created_at DESC LIMIT ?`, limit) as Record<string, unknown>[];
+export async function listApplications(
+  limit = 100,
+  userId?: string,
+): Promise<Application[]> {
+  const uid = await currentUserId(userId);
+  const rows = await dbAll(
+    `SELECT * FROM applications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
+    uid,
+    limit,
+  ) as Record<string, unknown>[];
   return rows.map(mapApplication);
+}
+
+export async function assertApplicationOwned(
+  applicationId: string,
+  userId?: string,
+): Promise<Application> {
+  const app = await getApplicationById(applicationId, userId);
+  if (!app) throw new Error("Application not found.");
+  return app;
 }
 
 export async function updateApplicationStatusRow(
   id: string,
   status: ApplicationStatus,
+  userId?: string,
 ): Promise<boolean> {
-  const result = await dbRun(`UPDATE applications SET status = ? WHERE id = ?`, status, id);
+  const uid = await currentUserId(userId);
+  const result = await dbRun(
+    `UPDATE applications SET status = ? WHERE id = ? AND user_id = ?`,
+    status,
+    id,
+    uid,
+  );
   return result.changes > 0;
 }
 
@@ -527,15 +679,18 @@ export async function updateApplicationJdParsed(
   id: string,
   jdParsed: JdParsed,
   meta?: { company?: string; role?: string },
+  userId?: string,
 ): Promise<boolean> {
+  const uid = await currentUserId(userId);
   const result = await dbRun(`UPDATE applications
        SET jd_parsed = ?,
            company = COALESCE(?, company),
            role = COALESCE(?, role)
-       WHERE id = ?`, JSON.stringify(jdParsed),
+       WHERE id = ? AND user_id = ?`, JSON.stringify(jdParsed),
       meta?.company?.trim() || null,
       meta?.role?.trim() || null,
-      id,);
+      id,
+      uid,);
   return result.changes > 0;
 }
 
@@ -737,16 +892,30 @@ export async function getCoverLetterVersionById(id: string): Promise<CoverLetter
 export async function updateApplicationCompanyBlurb(
   id: string,
   companyBlurb: string | null,
+  userId?: string,
 ): Promise<boolean> {
-  const result = await dbRun(`UPDATE applications SET company_blurb = ? WHERE id = ?`, companyBlurb?.trim() || null, id);
+  const uid = await currentUserId(userId);
+  const result = await dbRun(
+    `UPDATE applications SET company_blurb = ? WHERE id = ? AND user_id = ?`,
+    companyBlurb?.trim() || null,
+    id,
+    uid,
+  );
   return result.changes > 0;
 }
 
 export async function updateApplicationEmailInstructions(
   id: string,
   emailInstructions: string | null,
+  userId?: string,
 ): Promise<boolean> {
-  const result = await dbRun(`UPDATE applications SET email_instructions = ? WHERE id = ?`, emailInstructions?.trim() || null, id);
+  const uid = await currentUserId(userId);
+  const result = await dbRun(
+    `UPDATE applications SET email_instructions = ? WHERE id = ? AND user_id = ?`,
+    emailInstructions?.trim() || null,
+    id,
+    uid,
+  );
   return result.changes > 0;
 }
 

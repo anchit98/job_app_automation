@@ -1,9 +1,6 @@
-import { Suspense } from "react";
 import { searchApplicationsFromParams } from "@/app/actions/tracker";
 import { getApplicationPipelineSummaries } from "@/app/actions/pipeline";
 import { ApplicationsTable } from "@/components/applications/applications-table";
-
-export const dynamic = "force-dynamic";
 
 export default async function ApplicationsPage({
   searchParams,
@@ -31,15 +28,7 @@ export default async function ApplicationsPage({
         </div>
       </div>
 
-      <Suspense
-        fallback={
-          <div className="li-card p-8 text-center text-on-surface-variant text-[14px]">
-            Loading applications…
-          </div>
-        }
-      >
-        <ApplicationsTable initial={{ ...result, items }} />
-      </Suspense>
+      <ApplicationsTable initial={{ ...result, items }} />
     </div>
   );
 }

@@ -1,13 +1,16 @@
-import Image from "next/image";
 import Link from "next/link";
 import { getDashboardData } from "@/app/actions/tracker";
 import { getProfile } from "@/app/actions/profile";
 import { getMasterResume } from "@/app/actions/master-resume";
+import { getExtensionTokenStatus } from "@/app/actions/extension";
 import { isGoogleConnected } from "@/lib/google/tokens";
-import { GoogleConnectPanel } from "@/components/google/google-connect-panel";
+import { env } from "@/lib/env";
+import { SetupGuide } from "@/components/setup/setup-guide";
 import { DashboardMetricsGrid } from "@/components/dashboard/dashboard-metrics";
 import { EnqueueFollowUpsButton } from "@/components/dashboard/enqueue-follow-ups-button";
 import { ClearPendingPromptsButton } from "@/components/dashboard/clear-pending-prompts-button";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { profileAvatarSrc } from "@/lib/profile-avatar";
 
 export default async function DashboardPage({
   searchParams,
@@ -17,43 +20,47 @@ export default async function DashboardPage({
   const params = await searchParams;
   const googleError =
     typeof params.google_error === "string" ? params.google_error : null;
-  const googleConnected = params.google_connected === "1";
 
-  const [{ metrics, metricsFormatted }, profile, resume, connected] =
-    await Promise.all([
-      getDashboardData(),
-      getProfile().catch(() => null),
-      getMasterResume().catch(() => null),
-      isGoogleConnected().catch(() => false),
-    ]);
+  const [
+    { metrics, metricsFormatted },
+    profile,
+    resume,
+    connected,
+    extensionStatus,
+  ] = await Promise.all([
+    getDashboardData(),
+    getProfile().catch(() => null),
+    getMasterResume().catch(() => null),
+    isGoogleConnected().catch(() => false),
+    getExtensionTokenStatus().catch(() => ({
+      configured: false,
+      token_prefix: null,
+      created_at: null,
+    })),
+  ]);
 
-  const checklist = [
-    { label: "Profile saved", done: Boolean(profile?.full_name) },
-    {
-      label: "Master resume synced",
-      done: Boolean(resume?.content && Object.keys(resume.content).length > 0),
-    },
-    { label: "Google connected", done: connected },
-  ];
+  const profileDone = Boolean(
+    profile?.full_name &&
+      resume?.content &&
+      Object.keys(resume.content).length > 0,
+  );
+  const appUrl = env.appUrl();
+  const redirectUri =
+    process.env.GOOGLE_OAUTH_REDIRECT_URI?.trim() ||
+    `${appUrl.replace(/\/$/, "")}/api/auth/google/callback`;
 
-  const completedCount = checklist.filter((i) => i.done).length;
-  const progressPercent = Math.round((completedCount / checklist.length) * 100);
-  const setupComplete = completedCount === checklist.length;
   const displayName = profile?.full_name || "Your profile";
   const headline = profile?.headline || "Job application command center";
 
   return (
     <div className="min-h-[calc(100vh-52px-2rem)] flex flex-col gap-4 lg:gap-5">
-      {/* Identity + CTA row */}
       <section className="li-card p-5 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-center">
         <div className="lg:col-span-7 flex items-start gap-4 min-w-0">
-          <Image
-            src="/profile.webp"
-            alt={displayName}
-            width={64}
-            height={64}
-            className="h-16 w-16 shrink-0 rounded-full border-2 border-border-hairline object-cover"
-            priority
+          <UserAvatar
+            src={profileAvatarSrc(profile)}
+            name={displayName}
+            size={64}
+            className="border-2"
           />
           <div className="min-w-0">
             <p className="li-meta">Home</p>
@@ -82,16 +89,34 @@ export default async function DashboardPage({
           <div className="min-w-0 flex-1 xl:text-right">
             <h2 className="li-section-title">Quick Apply</h2>
             <p className="li-meta mt-1">
-              Paste a JD + contacts — resume, cover letter, emails, and Gmail drafts
-              run automatically.
+              Paste a JD + contacts — resume, cover letter, emails, and Gmail
+              drafts run automatically.
             </p>
           </div>
-          <Link href="/apply" className="li-btn-primary shrink-0 no-underline justify-center">
-            <span className="material-symbols-outlined text-[18px]">rocket_launch</span>
+          <Link
+            href="/apply"
+            className="li-btn-primary shrink-0 no-underline justify-center"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              rocket_launch
+            </span>
             Start Quick Apply
           </Link>
         </div>
       </section>
+
+      <SetupGuide
+        status={{
+          consoleDone: Boolean(profile?.setup_console_done_at),
+          googleConnected: connected,
+          profileDone,
+          extensionTokenConfigured: Boolean(extensionStatus.configured),
+          guideCollapsed: Boolean(profile?.setup_guide_collapsed),
+          googleError,
+          appUrl,
+          redirectUri,
+        }}
+      />
 
       {metrics.pendingPrompts > 0 && (
         <div className="li-card-flat p-4 border-l-4 border-l-status-waiting bg-status-waiting-container">
@@ -107,96 +132,67 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* Main body: metrics + side utilities */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 items-stretch">
         <section className="lg:col-span-8 flex flex-col gap-4">
           <div className="li-card p-5 lg:p-6 flex-1">
-            <DashboardMetricsGrid metrics={metrics} formatted={metricsFormatted} />
+            <DashboardMetricsGrid
+              metrics={metrics}
+              formatted={metricsFormatted}
+            />
           </div>
           <EnqueueFollowUpsButton />
         </section>
 
         <aside className="lg:col-span-4 flex flex-col gap-4">
-          {!setupComplete && (
-            <div className="li-card p-5 space-y-4">
-              <div className="flex justify-between items-center">
-                <h2 className="li-section-title">Setup</h2>
-                <span className="li-meta text-primary font-semibold">
-                  {completedCount}/{checklist.length}
-                </span>
-              </div>
-              <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <ul className="space-y-3">
-                {checklist.map((item) => (
-                  <li key={item.label} className="flex items-center gap-2.5 text-[14px]">
-                    <span
-                      className={`material-symbols-outlined text-[20px] ${
-                        item.done ? "text-success" : "text-on-surface-variant"
-                      }`}
-                    >
-                      {item.done ? "check_circle" : "radio_button_unchecked"}
-                    </span>
-                    <span className="text-on-surface-variant">{item.label}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           <div className="li-card p-4 grid grid-cols-2 gap-3">
             <Link
               href="/apply"
-              className="rounded-lg border border-border-hairline p-4 hover:bg-black/[0.02] no-underline"
+              className="rounded-lg border border-border-hairline p-4 hover:bg-[var(--ghost-hover)] no-underline"
             >
               <span className="material-symbols-outlined text-primary text-[22px]">
                 rocket_launch
               </span>
-              <p className="text-[14px] font-semibold mt-2 text-on-surface">Apply</p>
+              <p className="text-[14px] font-semibold mt-2 text-on-surface">
+                Apply
+              </p>
               <p className="li-meta mt-0.5">New pipeline</p>
             </Link>
             <Link
               href="/applications"
-              className="rounded-lg border border-border-hairline p-4 hover:bg-black/[0.02] no-underline"
+              className="rounded-lg border border-border-hairline p-4 hover:bg-[var(--ghost-hover)] no-underline"
             >
               <span className="material-symbols-outlined text-primary text-[22px]">
                 work
               </span>
-              <p className="text-[14px] font-semibold mt-2 text-on-surface">Jobs</p>
+              <p className="text-[14px] font-semibold mt-2 text-on-surface">
+                Jobs
+              </p>
               <p className="li-meta mt-0.5">All applications</p>
             </Link>
             <Link
               href="/onboarding"
-              className="rounded-lg border border-border-hairline p-4 hover:bg-black/[0.02] no-underline"
+              className="rounded-lg border border-border-hairline p-4 hover:bg-[var(--ghost-hover)] no-underline"
             >
               <span className="material-symbols-outlined text-primary text-[22px]">
                 person
               </span>
-              <p className="text-[14px] font-semibold mt-2 text-on-surface">Profile</p>
+              <p className="text-[14px] font-semibold mt-2 text-on-surface">
+                Profile
+              </p>
               <p className="li-meta mt-0.5">Resume & docs</p>
             </Link>
             <Link
               href="/settings"
-              className="rounded-lg border border-border-hairline p-4 hover:bg-black/[0.02] no-underline"
+              className="rounded-lg border border-border-hairline p-4 hover:bg-[var(--ghost-hover)] no-underline"
             >
               <span className="material-symbols-outlined text-primary text-[22px]">
                 extension
               </span>
-              <p className="text-[14px] font-semibold mt-2 text-on-surface">Settings</p>
+              <p className="text-[14px] font-semibold mt-2 text-on-surface">
+                Settings
+              </p>
               <p className="li-meta mt-0.5">Bridge & health</p>
             </Link>
-          </div>
-
-          <div className="mt-auto">
-            <GoogleConnectPanel
-              initialConnected={connected}
-              googleError={googleError}
-              googleConnected={googleConnected}
-            />
           </div>
         </aside>
       </div>

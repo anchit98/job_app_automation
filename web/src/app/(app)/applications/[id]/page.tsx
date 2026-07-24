@@ -15,8 +15,6 @@ import { ApplicationWorkspace } from "@/components/applications/application-work
 import { isGoogleConnected } from "@/lib/google/tokens";
 import { resumeContentSchema } from "@/lib/resume/fabrication";
 
-export const dynamic = "force-dynamic";
-
 export default async function ApplicationDetailPage({
   params,
 }: {

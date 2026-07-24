@@ -143,7 +143,7 @@ export function ApplicationWorkspace({
             className={`py-3 px-3 text-[14px] font-semibold transition-colors whitespace-nowrap border-b-2 ${
               activeTab === tab.id
                 ? "text-on-surface border-primary"
-                : "text-on-surface-variant border-transparent hover:bg-black/[0.04]"
+                : "text-on-surface-variant border-transparent hover:bg-[var(--ghost-hover)]"
             }`}
           >
             {tab.label}
@@ -257,7 +257,7 @@ export function ApplicationWorkspace({
                   <button
                     type="button"
                     onClick={() => setActiveTab("documents")}
-                    className="text-primary hover:bg-black/[0.04] p-1 rounded-lg transition-colors"
+                    className="text-primary hover:bg-[var(--ghost-hover)] p-1 rounded-lg transition-colors"
                     title="Manage"
                   >
                     <span className="material-symbols-outlined">arrow_forward</span>

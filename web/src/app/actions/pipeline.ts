@@ -27,6 +27,7 @@ import {
   getPipelineRunById,
   insertPipelineRun,
   listBusyPipelineRuns,
+  listQueuedPipelineRuns,
   listLatestPipelinesForApplications,
   updatePipelineRun,
   upsertPendingExtensionRun,
@@ -1209,13 +1210,38 @@ export async function resumePipelineForApplication(applicationId: string) {
 /**
  * Background tick used from any app page (and cron): advance busy pipelines,
  * promote the queue, and return a ChatGPT wake signal when needed.
+ * Scoped to the current session user (browser). Cron without a session is a no-op.
  */
 export async function tickGlobalPipelines() {
-  const promoted = await promoteNextQueuedPipeline();
+  const { getCurrentUser } = await import("@/lib/auth/user");
+  const user = await getCurrentUser();
+  if (!user) {
+    return {
+      ok: true as const,
+      busy_count: 0,
+      focus_pipeline_id: null,
+      promoted_pipeline_id: null,
+      wake: null,
+    };
+  }
 
-  // Serialize: only the oldest busy pipeline may advance / open ChatGPT.
+  // Cheap path first — avoid promote/advance when nothing is active or queued.
   const busy = await listBusyPipelineRuns();
-  const focus = busy[0] ?? null;
+  const queued = busy.length === 0 ? await listQueuedPipelineRuns() : [];
+
+  if (busy.length === 0 && queued.length === 0) {
+    return {
+      ok: true as const,
+      busy_count: 0,
+      focus_pipeline_id: null,
+      promoted_pipeline_id: null,
+      wake: null,
+    };
+  }
+
+  const promoted = await promoteNextQueuedPipeline();
+  const afterPromote = busy.length > 0 ? busy : await listBusyPipelineRuns();
+  const focus = afterPromote[0] ?? null;
   let wake: {
     prompt_run_id: string;
     pipeline_run_id: string;
@@ -1245,7 +1271,7 @@ export async function tickGlobalPipelines() {
 
   return {
     ok: true as const,
-    busy_count: busy.length,
+    busy_count: afterPromote.length,
     focus_pipeline_id: focus?.id ?? null,
     promoted_pipeline_id: promoted?.pipeline?.id ?? null,
     wake,

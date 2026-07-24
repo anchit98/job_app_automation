@@ -7,8 +7,27 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
   applied_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  full_name TEXT,
+  created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
+  updated_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
+);
+
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at);
+
 CREATE TABLE IF NOT EXISTS profiles (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+  user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   full_name TEXT,
   headline TEXT,
   location TEXT,
@@ -19,12 +38,16 @@ CREATE TABLE IF NOT EXISTS profiles (
   linkedin_url TEXT,
   github_url TEXT,
   portfolio_url TEXT,
+  setup_console_done_at TEXT,
+  setup_guide_collapsed BOOLEAN NOT NULL DEFAULT false,
+  avatar_data TEXT,
+  avatar_mime TEXT,
   created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
   updated_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
 );
 
 CREATE TABLE IF NOT EXISTS master_resume (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+  user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   content TEXT NOT NULL DEFAULT '{}',
   rules TEXT NOT NULL DEFAULT '{"never_fabricate": true}',
   doc_id TEXT,
@@ -35,7 +58,7 @@ CREATE TABLE IF NOT EXISTS master_resume (
 );
 
 CREATE TABLE IF NOT EXISTS master_cover_letter (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+  user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   doc_id TEXT,
   doc_layout TEXT,
   doc_synced_at TEXT,
@@ -58,6 +81,7 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
 
 CREATE TABLE IF NOT EXISTS prompt_runs (
   id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users (id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (
     kind IN (
       'hello_world',
@@ -86,8 +110,8 @@ CREATE TABLE IF NOT EXISTS prompt_runs (
 
 CREATE INDEX IF NOT EXISTS prompt_runs_status_exported_idx
   ON prompt_runs (status, exported_at DESC);
+CREATE INDEX IF NOT EXISTS prompt_runs_user_idx ON prompt_runs (user_id);
 
--- At most one open ChatGPT stage prompt per application (cold_email allows batches).
 CREATE UNIQUE INDEX IF NOT EXISTS prompt_runs_one_pending_stage_idx
   ON prompt_runs (kind, target_entity_id)
   WHERE status = 'pending'
@@ -95,7 +119,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS prompt_runs_one_pending_stage_idx
     AND kind IN ('jd_parse', 'resume', 'cover_letter');
 
 CREATE TABLE IF NOT EXISTS google_tokens (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+  user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   encrypted_access_token TEXT NOT NULL,
   encrypted_refresh_token TEXT NOT NULL,
   scope TEXT NOT NULL,
@@ -107,6 +131,7 @@ CREATE TABLE IF NOT EXISTS google_tokens (
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users (id) ON DELETE SET NULL,
   action TEXT NOT NULL,
   entity TEXT,
   entity_id TEXT,
@@ -117,9 +142,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS audit_log_created_idx ON audit_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS audit_log_entity_idx
   ON audit_log (entity, entity_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_log_user_idx ON audit_log (user_id);
 
 CREATE TABLE IF NOT EXISTS applications (
   id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users (id) ON DELETE CASCADE,
   company TEXT,
   role TEXT,
   job_url TEXT,
@@ -150,6 +177,7 @@ CREATE TABLE IF NOT EXISTS applications (
 
 CREATE INDEX IF NOT EXISTS applications_status_created_idx
   ON applications (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS applications_user_idx ON applications (user_id);
 
 CREATE TABLE IF NOT EXISTS resume_versions (
   id TEXT PRIMARY KEY,
@@ -244,7 +272,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS emails_gmail_draft_id_unique
   ON emails (gmail_draft_id)
   WHERE gmail_draft_id IS NOT NULL;
 
--- At most one cold email row per contact within an application.
 CREATE UNIQUE INDEX IF NOT EXISTS emails_one_cold_per_contact
   ON emails (application_id, contact_id)
   WHERE kind = 'cold';
@@ -283,7 +310,7 @@ CREATE INDEX IF NOT EXISTS follow_ups_due_status_idx
   ON follow_ups (status, due_at);
 
 CREATE TABLE IF NOT EXISTS extension_tokens (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+  user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL,
   token_prefix TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
@@ -292,6 +319,7 @@ CREATE TABLE IF NOT EXISTS extension_tokens (
 
 CREATE TABLE IF NOT EXISTS pipeline_runs (
   id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users (id) ON DELETE CASCADE,
   application_id TEXT NOT NULL REFERENCES applications (id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'running',
   current_stage TEXT,
@@ -304,6 +332,7 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_application
   ON pipeline_runs (application_id);
+CREATE INDEX IF NOT EXISTS pipeline_runs_user_idx ON pipeline_runs (user_id);
 
 CREATE TABLE IF NOT EXISTS pending_extension_runs (
   prompt_run_id TEXT PRIMARY KEY REFERENCES prompt_runs (id),
@@ -321,7 +350,6 @@ CREATE TABLE IF NOT EXISTS pending_extension_runs (
 CREATE INDEX IF NOT EXISTS idx_pending_extension_pending
   ON pending_extension_runs (status, created_at);
 
--- Search helper index (optional; queries also use plainto_tsquery on the fly)
 CREATE INDEX IF NOT EXISTS applications_search_idx ON applications
   USING GIN (
     to_tsvector(
@@ -333,5 +361,5 @@ CREATE INDEX IF NOT EXISTS applications_search_idx ON applications
     )
   );
 
-INSERT INTO schema_migrations (version) VALUES (43)
+INSERT INTO schema_migrations (version) VALUES (45)
 ON CONFLICT (version) DO NOTHING;

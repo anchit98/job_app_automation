@@ -22,7 +22,7 @@ export function MetricCard({
 
   const inner = (
     <div
-      className={`rounded-lg border p-4 h-full flex flex-col gap-1.5 ${accentClass} ${href ? "hover:bg-black/[0.02] transition-colors" : ""}`}
+      className={`rounded-lg border p-4 h-full flex flex-col gap-1.5 ${accentClass} ${href ? "hover:bg-[var(--ghost-hover)] transition-colors" : ""}`}
     >
       <span className="text-[12px] font-semibold uppercase tracking-wide text-on-surface-variant">
         {label}

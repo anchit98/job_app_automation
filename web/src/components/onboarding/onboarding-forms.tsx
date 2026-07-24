@@ -5,9 +5,11 @@ import { upsertProfile, syncSignatureLinksFromResume } from "@/app/actions/profi
 import { upsertMasterResume } from "@/app/actions/master-resume";
 import { syncMasterFromGoogleDoc } from "@/app/actions/master-resume-sync";
 import { syncCoverLetterFromGoogleDoc } from "@/app/actions/cover-letter-sync";
+import { ProfileAvatarUploader } from "@/components/profile/profile-avatar-uploader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { profileAvatarSrc } from "@/lib/profile-avatar";
 import type { MasterCoverLetter, MasterResume, Profile } from "@/lib/db/types";
 
 interface OnboardingFormsProps {
@@ -116,14 +118,13 @@ export function OnboardingForms({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
         {/* Profile */}
         <div className="lg:col-span-4 li-card p-4 space-y-4">
-          <div className="flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/profile.webp"
-              alt="Profile"
-              className="h-14 w-14 rounded-full border-2 border-border-hairline object-cover"
-            />
+          <div className="space-y-3">
             <h2 className="li-section-title">Profile</h2>
+            <ProfileAvatarUploader
+              avatarSrc={profileAvatarSrc(profile)}
+              name={fullName || profile?.full_name}
+              size={56}
+            />
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
             <div className="sm:col-span-2 lg:col-span-1 2xl:col-span-2">

@@ -3,8 +3,14 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { env, hasGoogleConfig } from "@/lib/env";
 import { getGoogleAuthUrl } from "@/lib/google/oauth";
+import { getCurrentUser } from "@/lib/auth/user";
 
 export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.redirect(new URL("/login", env.appUrl()));
+  }
+
   if (!hasGoogleConfig()) {
     return NextResponse.json(
       { error: "Google OAuth is not configured" },

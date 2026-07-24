@@ -13,6 +13,8 @@ function optional(name: string, fallback = ""): string {
 export const env = {
   appUrl: () => optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000"),
   databaseUrl: () => required("DATABASE_URL"),
+  /** Used to sign session cookies — generate with: openssl rand -base64 32 */
+  authSecret: () => required("AUTH_SECRET"),
   googleClientId: () => required("GOOGLE_OAUTH_CLIENT_ID"),
   googleClientSecret: () => required("GOOGLE_OAUTH_CLIENT_SECRET"),
   googleRedirectUri: () =>

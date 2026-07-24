@@ -110,7 +110,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
               className={`px-3 py-1.5 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors border ${
                 activeStatus === filter.id
                   ? "bg-primary text-on-primary border-primary"
-                  : "bg-surface text-on-surface-variant border-border-hairline hover:bg-black/[0.04] hover:text-on-surface"
+                  : "bg-surface text-on-surface-variant border-border-hairline hover:bg-[var(--ghost-hover)] hover:text-on-surface"
               }`}
             >
               {filter.label}
@@ -163,7 +163,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                 {items.map((app, idx) => (
                   <div
                     key={app.id}
-                    className={`grid grid-cols-12 gap-4 px-4 py-3 items-center hover:bg-black/[0.02] transition-colors ${
+                    className={`grid grid-cols-12 gap-4 px-4 py-3 items-center hover:bg-[var(--ghost-hover)] transition-colors ${
                       idx % 2 === 1 ? "bg-canvas/60" : "bg-surface"
                     }`}
                   >

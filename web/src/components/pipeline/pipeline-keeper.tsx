@@ -12,12 +12,17 @@ type WakeSignal = {
   chatgpt_url: string;
 };
 
+const BUSY_INTERVAL_MS = 5000;
+const IDLE_INTERVAL_MS = 20000;
+
 /**
  * Keeps Quick Apply pipelines moving on every app page — not only /pipeline/[id].
- * Advances stuck stages, promotes the queue, and wakes JobApp Bridge for ChatGPT.
+ * Backs off when idle / tab hidden so UI clicks stay snappy.
  */
 export function PipelineKeeper() {
   const lastWakeRef = useRef<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const busyRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,12 +76,27 @@ export function PipelineKeeper() {
       );
     }
 
+    function schedule(ms: number) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(() => void tick(), ms);
+    }
+
     async function tick() {
       if (cancelled || inFlight) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+
       inFlight = true;
       try {
         const result = await tickGlobalPipelines();
-        if (cancelled || !result.ok || !result.wake) return;
+        if (cancelled || !result.ok) return;
+
+        const busy = (result.busy_count ?? 0) > 0 || Boolean(result.wake);
+        if (busy !== busyRef.current) {
+          busyRef.current = busy;
+          schedule(busy ? BUSY_INTERVAL_MS : IDLE_INTERVAL_MS);
+        }
+
+        if (!result.wake) return;
         const force = lastWakeRef.current !== result.wake.prompt_run_id;
         await wakeBridge(result.wake, force);
       } catch (err) {
@@ -87,13 +107,22 @@ export function PipelineKeeper() {
     }
 
     void tick();
-    const id = setInterval(tick, 4000);
-    const onFocus = () => void tick();
+    schedule(IDLE_INTERVAL_MS);
+
+    const onFocus = () => {
+      if (!document.hidden) void tick();
+    };
+    const onVisibility = () => {
+      if (!document.hidden) void tick();
+    };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       cancelled = true;
-      clearInterval(id);
+      if (intervalRef.current) clearInterval(intervalRef.current);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 

@@ -46,6 +46,7 @@ export interface PipelineContactInput {
 
 export interface PipelineRunRecord {
   id: string;
+  user_id: string;
   application_id: string;
   status: PipelineRunStatus;
   current_stage: PipelineStageId | null;

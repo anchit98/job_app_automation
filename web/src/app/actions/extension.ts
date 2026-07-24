@@ -41,7 +41,7 @@ export async function ensureExtensionToken() {
     token_hash: generated.token_hash,
     token_prefix: generated.token_prefix,
   });
-  await writeAuditLog("extension.token_auto_created", "extension_tokens", "1");
+  await writeAuditLog("extension.token_auto_created", "extension_tokens", "session");
   return {
     ok: true as const,
     created: true as const,
@@ -58,7 +58,7 @@ export async function rotateExtensionToken() {
     token_hash: generated.token_hash,
     token_prefix: generated.token_prefix,
   });
-  await writeAuditLog("extension.token_rotated", "extension_tokens", "1");
+  await writeAuditLog("extension.token_rotated", "extension_tokens", "session");
   return {
     ok: true as const,
     token: generated.token,
@@ -68,7 +68,7 @@ export async function rotateExtensionToken() {
 
 export async function revokeExtensionTokenAction() {
   await revokeExtensionToken();
-  await writeAuditLog("extension.token_revoked", "extension_tokens", "1");
+  await writeAuditLog("extension.token_revoked", "extension_tokens", "session");
   return { ok: true as const };
 }
 

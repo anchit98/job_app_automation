@@ -2,15 +2,15 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import { PipelineKeeper } from "@/components/pipeline/pipeline-keeper";
+import { ProfileMenu } from "@/components/layout/profile-menu";
 
 const links = [
   { href: "/dashboard", icon: "home", label: "Home" },
   { href: "/apply", icon: "rocket_launch", label: "Quick Apply" },
   { href: "/applications", icon: "work", label: "Jobs" },
-  { href: "/onboarding", icon: "person", label: "Profile" },
-  { href: "/settings", icon: "settings", label: "Settings" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -20,18 +20,39 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href);
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  userEmail,
+  userName,
+  avatarSrc,
+}: {
+  children: React.ReactNode;
+  userEmail?: string | null;
+  userName?: string | null;
+  avatarSrc?: string | null;
+}) {
   const pathname = usePathname();
+  const router = useRouter();
   const isWorkspace = pathname.startsWith("/applications/");
+  const [, startSearchNav] = useTransition();
+  const [optimisticPath, setOptimisticPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOptimisticPath(null);
+  }, [pathname]);
+
+  const activePath = optimisticPath ?? pathname;
 
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
       <PipelineKeeper />
       <header className="sticky top-0 z-50 h-nav-height bg-surface border-b border-border-hairline">
         <div className="mx-auto h-full max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <Link
               href="/dashboard"
+              prefetch
+              onClick={() => setOptimisticPath("/dashboard")}
               className="flex items-center gap-2 shrink-0 no-underline"
             >
               <Image
@@ -46,7 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ApplyForge
               </span>
             </Link>
-            <div className="hidden md:flex items-center gap-2 rounded-lg bg-surface-container-low border border-transparent focus-within:border-primary px-3 py-1.5 w-[280px]">
+            <div className="hidden md:flex items-center gap-2 rounded-lg bg-surface-container-low border border-transparent focus-within:border-primary px-3 py-1.5 w-full max-w-[320px]">
               <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
                 search
               </span>
@@ -57,24 +78,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     const q = (e.target as HTMLInputElement).value.trim();
-                    window.location.href = q
+                    const href = q
                       ? `/applications?q=${encodeURIComponent(q)}`
                       : "/applications";
+                    setOptimisticPath("/applications");
+                    startSearchNav(() => {
+                      router.push(href);
+                    });
                   }
                 }}
               />
             </div>
           </div>
 
-          <nav className="flex items-center gap-1 sm:gap-2">
+          <nav className="flex items-center gap-0.5 sm:gap-1 shrink-0">
             {links.map((link) => {
-              const active = isActive(pathname, link.href);
+              const active = isActive(activePath, link.href);
               return (
                 <Link
                   key={link.href}
                   href={link.href}
+                  prefetch
+                  onClick={() => {
+                    if (!isActive(pathname, link.href)) {
+                      setOptimisticPath(link.href);
+                    }
+                  }}
                   className={`
-                    flex flex-col items-center justify-center min-w-[52px] sm:min-w-[64px] px-1 py-1
+                    flex flex-col items-center justify-center min-w-[52px] sm:min-w-[72px] px-1 py-1
                     border-b-2 transition-colors no-underline
                     ${
                       active
@@ -94,19 +125,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
-            <Link
-              href="/onboarding"
-              className="ml-1 hidden sm:flex items-center no-underline"
-              title="Profile"
-            >
-              <Image
-                src="/profile-sm.webp"
-                alt="Profile"
-                width={28}
-                height={28}
-                className="h-7 w-7 rounded-full border border-border-hairline object-cover"
-              />
-            </Link>
+            <ProfileMenu
+              userEmail={userEmail}
+              userName={userName}
+              avatarSrc={avatarSrc}
+            />
           </nav>
         </div>
       </header>

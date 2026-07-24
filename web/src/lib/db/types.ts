@@ -23,6 +23,9 @@ export interface Profile {
   linkedin_url: string | null;
   github_url: string | null;
   portfolio_url: string | null;
+  setup_console_done_at: string | null;
+  setup_guide_collapsed: boolean;
+  has_avatar: boolean;
   created_at: string;
   updated_at: string;
 }

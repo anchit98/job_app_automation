@@ -1,4 +1,5 @@
 import { ExtensionSettingsPanel } from "@/components/settings/extension-settings-panel";
+import { ReopenSetupGuideButton } from "@/components/setup/reopen-setup-guide-button";
 import Link from "next/link";
 
 export default function SettingsPage() {
@@ -7,8 +8,12 @@ export default function SettingsPage() {
       <div>
         <h1 className="li-page-title">Settings</h1>
         <p className="text-[14px] text-on-surface-variant mt-1">
-          Extension bridge, health, and local ops. Profile &amp; master docs live under{" "}
-          <Link href="/onboarding" className="text-primary font-semibold hover:underline">
+          Extension bridge, health, and local ops. Profile &amp; master docs live
+          under{" "}
+          <Link
+            href="/onboarding"
+            className="text-primary font-semibold hover:underline"
+          >
             Profile
           </Link>
           .
@@ -18,17 +23,35 @@ export default function SettingsPage() {
         <div className="lg:col-span-8">
           <ExtensionSettingsPanel />
         </div>
-        <div className="lg:col-span-4 li-card p-4">
-          <h2 className="li-section-title">Health</h2>
-          <p className="li-meta mt-1">
-            Check Google connection, pending prompts, and SQLite status.
-          </p>
-          <Link
-            href="/health"
-            className="inline-flex mt-3 text-[13px] font-semibold text-primary hover:underline"
-          >
-            Open health page →
-          </Link>
+        <div className="lg:col-span-4 space-y-3">
+          <div className="li-card p-4">
+            <h2 className="li-section-title">Setup guide</h2>
+            <p className="li-meta mt-1">
+              Google Cloud Console, Connect Google, profile, and extension
+              install — all on Home.
+            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              <Link
+                href="/dashboard"
+                className="inline-flex text-[13px] font-semibold text-primary hover:underline"
+              >
+                Open Home →
+              </Link>
+              <ReopenSetupGuideButton />
+            </div>
+          </div>
+          <div className="li-card p-4">
+            <h2 className="li-section-title">Health</h2>
+            <p className="li-meta mt-1">
+              Check Google connection, pending prompts, and database status.
+            </p>
+            <Link
+              href="/health"
+              className="inline-flex mt-3 text-[13px] font-semibold text-primary hover:underline"
+            >
+              Open health page →
+            </Link>
+          </div>
         </div>
       </div>
     </div>

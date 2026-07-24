@@ -9,7 +9,6 @@ import {
   mapDashboardMetrics,
   type DashboardMetrics,
 } from "@/lib/tracker/metrics";
-import { runTrackerMaintenance } from "@/lib/tracker/maintenance";
 import {
   deleteApplicationRow,
   findSimilarApplications,
@@ -36,7 +35,6 @@ export async function getDashboardData(): Promise<{
     offerRate: string;
   };
 }> {
-  await runTrackerMaintenance();
   const row = await getDashboardMetricsRow();
   const metrics = mapDashboardMetrics(row);
   return {
@@ -62,7 +60,6 @@ export async function searchApplicationsFromParams(
 }
 
 export async function getPromptsInbox(): Promise<PendingPromptRunItem[]> {
-  await runTrackerMaintenance();
   return await listPendingPromptRuns();
 }
 

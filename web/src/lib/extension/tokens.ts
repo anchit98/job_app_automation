@@ -1,5 +1,14 @@
 import { createHash, randomBytes } from "crypto";
-import { dbGet, dbRun, SINGLETON_ID } from "@/lib/db";
+import { dbGet, dbRun } from "@/lib/db";
+import { getRequestUserId } from "@/lib/auth/request-user";
+import { requireUser } from "@/lib/auth/user";
+
+async function currentUserId(explicit?: string): Promise<string> {
+  if (explicit) return explicit;
+  const fromAls = getRequestUserId();
+  if (fromAls) return fromAls;
+  return (await requireUser()).id;
+}
 
 export function hashExtensionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -18,18 +27,21 @@ export function generateExtensionToken(): {
   };
 }
 
-export async function getActiveExtensionTokenRow(): Promise<{
+export async function getActiveExtensionTokenRow(userId?: string): Promise<{
+  user_id: string;
   token_hash: string;
   token_prefix: string;
   created_at: string;
   revoked_at: string | null;
 } | null> {
+  const uid = await currentUserId(userId);
   const row = (await dbGet(
-    `SELECT token_hash, token_prefix, created_at, revoked_at
-       FROM extension_tokens WHERE id = ?`,
-    SINGLETON_ID,
+    `SELECT user_id, token_hash, token_prefix, created_at, revoked_at
+       FROM extension_tokens WHERE user_id = ?`,
+    uid,
   )) as
     | {
+        user_id: string;
         token_hash: string;
         token_prefix: string;
         created_at: string;
@@ -43,35 +55,43 @@ export async function getActiveExtensionTokenRow(): Promise<{
 export async function upsertExtensionToken(input: {
   token_hash: string;
   token_prefix: string;
+  userId?: string;
 }): Promise<void> {
+  const uid = await currentUserId(input.userId);
   await dbRun(
-    `INSERT INTO extension_tokens (id, token_hash, token_prefix, created_at, revoked_at)
+    `INSERT INTO extension_tokens (user_id, token_hash, token_prefix, created_at, revoked_at)
        VALUES (?, ?, ?, (NOW() AT TIME ZONE 'utc')::text, NULL)
-       ON CONFLICT (id) DO UPDATE SET
+       ON CONFLICT (user_id) DO UPDATE SET
          token_hash = excluded.token_hash,
          token_prefix = excluded.token_prefix,
          created_at = (NOW() AT TIME ZONE 'utc')::text,
          revoked_at = NULL`,
-    SINGLETON_ID,
+    uid,
     input.token_hash,
     input.token_prefix,
   );
 }
 
-export async function revokeExtensionToken(): Promise<void> {
+export async function revokeExtensionToken(userId?: string): Promise<void> {
+  const uid = await currentUserId(userId);
   await dbRun(
-    `UPDATE extension_tokens SET revoked_at = (NOW() AT TIME ZONE 'utc')::text WHERE id = ?`,
-    SINGLETON_ID,
+    `UPDATE extension_tokens SET revoked_at = (NOW() AT TIME ZONE 'utc')::text WHERE user_id = ?`,
+    uid,
   );
 }
 
+/** Resolve bearer → owning user. Returns null if invalid/revoked. */
 export async function verifyExtensionBearer(
   authorizationHeader: string | null,
-): Promise<boolean> {
-  if (!authorizationHeader?.startsWith("Bearer ")) return false;
+): Promise<{ userId: string } | null> {
+  if (!authorizationHeader?.startsWith("Bearer ")) return null;
   const token = authorizationHeader.slice("Bearer ".length).trim();
-  if (!token) return false;
-  const row = await getActiveExtensionTokenRow();
-  if (!row) return false;
-  return hashExtensionToken(token) === row.token_hash;
+  if (!token) return null;
+  const tokenHash = hashExtensionToken(token);
+  const row = (await dbGet(
+    `SELECT user_id, revoked_at FROM extension_tokens WHERE token_hash = ?`,
+    tokenHash,
+  )) as { user_id: string; revoked_at: string | null } | undefined;
+  if (!row || row.revoked_at) return null;
+  return { userId: row.user_id };
 }

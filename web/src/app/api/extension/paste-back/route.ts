@@ -5,7 +5,9 @@ import {
   getPendingExtensionRun,
   updatePipelineRun,
 } from "@/lib/db/pipeline";
+import { dbGet } from "@/lib/db";
 import { getPromptRunById } from "@/lib/db/queries";
+import { runAsUser } from "@/lib/auth/request-user";
 import { verifyExtensionBearer } from "@/lib/extension/tokens";
 import {
   advancePipeline,
@@ -33,12 +35,26 @@ function patchStageError(
   );
 }
 
+async function promptOwnedByUser(
+  promptRunId: string,
+  userId: string,
+): Promise<boolean> {
+  const row = (await dbGet(
+    `SELECT user_id FROM prompt_runs WHERE id = ?`,
+    promptRunId,
+  )) as { user_id: string | null } | undefined;
+  return Boolean(row?.user_id && row.user_id === userId);
+}
+
 /**
  * Chrome extension posts ChatGPT response text here.
  * Body: { prompt_run_id, raw_response, partial?: boolean }
  */
 export async function POST(request: Request) {
-  if (!await verifyExtensionBearer(request.headers.get("authorization"))) {
+  const auth = await verifyExtensionBearer(
+    request.headers.get("authorization"),
+  );
+  if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -68,104 +84,104 @@ export async function POST(request: Request) {
     );
   }
 
-  const promptRun = await getPromptRunById(promptRunId);
-  if (!promptRun) {
-    return NextResponse.json({ error: "Prompt run not found" }, { status: 404 });
+  if (!(await promptOwnedByUser(promptRunId, auth.userId))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const pending = await getPendingExtensionRun(promptRunId);
-  const stageKind = pending?.kind ?? promptRun.kind;
-
-  const submit = await routeChatGptSubmit(stageKind, promptRunId, raw);
-  if (!submit.ok) {
-    await completePendingExtensionRun(
-      promptRunId,
-      body.partial ? "timed_out" : "failed",
-      submit.error,
-    );
-
-    const pipeline = await findPipelineByPromptRun(promptRunId);
-    if (pipeline && submit.error) {
-      const stageId = pipeline.current_stage ?? stageKind;
-      const stages = patchStageError(pipeline.stages, stageId, submit.error);
-      await updatePipelineRun(pipeline.id, {
-        status: "awaiting_chatgpt",
-        stages,
-        error: submit.error,
-      });
+  return runAsUser(auth.userId, async () => {
+    const promptRun = await getPromptRunById(promptRunId);
+    if (!promptRun) {
+      return NextResponse.json({ error: "Prompt run not found" }, { status: 404 });
     }
 
-    return NextResponse.json(
-      {
-        ok: false,
-        error: submit.error,
-        repair_prompt: submit.repair_prompt,
-        validation_errors: submit.validation_errors,
-        partial: Boolean(body.partial),
-        upload_failed: Boolean(
-          (submit as { upload_failed?: boolean }).upload_failed,
-        ),
-        reconnect_required:
-          Boolean((submit as { reconnect_required?: boolean }).reconnect_required) ||
-          isGoogleReconnectError(submit.error),
-        // Tell the extension NOT to reclaim / re-open ChatGPT for Google failures.
-        permanent: isGoogleReconnectError(submit.error),
-      },
-      { status: 422 },
-    );
-  }
+    const pending = await getPendingExtensionRun(promptRunId);
+    const stageKind = pending?.kind ?? promptRun.kind;
 
-  await completePendingExtensionRun(promptRunId, "completed");
+    const submit = await routeChatGptSubmit(stageKind, promptRunId, raw);
+    if (!submit.ok) {
+      await completePendingExtensionRun(
+        promptRunId,
+        body.partial ? "timed_out" : "failed",
+        submit.error,
+      );
 
-  const pipeline = await findPipelineByPromptRun(promptRunId);
-  let nextPending: {
-    prompt_run_id: string;
-    pipeline_run_id: string;
-    kind: string;
-    prompt_text: string;
-    chatgpt_url: string;
-  } | null = null;
-
-  if (pipeline && pipeline.status === "awaiting_chatgpt") {
-    // Await so the extension can chain straight into the next ChatGPT stage
-    // (resume → cover letter → cold email) without depending on the pipeline tab.
-    // Defer Gmail drafts so the extension can delete/close ChatGPT first.
-    try {
-      const advanced = await advancePipeline(pipeline.id, {
-        deferGmailDrafts: true,
-      });
-      if (
-        advanced.ok &&
-        advanced.awaiting_chatgpt &&
-        advanced.prompt_run_id &&
-        advanced.prompt_text &&
-        // Never re-open the stage we just finished (e.g. Drive export still settling).
-        advanced.prompt_run_id !== promptRunId
-      ) {
-        nextPending = {
-          prompt_run_id: advanced.prompt_run_id,
-          pipeline_run_id: advanced.pipeline.id,
-          kind: advanced.pipeline.current_stage || "unknown",
-          prompt_text: advanced.prompt_text,
-          chatgpt_url: advanced.chatgpt_url || "https://chatgpt.com/",
-        };
-      }
-
-      // Gmail runs after the HTTP response so cleanup/close is not blocked.
-      if (advanced.ok && advanced.deferred_gmail) {
-        void advancePipeline(pipeline.id).catch((err) => {
-          console.error("[paste-back] deferred gmail_drafts failed", err);
+      const pipeline = await findPipelineByPromptRun(promptRunId);
+      if (pipeline && submit.error) {
+        const stageId = pipeline.current_stage ?? stageKind;
+        const stages = patchStageError(pipeline.stages, stageId, submit.error);
+        await updatePipelineRun(pipeline.id, {
+          status: "awaiting_chatgpt",
+          stages,
+          error: submit.error,
         });
       }
-    } catch (err) {
-      console.error("[paste-back] advancePipeline failed", err);
-    }
-  }
 
-  return NextResponse.json({
-    ok: true,
-    prompt_run_id: promptRunId,
-    pipeline_run_id: pipeline?.id ?? null,
-    next_pending: nextPending,
+      return NextResponse.json(
+        {
+          ok: false,
+          error: submit.error,
+          repair_prompt: submit.repair_prompt,
+          validation_errors: submit.validation_errors,
+          partial: Boolean(body.partial),
+          upload_failed: Boolean(
+            (submit as { upload_failed?: boolean }).upload_failed,
+          ),
+          reconnect_required:
+            Boolean((submit as { reconnect_required?: boolean }).reconnect_required) ||
+            isGoogleReconnectError(submit.error),
+          permanent: isGoogleReconnectError(submit.error),
+        },
+        { status: 422 },
+      );
+    }
+
+    await completePendingExtensionRun(promptRunId, "completed");
+
+    const pipeline = await findPipelineByPromptRun(promptRunId);
+    let nextPending: {
+      prompt_run_id: string;
+      pipeline_run_id: string;
+      kind: string;
+      prompt_text: string;
+      chatgpt_url: string;
+    } | null = null;
+
+    if (pipeline && pipeline.status === "awaiting_chatgpt") {
+      try {
+        const advanced = await advancePipeline(pipeline.id, {
+          deferGmailDrafts: true,
+        });
+        if (
+          advanced.ok &&
+          advanced.awaiting_chatgpt &&
+          advanced.prompt_run_id &&
+          advanced.prompt_text &&
+          advanced.prompt_run_id !== promptRunId
+        ) {
+          nextPending = {
+            prompt_run_id: advanced.prompt_run_id,
+            pipeline_run_id: advanced.pipeline.id,
+            kind: advanced.pipeline.current_stage || "unknown",
+            prompt_text: advanced.prompt_text,
+            chatgpt_url: advanced.chatgpt_url || "https://chatgpt.com/",
+          };
+        }
+
+        if (advanced.ok && advanced.deferred_gmail) {
+          void advancePipeline(pipeline.id).catch((err) => {
+            console.error("[paste-back] deferred gmail_drafts failed", err);
+          });
+        }
+      } catch (err) {
+        console.error("[paste-back] advancePipeline failed", err);
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      prompt_run_id: promptRunId,
+      pipeline_run_id: pipeline?.id ?? null,
+      next_pending: nextPending,
+    });
   });
 }

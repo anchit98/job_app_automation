@@ -1,5 +1,7 @@
 import { dbGet, dbAll, dbRun } from "@/lib/db";
 import type { Application, PromptRun } from "@/lib/db/types";
+import { getRequestUserId } from "@/lib/auth/request-user";
+import { requireUser } from "@/lib/auth/user";
 import { isApplicationStatus } from "@/lib/applications/status";
 import {
   buildFtsMatchQuery,
@@ -18,6 +20,12 @@ import {
 import { isLikelyDuplicate } from "@/lib/tracker/duplicates";
 import type { DashboardMetricsRow } from "@/lib/tracker/metrics";
 
+async function currentUserId(explicit?: string): Promise<string> {
+  if (explicit) return explicit;
+  const fromAls = getRequestUserId();
+  if (fromAls) return fromAls;
+  return (await requireUser()).id;
+}
 function mapApplicationRow(row: Record<string, unknown>): Application {
   return {
     id: row.id as string,
@@ -61,7 +69,9 @@ function mapPromptRun(row: Record<string, unknown>): PromptRun {
 
 export async function searchApplications(
   filters: ApplicationSearchFilters,
+  userId?: string,
 ): Promise<ApplicationSearchResult> {
+  const uid = await currentUserId(userId);
   const page = filters.page ?? 1;
   const pageSize = Math.min(
     Math.max(filters.pageSize ?? DEFAULT_PAGE_SIZE, 1),
@@ -69,8 +79,8 @@ export async function searchApplications(
   );
   const offset = (page - 1) * pageSize;
 
-  const conditions: string[] = ["1 = 1"];
-  const params: unknown[] = [];
+  const conditions: string[] = ["a.user_id = ?"];
+  const params: unknown[] = [uid];
 
   const ftsQuery = filters.q ? buildFtsMatchQuery(filters.q) : "";
   if (ftsQuery) {
@@ -168,37 +178,54 @@ export async function searchApplications(
   };
 }
 
-export async function getDashboardMetricsRow(): Promise<DashboardMetricsRow> {
+export async function getDashboardMetricsRow(
+  userId?: string,
+): Promise<DashboardMetricsRow> {
+  const uid = await currentUserId(userId);
   const row = await dbGet(`SELECT
-         (SELECT COUNT(*) FROM applications) AS total,
+         (SELECT COUNT(*) FROM applications WHERE user_id = ?) AS total,
          (SELECT COUNT(*) FROM applications
-          WHERE created_at >= (NOW() AT TIME ZONE 'utc' - INTERVAL '7 days')::text) AS this_week,
+          WHERE user_id = ?
+            AND created_at >= (NOW() AT TIME ZONE 'utc' - INTERVAL '7 days')::text) AS this_week,
          (SELECT COUNT(*) FROM applications
-          WHERE status IN (
+          WHERE user_id = ?
+            AND status IN (
             'applied', 'email_sent', 'hr_replied', 'interview_scheduled',
             'offer', 'accepted', 'rejected', 'withdrawn'
           )) AS applied_denominator,
          (SELECT COUNT(*) FROM applications
-          WHERE status IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted')) AS responded,
+          WHERE user_id = ?
+            AND status IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted')) AS responded,
          (SELECT COUNT(*) FROM applications
-          WHERE status IN ('interview_scheduled', 'offer', 'accepted')) AS interviewed,
+          WHERE user_id = ?
+            AND status IN ('interview_scheduled', 'offer', 'accepted')) AS interviewed,
          (SELECT COUNT(*) FROM applications
-          WHERE status IN ('offer', 'accepted')) AS offered,
+          WHERE user_id = ?
+            AND status IN ('offer', 'accepted')) AS offered,
          (SELECT COUNT(DISTINCT company) FROM applications
-          WHERE status IN ('email_sent', 'hr_replied', 'interview_scheduled', 'offer', 'accepted')
+          WHERE user_id = ?
+            AND status IN ('email_sent', 'hr_replied', 'interview_scheduled', 'offer', 'accepted')
             AND company IS NOT NULL AND TRIM(company) != '') AS companies_contacted,
-         (SELECT COUNT(*) FROM emails WHERE draft_status = 'created') AS emails_sent,
+         (SELECT COUNT(*) FROM emails e
+          INNER JOIN applications a ON a.id = e.application_id
+          WHERE a.user_id = ? AND e.draft_status = 'created') AS emails_sent,
          (SELECT COUNT(*) FROM prompt_runs
-          WHERE status = 'pending' AND prompt_text != '') AS pending_prompts,
-         (SELECT COUNT(*) FROM follow_ups
-          WHERE status IN ('pending', 'enqueued', 'processing', 'snoozed')
-            AND status != 'skipped') AS pending_follow_ups,
-         (SELECT COUNT(*) FROM follow_ups WHERE status = 'snoozed') AS snoozed_follow_ups,
+          WHERE user_id = ? AND status = 'pending' AND prompt_text != '') AS pending_prompts,
+         (SELECT COUNT(*) FROM follow_ups f
+          INNER JOIN applications a ON a.id = f.application_id
+          WHERE a.user_id = ?
+            AND f.status IN ('pending', 'enqueued', 'processing', 'snoozed')
+            AND f.status != 'skipped') AS pending_follow_ups,
+         (SELECT COUNT(*) FROM follow_ups f
+          INNER JOIN applications a ON a.id = f.application_id
+          WHERE a.user_id = ? AND f.status = 'snoozed') AS snoozed_follow_ups,
          (SELECT COUNT(*) FROM applications a
-          WHERE a.status = 'applied'
+          WHERE a.user_id = ?
+            AND a.status = 'applied'
             AND NOT EXISTS (
               SELECT 1 FROM resume_versions rv WHERE rv.application_id = a.id
-            )) AS incomplete_applied`);
+            )) AS incomplete_applied`,
+    uid, uid, uid, uid, uid, uid, uid, uid, uid, uid, uid, uid);
   return row as unknown as DashboardMetricsRow;
 }
 
@@ -208,7 +235,10 @@ export interface PendingPromptRunItem extends PromptRun {
   application_role: string | null;
 }
 
-export async function listPendingPromptRuns(): Promise<PendingPromptRunItem[]> {
+export async function listPendingPromptRuns(
+  userId?: string,
+): Promise<PendingPromptRunItem[]> {
+  const uid = await currentUserId(userId);
   const rows = await dbAll(`SELECT pr.*,
          COALESCE(a.company, a2.company) AS application_company,
          COALESCE(a.role, a2.role) AS application_role,
@@ -222,7 +252,8 @@ export async function listPendingPromptRuns(): Promise<PendingPromptRunItem[]> {
        LEFT JOIN follow_ups fu
          ON pr.target_entity = 'follow_ups' AND pr.target_entity_id = fu.id
        LEFT JOIN applications a2 ON fu.application_id = a2.id
-       WHERE pr.status = 'pending'
+       WHERE pr.user_id = ?
+         AND pr.status = 'pending'
          AND TRIM(pr.prompt_text) != ''
        ORDER BY
          CASE pr.kind
@@ -234,7 +265,7 @@ export async function listPendingPromptRuns(): Promise<PendingPromptRunItem[]> {
            WHEN 'jd_parse' THEN 6
            ELSE 7
          END,
-         pr.exported_at ASC`) as Record<string, unknown>[];
+         pr.exported_at ASC`, uid) as Record<string, unknown>[];
 
   return rows.map((row) => ({
     ...mapPromptRun(row),
@@ -327,21 +358,26 @@ export async function findSimilarApplications(
   company: string | null | undefined,
   role: string | null | undefined,
   excludeId?: string,
+  userId?: string,
 ): Promise<Application[]> {
+  const uid = await currentUserId(userId);
   // Avoid `? IS NULL` — Postgres cannot infer the type of a null parameter.
   const rows = (
     excludeId
       ? await dbAll(
           `SELECT * FROM applications
-           WHERE id != ?
+           WHERE user_id = ? AND id != ?
            ORDER BY updated_at DESC
            LIMIT 50`,
+          uid,
           excludeId,
         )
       : await dbAll(
           `SELECT * FROM applications
+           WHERE user_id = ?
            ORDER BY updated_at DESC
            LIMIT 50`,
+          uid,
         )
   ) as Record<string, unknown>[];
 
@@ -356,24 +392,42 @@ export async function updateApplicationNotesRow(
   id: string,
   notes: string | null,
   notesHtml: string | null,
+  userId?: string,
 ): Promise<boolean> {
-  const result = await dbRun(`UPDATE applications SET notes = ?, notes_html = ? WHERE id = ?`, notes, notesHtml, id);
+  const uid = await currentUserId(userId);
+  const result = await dbRun(
+    `UPDATE applications SET notes = ?, notes_html = ? WHERE id = ? AND user_id = ?`,
+    notes,
+    notesHtml,
+    id,
+    uid,
+  );
   return result.changes > 0;
 }
 
-export async function deleteApplicationRow(id: string): Promise<boolean> {
+export async function deleteApplicationRow(
+  id: string,
+  userId?: string,
+): Promise<boolean> {
+  const uid = await currentUserId(userId);
   // pipeline_runs / pending_extension_runs lack ON DELETE CASCADE — clear them first.
   await dbRun(
     `DELETE FROM pending_extension_runs
        WHERE pipeline_run_id IN (
-         SELECT id FROM pipeline_runs WHERE application_id = ?
+         SELECT id FROM pipeline_runs WHERE application_id = ? AND user_id = ?
        )`,
     id,
+    uid,
   );
-  await dbRun(`DELETE FROM pipeline_runs WHERE application_id = ?`, id);
-  const row = await dbGet<{ id: string }>(
-    `DELETE FROM applications WHERE id = ? RETURNING id`,
+  await dbRun(
+    `DELETE FROM pipeline_runs WHERE application_id = ? AND user_id = ?`,
     id,
+    uid,
+  );
+  const row = await dbGet<{ id: string }>(
+    `DELETE FROM applications WHERE id = ? AND user_id = ? RETURNING id`,
+    id,
+    uid,
   );
   return Boolean(row?.id);
 }

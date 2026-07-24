@@ -1,19 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  disconnectGoogleAccount,
-} from "@/app/actions/google";
+import { disconnectGoogleAccount } from "@/app/actions/google";
 
 interface GoogleConnectPanelProps {
   initialConnected: boolean;
   googleError?: string | null;
   googleConnected?: boolean;
+  /** When true, omit outer li-card wrapper for embedding in the setup guide. */
+  embedded?: boolean;
 }
 
 export function GoogleConnectPanel({
   initialConnected,
   googleError,
+  embedded = false,
 }: GoogleConnectPanelProps) {
   const [connected, setConnected] = useState(initialConnected);
   const [error] = useState<string | null>(googleError ?? null);
@@ -30,8 +31,8 @@ export function GoogleConnectPanel({
     });
   }
 
-  return (
-    <div className="li-card p-4 flex items-center justify-between gap-3">
+  const body = (
+    <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-3 min-w-0">
         <div className="bg-primary-container p-2 rounded-lg shrink-0">
           <span
@@ -61,10 +62,22 @@ export function GoogleConnectPanel({
         type="button"
         onClick={connected ? handleDisconnect : handleConnect}
         disabled={pending}
-        className={connected ? "li-btn-ghost text-[13px]" : "li-btn-secondary text-[13px]"}
+        className={
+          connected ? "li-btn-ghost text-[13px]" : "li-btn-secondary text-[13px]"
+        }
       >
         {pending ? "…" : connected ? "Disconnect" : "Connect"}
       </button>
     </div>
   );
+
+  if (embedded) {
+    return (
+      <div className="rounded-lg border border-border-hairline bg-surface p-4">
+        {body}
+      </div>
+    );
+  }
+
+  return <div className="li-card p-4">{body}</div>;
 }

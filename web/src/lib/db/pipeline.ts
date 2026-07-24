@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto";
 import { dbGet, dbAll, dbRun } from "@/lib/db";
+import { getRequestUserId } from "@/lib/auth/request-user";
+import { requireUser } from "@/lib/auth/user";
 import {
   buildInitialStages,
   type PipelineContactInput,
@@ -9,9 +11,17 @@ import {
   type PipelineStageId,
 } from "@/lib/pipeline/types";
 
+async function currentUserId(explicit?: string): Promise<string> {
+  if (explicit) return explicit;
+  const fromAls = getRequestUserId();
+  if (fromAls) return fromAls;
+  return (await requireUser()).id;
+}
+
 function mapPipelineRow(row: Record<string, unknown>): PipelineRunRecord {
   return {
     id: row.id as string,
+    user_id: row.user_id as string,
     application_id: row.application_id as string,
     status: row.status as PipelineRunStatus,
     current_stage: (row.current_stage as PipelineStageId) || null,
@@ -26,8 +36,10 @@ function mapPipelineRow(row: Record<string, unknown>): PipelineRunRecord {
 export async function insertPipelineRun(input: {
   application_id: string;
   contacts: PipelineContactInput[];
+  userId?: string;
 }): Promise<PipelineRunRecord> {
   const id = randomUUID();
+  const uid = await currentUserId(input.userId);
   const stages = buildInitialStages();
   stages[0] = {
     ...stages[0],
@@ -36,8 +48,9 @@ export async function insertPipelineRun(input: {
   };
 
   await dbRun(`INSERT INTO pipeline_runs
-         (id, application_id, status, current_stage, stages_json, contacts_json)
-       VALUES (?, ?, 'running', 'jd_parse', ?, ?)`, id,
+         (id, user_id, application_id, status, current_stage, stages_json, contacts_json)
+       VALUES (?, ?, ?, 'running', 'jd_parse', ?, ?)`, id,
+      uid,
       input.application_id,
       JSON.stringify(stages),
       JSON.stringify(input.contacts),);
@@ -47,8 +60,27 @@ export async function insertPipelineRun(input: {
   return run;
 }
 
-export async function getPipelineRunById(id: string): Promise<PipelineRunRecord | null> {
-  const row = await dbGet(`SELECT * FROM pipeline_runs WHERE id = ?`, id) as Record<string, unknown> | undefined;
+export async function getPipelineRunById(
+  id: string,
+  userId?: string,
+): Promise<PipelineRunRecord | null> {
+  let uid = userId ?? getRequestUserId();
+  if (!uid) {
+    try {
+      uid = (await requireUser()).id;
+    } catch {
+      uid = undefined;
+    }
+  }
+  const row = (
+    uid
+      ? await dbGet(
+          `SELECT * FROM pipeline_runs WHERE id = ? AND user_id = ?`,
+          id,
+          uid,
+        )
+      : await dbGet(`SELECT * FROM pipeline_runs WHERE id = ?`, id)
+  ) as Record<string, unknown> | undefined;
   return row ? mapPipelineRow(row) : null;
 }
 
@@ -320,7 +352,24 @@ export async function findPipelineByPromptRun(
   if (pending?.pipeline_run_id) {
     return await getPipelineRunById(pending.pipeline_run_id);
   }
-  const rows = await dbAll(`SELECT * FROM pipeline_runs ORDER BY created_at::timestamptz DESC LIMIT 20`) as Record<string, unknown>[];
+  let uid = getRequestUserId();
+  if (!uid) {
+    try {
+      uid = (await requireUser()).id;
+    } catch {
+      uid = undefined;
+    }
+  }
+  const rows = (
+    uid
+      ? await dbAll(
+          `SELECT * FROM pipeline_runs WHERE user_id = ? ORDER BY created_at::timestamptz DESC LIMIT 20`,
+          uid,
+        )
+      : await dbAll(
+          `SELECT * FROM pipeline_runs ORDER BY created_at::timestamptz DESC LIMIT 20`,
+        )
+  ) as Record<string, unknown>[];
   for (const row of rows) {
     const run = mapPipelineRow(row);
     if (run.stages.some((s) => s.prompt_run_id === promptRunId)) {
@@ -331,48 +380,61 @@ export async function findPipelineByPromptRun(
 }
 
 /** Pipelines currently doing work (not queued / terminal). */
-export async function listBusyPipelineRuns(): Promise<PipelineRunRecord[]> {
+export async function listBusyPipelineRuns(userId?: string): Promise<PipelineRunRecord[]> {
+  const uid = await currentUserId(userId);
   const rows = (await dbAll(
     `SELECT * FROM pipeline_runs
-     WHERE status IN ('running', 'awaiting_chatgpt')
+     WHERE user_id = ?
+       AND status IN ('running', 'awaiting_chatgpt')
      ORDER BY created_at::timestamptz ASC`,
+    uid,
   )) as Record<string, unknown>[];
   return rows.map(mapPipelineRow);
 }
 
-export async function listQueuedPipelineRuns(): Promise<PipelineRunRecord[]> {
+export async function listQueuedPipelineRuns(userId?: string): Promise<PipelineRunRecord[]> {
+  const uid = await currentUserId(userId);
   const rows = (await dbAll(
     `SELECT * FROM pipeline_runs
-     WHERE status = 'queued'
+     WHERE user_id = ?
+       AND status = 'queued'
      ORDER BY created_at::timestamptz ASC`,
+    uid,
   )) as Record<string, unknown>[];
   return rows.map(mapPipelineRow);
 }
 
 export async function getLatestPipelineForApplication(
   applicationId: string,
+  userId?: string,
 ): Promise<PipelineRunRecord | null> {
+  const uid = await currentUserId(userId);
   const row = (await dbGet(
     `SELECT * FROM pipeline_runs
-     WHERE application_id = ?
+     WHERE application_id = ? AND user_id = ?
      ORDER BY created_at::timestamptz DESC
      LIMIT 1`,
     applicationId,
+    uid,
   )) as Record<string, unknown> | undefined;
   return row ? mapPipelineRow(row) : null;
 }
 
 export async function listLatestPipelinesForApplications(
   applicationIds: string[],
+  userId?: string,
 ): Promise<Map<string, PipelineRunRecord>> {
   const map = new Map<string, PipelineRunRecord>();
   if (applicationIds.length === 0) return map;
+  const uid = await currentUserId(userId);
   const placeholders = applicationIds.map(() => "?").join(", ");
   const rows = (await dbAll(
     `SELECT DISTINCT ON (application_id) *
      FROM pipeline_runs
-     WHERE application_id IN (${placeholders})
+     WHERE user_id = ?
+       AND application_id IN (${placeholders})
      ORDER BY application_id, created_at::timestamptz DESC`,
+    uid,
     ...applicationIds,
   )) as Record<string, unknown>[];
   for (const row of rows) {
@@ -382,8 +444,9 @@ export async function listLatestPipelinesForApplications(
   return map;
 }
 
-export async function claimNextQueuedPipeline(): Promise<PipelineRunRecord | null> {
-  const busy = await listBusyPipelineRuns();
+export async function claimNextQueuedPipeline(userId?: string): Promise<PipelineRunRecord | null> {
+  const uid = await currentUserId(userId);
+  const busy = await listBusyPipelineRuns(uid);
   if (busy.length > 0) return null;
 
   const row = (await dbGet(
@@ -392,11 +455,12 @@ export async function claimNextQueuedPipeline(): Promise<PipelineRunRecord | nul
          updated_at = (NOW() AT TIME ZONE 'utc')::text
      WHERE id = (
        SELECT id FROM pipeline_runs
-       WHERE status = 'queued'
+       WHERE status = 'queued' AND user_id = ?
        ORDER BY created_at::timestamptz ASC
        LIMIT 1
      )
      RETURNING *`,
+    uid,
   )) as Record<string, unknown> | undefined;
   return row ? mapPipelineRow(row) : null;
 }

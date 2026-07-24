@@ -44,7 +44,6 @@ export async function exportPrompt(
     kind: templateKey,
   });
 
-  revalidatePath("/demo");
   return {
     prompt_run_id: runId,
     prompt_text: promptText,
@@ -165,7 +164,6 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
       existing.target_entity_id,
       result.data as Record<string, unknown>,
     );
-    revalidatePath("/demo");
     revalidatePath("/dashboard");
     revalidatePath("/applications");
     revalidatePath(`/applications/${existing.target_entity_id}`);
@@ -176,7 +174,6 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
     };
   }
 
-  revalidatePath("/demo");
   revalidatePath("/dashboard");
   revalidatePath("/applications");
   if (existing.target_entity_id) {
@@ -188,7 +185,6 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
 export async function abandonPromptRun(promptRunId: string) {
   const existing = await getPromptRunById(promptRunId);
   await abandonPromptRunRow(promptRunId);
-  revalidatePath("/demo");
   if (existing?.target_entity_id) {
     revalidatePath(`/applications/${existing.target_entity_id}`);
   }

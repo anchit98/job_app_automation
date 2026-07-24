@@ -9,9 +9,15 @@ import {
 import {
   getMasterResumeRow,
   getProfileRow,
+  clearProfileAvatarRow,
+  setProfileAvatarRow,
   upsertProfileRow,
 } from "@/lib/db/queries";
 import { resumeContentSchema } from "@/lib/resume/fabrication";
+import { requireUser } from "@/lib/auth/user";
+
+const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_AVATAR_BYTES = 750_000;
 
 export interface ProfileInput {
   full_name: string;
@@ -49,6 +55,52 @@ export async function upsertProfile(input: ProfileInput) {
 
 export async function getProfile() {
   return await getProfileRow();
+}
+
+export async function uploadProfileAvatar(formData: FormData) {
+  await requireUser();
+  const file = formData.get("avatar");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false as const, error: "Choose an image to upload." };
+  }
+  if (!ALLOWED_MIME.has(file.type)) {
+    return {
+      ok: false as const,
+      error: "Use a JPEG, PNG, or WebP image.",
+    };
+  }
+  if (file.size > MAX_AVATAR_BYTES) {
+    return {
+      ok: false as const,
+      error: "Image is too large after processing. Try a smaller photo.",
+    };
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await setProfileAvatarRow({
+    data: buffer.toString("base64"),
+    mime: file.type,
+  });
+
+  await writeAuditLog("profile.avatar_upload", "profiles", "local", {
+    mime: file.type,
+    bytes: buffer.length,
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/onboarding");
+  revalidatePath("/", "layout");
+  return { ok: true as const };
+}
+
+export async function removeProfileAvatar() {
+  await requireUser();
+  await clearProfileAvatarRow();
+  await writeAuditLog("profile.avatar_remove", "profiles", "local", {});
+  revalidatePath("/dashboard");
+  revalidatePath("/onboarding");
+  revalidatePath("/", "layout");
+  return { ok: true as const };
 }
 
 export async function syncSignatureLinksFromResume(options?: {

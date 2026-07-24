@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Class-based dark mode (html.dark) for Tailwind `dark:` utilities */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Command Precision — LinkedIn-inspired light system (DESIGN.md) */
 :root {
   --canvas: #f4f2ee;
@@ -29,6 +32,7 @@
   --border-muted: #e8e6e1;
 
   --primary: #0a66c2;
+  --primary-hover: #004182;
   --on-primary: #ffffff;
   --primary-container: #e8f0fe;
   --on-primary-container: #004e99;
@@ -58,6 +62,11 @@
   --status-waiting-container: #fdf1e8;
   --info-container: #e5edf4;
 
+  --ghost-hover: rgba(0, 0, 0, 0.04);
+  --secondary-hover: rgba(10, 102, 194, 0.08);
+  --scrollbar-thumb: #c4c4c4;
+  --scrollbar-thumb-hover: #999;
+
   --radius-sm: 0.25rem;
   --radius: 0.5rem;
   --radius-md: 0.5rem;
@@ -66,6 +75,75 @@
   --radius-full: 9999px;
 
   --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.02), 0 2px 4px rgba(0, 0, 0, 0.06);
+  color-scheme: light;
+}
+
+/* Dark mode — same Command Precision language, inverted surfaces */
+html.dark {
+  --canvas: #0f1419;
+  --background: #0f1419;
+  --foreground: #eef1f6;
+
+  --surface: #1b222a;
+  --surface-dim: #12171d;
+  --surface-bright: #24303a;
+  --surface-container-lowest: #151b22;
+  --surface-container-low: #1e262f;
+  --surface-container: #252e38;
+  --surface-container-high: #2c3642;
+  --surface-container-highest: #34404d;
+  --surface-variant: #2c3642;
+
+  --on-surface: #eef1f6;
+  --on-surface-variant: #9aa3ad;
+  --on-background: #eef1f6;
+
+  --inverse-surface: #eef1f6;
+  --inverse-on-surface: #1b1f23;
+
+  --outline: #6b7580;
+  --outline-variant: #3a4552;
+  --border-hairline: #2f3a46;
+  --border-muted: #27313b;
+
+  --primary: #4b9dff;
+  --primary-hover: #7ab5ff;
+  --on-primary: #001b3d;
+  --primary-container: #123a66;
+  --on-primary-container: #d6e8ff;
+  --surface-tint: #4b9dff;
+  --inverse-primary: #0a66c2;
+
+  --secondary: #b0b0ae;
+  --on-secondary: #1b1c1a;
+  --secondary-container: #3a3a38;
+  --on-secondary-container: #e1dfdc;
+
+  --tertiary: #ffb68e;
+  --on-tertiary: #331200;
+  --tertiary-container: #6b3200;
+  --on-tertiary-container: #ffe0d1;
+
+  --error: #ffb4ab;
+  --on-error: #690005;
+  --error-container: #93000a;
+  --on-error-container: #ffdad6;
+
+  --success: #5fd99a;
+  --success-container: #0d3d28;
+  --on-success-container: #a8f0c8;
+
+  --status-waiting: #f0b35a;
+  --status-waiting-container: #3d2a10;
+  --info-container: #1a3048;
+
+  --ghost-hover: rgba(255, 255, 255, 0.06);
+  --secondary-hover: rgba(75, 157, 255, 0.12);
+  --scrollbar-thumb: #3a4552;
+  --scrollbar-thumb-hover: #556170;
+
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -146,9 +224,9 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 20px;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* LinkedIn-style structural card */
 .li-card {
   background: var(--surface);
   border: 1px solid var(--border-hairline);
@@ -211,7 +289,7 @@ body {
   transition: background-color 0.15s ease;
 }
 .li-btn-primary:hover {
-  background: #004182;
+  background: var(--primary-hover);
 }
 
 .li-btn-secondary {
@@ -230,7 +308,7 @@ body {
   transition: background-color 0.15s ease;
 }
 .li-btn-secondary:hover {
-  background: rgba(10, 102, 194, 0.08);
+  background: var(--secondary-hover);
 }
 
 .li-btn-ghost {
@@ -247,10 +325,9 @@ body {
   border: 1px solid transparent;
 }
 .li-btn-ghost:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--ghost-hover);
 }
 
-/* Material Symbols */
 .material-symbols-outlined {
   font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
   font-size: 20px;
@@ -268,9 +345,65 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #c4c4c4;
+  background: var(--scrollbar-thumb);
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: var(--scrollbar-thumb-hover);
+}
+
+@keyframes af-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes af-pulse-ring {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+@keyframes af-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes af-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.af-loader-orbit {
+  animation: af-orbit 1.1s linear infinite;
+}
+.af-loader-pulse {
+  animation: af-pulse-ring 1.6s ease-in-out infinite;
+}
+.af-loader-fade {
+  animation: af-fade-up 0.45s ease-out both;
+}
+.af-loader-bar {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--primary) 45%,
+    var(--on-primary-container) 55%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: af-shimmer 1.4s ease-in-out infinite;
 }

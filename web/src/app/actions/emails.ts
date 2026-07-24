@@ -4,6 +4,8 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { maybeAdvanceApplicationStatus } from "@/app/actions/applications";
 import { writeAuditLog } from "@/lib/audit";
+import { getRequestUserId } from "@/lib/auth/request-user";
+import { requireUser } from "@/lib/auth/user";
 import { getSql } from "@/lib/db";
 import {
   buildColdEmailRepairPrompt,
@@ -256,6 +258,7 @@ export async function exportColdEmailsPrompt(
   if (!template) throw new Error("No active cold email prompt template.");
 
   const profile = await getProfileRow();
+  const uid = getRequestUserId() ?? (await requireUser()).id;
   const targetCompany =
     application.company?.trim() ||
     application.jd_parsed?.company?.trim() ||
@@ -281,6 +284,7 @@ export async function exportColdEmailsPrompt(
       FROM prompt_runs
       WHERE kind = 'cold_email'
         AND target_entity_id = ${applicationId}
+        AND user_id = ${uid}
         AND status = 'pending'
         AND prompt_text IS NOT NULL
         AND prompt_text <> ''
@@ -348,8 +352,8 @@ export async function exportColdEmailsPrompt(
       );
 
       await tx`
-        INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
-        VALUES (${runId}, 'cold_email', ${promptText}, 'pending', 'applications', ${applicationId})
+        INSERT INTO prompt_runs (id, user_id, kind, prompt_text, status, target_entity, target_entity_id)
+        VALUES (${runId}, ${uid}, 'cold_email', ${promptText}, 'pending', 'applications', ${applicationId})
       `;
 
       created.push({

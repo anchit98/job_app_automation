@@ -21,7 +21,7 @@ export const Button = forwardRef<
         variant === "secondary" &&
           "bg-transparent text-primary border border-primary hover:bg-primary/10",
         variant === "ghost" &&
-          "bg-transparent text-on-surface border border-transparent hover:bg-black/[0.04]",
+          "bg-transparent text-on-surface border border-transparent hover:bg-[var(--ghost-hover)]",
         variant === "danger" &&
           "bg-error text-on-error hover:bg-error/90 border border-transparent",
         className,
