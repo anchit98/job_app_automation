@@ -29,12 +29,15 @@
   <body>
     <h1>JobApp Bridge</h1>
     <p class="hint">
-      Generate a token in the app under Settings, then paste it here. App URL is usually
-      http://localhost:3000 while developing.
+      Production URL is already allow-listed:
+      <code>https://job-app-automation-mu.vercel.app</code>.
+      Paste that as App URL (no trailing slash), then paste the token from
+      <strong>Settings on the hosted site</strong> (not localhost). After Save,
+      reload this extension and hard-refresh the Vercel tab.
     </p>
     <label>
       App URL
-      <input id="appUrl" type="url" placeholder="http://localhost:3000" />
+      <input id="appUrl" type="url" placeholder="https://job-app-automation-mu.vercel.app" />
     </label>
     <label>
       Extension token

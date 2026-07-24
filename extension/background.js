@@ -1,5 +1,5 @@
 const DEFAULTS = {
-  appUrl: "http://localhost:3000",
+  appUrl: "https://job-app-automation-mu.vercel.app",
   token: "",
   enabled: true,
 };
@@ -568,7 +568,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         enabled: s.enabled,
         hasToken: Boolean(s.token),
         appUrl: s.appUrl,
-        version: "1.3.16",
+        version: "1.3.18",
       });
     });
     return true;

@@ -67,7 +67,7 @@ function notify(signal, done) {
 
 clearSignal();
 
-window.dispatchEvent(new CustomEvent("jobapp-bridge-ready", { detail: { version: "1.3.16" } }));
+window.dispatchEvent(new CustomEvent("jobapp-bridge-ready", { detail: { version: "1.3.18" } }));
 
 window.addEventListener("jobapp-pending", (e) => {
   notify(e.detail);
@@ -81,7 +81,7 @@ window.addEventListener("jobapp-clear-pending", () => {
 });
 
 window.__JOBAPP_BRIDGE__ = {
-  version: "1.3.16",
+  version: "1.3.18",
   ping: () =>
     new Promise((resolve) => {
       chrome.runtime.sendMessage({ type: "JOBAPP_PING" }, (res) => {
