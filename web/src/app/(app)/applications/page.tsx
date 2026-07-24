@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { searchApplicationsFromParams } from "@/app/actions/tracker";
+import { getApplicationPipelineSummaries } from "@/app/actions/pipeline";
 import { ApplicationsTable } from "@/components/applications/applications-table";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,13 @@ export default async function ApplicationsPage({
 }) {
   const params = await searchParams;
   const result = await searchApplicationsFromParams(params);
+  const summaries = await getApplicationPipelineSummaries(
+    result.items.map((i) => i.id),
+  );
+  const items = result.items.map((item) => ({
+    ...item,
+    pipeline: summaries[item.id] ?? null,
+  }));
 
   return (
     <div className="space-y-3">
@@ -22,10 +29,6 @@ export default async function ApplicationsPage({
             Search, filter, and track every role in your pipeline.
           </p>
         </div>
-        <Link href="/apply" className="li-btn-primary no-underline">
-          <span className="material-symbols-outlined text-[18px]">rocket_launch</span>
-          Quick Apply
-        </Link>
       </div>
 
       <Suspense
@@ -35,7 +38,7 @@ export default async function ApplicationsPage({
           </div>
         }
       >
-        <ApplicationsTable initial={result} />
+        <ApplicationsTable initial={{ ...result, items }} />
       </Suspense>
     </div>
   );

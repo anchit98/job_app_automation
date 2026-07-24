@@ -10,6 +10,7 @@ import { getFollowUpsForApplication } from "@/app/actions/follow-ups";
 import { getResumeVersionsForApplication } from "@/app/actions/resume";
 import { getMasterResume } from "@/app/actions/master-resume";
 import { getApplicationTimeline } from "@/app/actions/tracker";
+import { getApplicationPipelineSummaries } from "@/app/actions/pipeline";
 import { ApplicationWorkspace } from "@/components/applications/application-workspace";
 import { isGoogleConnected } from "@/lib/google/tokens";
 import { resumeContentSchema } from "@/lib/resume/fabrication";
@@ -33,6 +34,7 @@ export default async function ApplicationDetailPage({
     followUps,
     googleConnected,
     timelineEvents,
+    pipelineSummaries,
   ] = await Promise.all([
     getApplication(id),
     getMasterResume().catch(() => null),
@@ -44,6 +46,10 @@ export default async function ApplicationDetailPage({
     getFollowUpsForApplication(id).catch(() => []),
     isGoogleConnected().catch(() => false),
     getApplicationTimeline(id).catch(() => []),
+    getApplicationPipelineSummaries([id]).catch(
+      () =>
+        ({}) as Awaited<ReturnType<typeof getApplicationPipelineSummaries>>,
+    ),
   ]);
   if (!application) notFound();
 
@@ -66,6 +72,7 @@ export default async function ApplicationDetailPage({
       followUps={followUps}
       googleConnected={googleConnected}
       timelineEvents={timelineEvents}
+      pipeline={pipelineSummaries[id] ?? null}
     />
   );
 }

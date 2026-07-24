@@ -20,10 +20,14 @@ import {
   submitResumeResponse,
 } from "@/app/actions/resume";
 import {
+  claimNextQueuedPipeline,
   claimPipelineStageStart,
   completePendingExtensionRun,
+  getLatestPipelineForApplication,
   getPipelineRunById,
   insertPipelineRun,
+  listBusyPipelineRuns,
+  listLatestPipelinesForApplications,
   updatePipelineRun,
   upsertPendingExtensionRun,
   armExtensionWake,
@@ -162,6 +166,25 @@ async function bootstrapAndAdvancePipeline(input: {
 
   const nextStage: PipelineStageId = input.skip_jd_parse ? "resume" : "jd_parse";
 
+  const busy = await listBusyPipelineRuns();
+  if (busy.length > 0) {
+    pipeline =
+      await updatePipelineRun(pipeline.id, {
+        stages,
+        current_stage: nextStage,
+        status: "queued",
+      }) ?? pipeline;
+    return {
+      ok: true as const,
+      pipeline_id: pipeline.id,
+      application_id: input.application_id,
+      queued: true as const,
+      queued_behind: busy.length,
+      advance: { ok: true as const, pipeline },
+      warning: `Queued behind ${busy.length} active application(s). It will start automatically when the current one finishes.`,
+    };
+  }
+
   pipeline =
     await updatePipelineRun(pipeline.id, {
       stages,
@@ -174,6 +197,7 @@ async function bootstrapAndAdvancePipeline(input: {
     ok: true as const,
     pipeline_id: pipeline.id,
     application_id: input.application_id,
+    queued: false as const,
     advance: advanced,
     warning: advanced.ok ? undefined : advanced.error,
   };
@@ -352,6 +376,36 @@ type AdvanceResult =
  */
 const advancingPipelines = new Map<string, Promise<AdvanceResult>>();
 
+async function promoteNextQueuedPipeline(): Promise<AdvanceResult | null> {
+  const claimed = await claimNextQueuedPipeline();
+  if (!claimed) return null;
+  return advancePipeline(claimed.id);
+}
+
+async function finishPipelineAndPromote(
+  pipelineId: string,
+  patch: {
+    status: "completed" | "failed" | "needs_manual";
+    current_stage?: PipelineStageId | null;
+    stages?: PipelineStage[];
+    error?: string | null;
+  },
+  fallback: PipelineRunRecord,
+): Promise<PipelineRunRecord> {
+  const updated =
+    (await updatePipelineRun(pipelineId, {
+      status: patch.status,
+      current_stage:
+        patch.current_stage !== undefined ? patch.current_stage : null,
+      stages: patch.stages,
+      error: patch.error !== undefined ? patch.error : null,
+    })) ?? fallback;
+  void promoteNextQueuedPipeline().catch((err) => {
+    console.error("[pipeline] promoteNextQueuedPipeline failed", err);
+  });
+  return updated;
+}
+
 export async function advancePipeline(
   pipelineId: string,
   options: AdvanceOptions = {},
@@ -376,6 +430,9 @@ async function advancePipelineInner(
   if (!run) return { ok: false as const, error: "Pipeline not found." };
   if (run.status === "completed") {
     return { ok: true as const, pipeline: run, done: true };
+  }
+  if (run.status === "queued") {
+    return { ok: true as const, pipeline: run };
   }
   if (run.status === "failed") {
     return { ok: false as const, error: run.error ?? "Pipeline failed.", pipeline: run };
@@ -494,17 +551,28 @@ async function advancePipelineInner(
     ) {
       return awaitExistingChatGptStage(pipelineId, runningStage.id, run);
     }
-    return { ok: true as const, pipeline: run };
+    // Non-ChatGPT stage left mid-flight (serverless timeout / tab closed) — retry.
+    const stages = patchStage(run.stages, runningStage.id, {
+      status: "pending",
+      error: null,
+      detail: "Retrying after interrupted run",
+    });
+    run =
+      await updatePipelineRun(pipelineId, {
+        status: "running",
+        current_stage: runningStage.id,
+        stages,
+        error: null,
+      }) ?? run;
   }
 
   const next = nextPendingStage(run);
   if (!next) {
-    run =
-      await updatePipelineRun(pipelineId, {
-        status: "completed",
-        current_stage: null,
-        error: null,
-      }) ?? run;
+    run = await finishPipelineAndPromote(
+      pipelineId,
+      { status: "completed", current_stage: null, error: null },
+      run,
+    );
     return { ok: true as const, pipeline: run, done: true };
   }
 
@@ -535,13 +603,16 @@ async function advancePipelineInner(
       status: "failed",
       error: message,
     });
-    run =
-      await updatePipelineRun(pipelineId, {
+    run = await finishPipelineAndPromote(
+      pipelineId,
+      {
         status: "failed",
         current_stage: next.id,
         stages,
         error: message,
-      }) ?? run;
+      },
+      run,
+    );
     return { ok: false as const, error: message, pipeline: run };
   }
 }
@@ -817,11 +888,11 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
     const done =
       run.status === "completed"
         ? run
-        : (await updatePipelineRun(pipelineId, {
-            status: "completed",
-            current_stage: null,
-            error: null,
-          })) ?? run;
+        : await finishPipelineAndPromote(
+            pipelineId,
+            { status: "completed", current_stage: null, error: null },
+            run,
+          );
     return { ok: true as const, pipeline: done, done: true };
   }
 
@@ -836,7 +907,7 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
 
   // Drive exports run in the background during ChatGPT stages — wait briefly
   // so Gmail attachments can attach when possible.
-  await waitForDrivePdfsReady(run.application_id, 45_000);
+  await waitForDrivePdfsReady(run.application_id, 20_000);
 
   const emails = (await listEmails(run.application_id)).filter(
     (e) =>
@@ -850,12 +921,11 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
       status: "completed",
       detail: "No new drafts to create",
     });
-    const done =
-      await updatePipelineRun(pipelineId, {
-        status: "completed",
-        current_stage: null,
-        stages,
-      }) ?? run;
+    const done = await finishPipelineAndPromote(
+      pipelineId,
+      { status: "completed", current_stage: null, stages },
+      run,
+    );
     return { ok: true as const, pipeline: done, done: true };
   }
 
@@ -865,12 +935,16 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
       status: "failed",
       error: result.error,
     });
-    const failed =
-      await updatePipelineRun(pipelineId, {
+    const failed = await finishPipelineAndPromote(
+      pipelineId,
+      {
         status: result.reconnect_required ? "needs_manual" : "failed",
         stages,
         error: result.error,
-      }) ?? run;
+        current_stage: "gmail_drafts",
+      },
+      run,
+    );
     return { ok: false as const, error: result.error, pipeline: failed };
   }
 
@@ -878,13 +952,11 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
     status: "completed",
     detail: `Created ${result.results?.filter((r) => r.ok).length ?? emails.length} draft(s)`,
   });
-  const done =
-    await updatePipelineRun(pipelineId, {
-      status: "completed",
-      current_stage: null,
-      stages,
-      error: null,
-    }) ?? run;
+  const done = await finishPipelineAndPromote(
+    pipelineId,
+    { status: "completed", current_stage: null, stages, error: null },
+    run,
+  );
   return { ok: true as const, pipeline: done, done: true };
 }
 
@@ -1077,4 +1149,135 @@ export async function retryFailedPipeline(pipelineId: string) {
     error: null,
   });
   return advancePipeline(pipelineId);
+}
+
+/**
+ * Resume a failed / stuck / queued pipeline from the applications list (or anywhere).
+ */
+export async function resumePipeline(pipelineId: string) {
+  const run = await getPipelineRunById(pipelineId);
+  if (!run) return { ok: false as const, error: "Pipeline not found." };
+
+  if (run.status === "completed") {
+    return { ok: true as const, pipeline: run, done: true as const };
+  }
+
+  if (run.status === "queued") {
+    const busy = await listBusyPipelineRuns();
+    if (busy.length > 0) {
+      return {
+        ok: true as const,
+        pipeline: run,
+        queued: true as const,
+        warning: `Still queued behind ${busy.length} active application(s).`,
+      };
+    }
+    await updatePipelineRun(pipelineId, { status: "running", error: null });
+    return advancePipeline(pipelineId);
+  }
+
+  if (run.status === "failed" || run.status === "needs_manual") {
+    return retryFailedPipeline(pipelineId);
+  }
+
+  const stuck = run.stages.find((s) => s.status === "running");
+  if (stuck && (stuck.id === "gmail_drafts" || stuck.id === "save_contacts")) {
+    const stages = patchStage(run.stages, stuck.id, {
+      status: "pending",
+      error: null,
+      detail: "Resumed by user",
+    });
+    await updatePipelineRun(pipelineId, {
+      status: "running",
+      current_stage: stuck.id,
+      stages,
+      error: null,
+    });
+  }
+
+  return advancePipeline(pipelineId);
+}
+
+export async function resumePipelineForApplication(applicationId: string) {
+  const run = await getLatestPipelineForApplication(applicationId);
+  if (!run) {
+    return { ok: false as const, error: "No pipeline found for this application." };
+  }
+  return resumePipeline(run.id);
+}
+
+/**
+ * Background tick used from any app page (and cron): advance busy pipelines,
+ * promote the queue, and return a ChatGPT wake signal when needed.
+ */
+export async function tickGlobalPipelines() {
+  const promoted = await promoteNextQueuedPipeline();
+
+  // Serialize: only the oldest busy pipeline may advance / open ChatGPT.
+  const busy = await listBusyPipelineRuns();
+  const focus = busy[0] ?? null;
+  let wake: {
+    prompt_run_id: string;
+    pipeline_run_id: string;
+    kind: string;
+    prompt_text: string;
+    chatgpt_url: string;
+  } | null = null;
+
+  if (focus) {
+    const advanced = await advancePipeline(focus.id);
+    if (
+      advanced.ok &&
+      advanced.awaiting_chatgpt &&
+      advanced.prompt_run_id &&
+      advanced.prompt_text
+    ) {
+      await armExtensionWake(advanced.prompt_run_id, 300);
+      wake = {
+        prompt_run_id: advanced.prompt_run_id,
+        pipeline_run_id: advanced.pipeline.id,
+        kind: advanced.pipeline.current_stage || "unknown",
+        prompt_text: advanced.prompt_text,
+        chatgpt_url: advanced.chatgpt_url || "https://chatgpt.com/",
+      };
+    }
+  }
+
+  return {
+    ok: true as const,
+    busy_count: busy.length,
+    focus_pipeline_id: focus?.id ?? null,
+    promoted_pipeline_id: promoted?.pipeline?.id ?? null,
+    wake,
+  };
+}
+
+export async function getApplicationPipelineSummaries(applicationIds: string[]) {
+  const map = await listLatestPipelinesForApplications(applicationIds);
+  const summaries: Record<
+    string,
+    {
+      pipeline_id: string;
+      status: string;
+      current_stage: string | null;
+      error: string | null;
+      can_resume: boolean;
+    }
+  > = {};
+  for (const [appId, run] of map) {
+    const canResume =
+      run.status === "failed" ||
+      run.status === "needs_manual" ||
+      run.status === "queued" ||
+      run.status === "running" ||
+      run.status === "awaiting_chatgpt";
+    summaries[appId] = {
+      pipeline_id: run.id,
+      status: run.status,
+      current_stage: run.current_stage,
+      error: run.error,
+      can_resume: canResume,
+    };
+  }
+  return summaries;
 }

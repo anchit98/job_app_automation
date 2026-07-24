@@ -74,6 +74,15 @@ export function QuickApplyForm() {
           return;
         }
 
+        if ("queued" in result && result.queued) {
+          // Still open progress so user can see queue position; PipelineKeeper
+          // will start this run when the active one finishes.
+          window.alert(
+            result.warning ??
+              "This application was queued and will start after the current one finishes.",
+          );
+        }
+
         router.push(`/pipeline/${result.pipeline_id}`);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to start auto-apply.");

@@ -16,6 +16,7 @@ export type PipelineStageStatus =
   | "skipped";
 
 export type PipelineRunStatus =
+  | "queued"
   | "running"
   | "awaiting_chatgpt"
   | "completed"

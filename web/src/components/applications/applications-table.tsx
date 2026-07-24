@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { APPLICATION_STATUS_LABELS } from "@/lib/applications/status";
-import { QuickApplyExistingButton } from "@/components/pipeline/quick-apply-existing-button";
+import { ApplicationPipelineActions } from "@/components/applications/application-pipeline-actions";
 import { deleteApplication } from "@/app/actions/tracker";
 import type { ApplicationSearchResult } from "@/lib/tracker/search";
 
@@ -145,7 +145,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
             </span>
             <p className="text-[16px] font-semibold text-on-surface">No applications match.</p>
             <Link href="/apply" className="text-primary font-semibold hover:underline mt-2 text-[14px]">
-              Start Quick Apply
+              Apply to a new role
             </Link>
           </div>
         ) : (
@@ -207,11 +207,16 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                       {formatRelativeTime(app.updated_at)}
                     </div>
                     <div className="col-span-2 flex justify-end items-center gap-1">
-                      <QuickApplyExistingButton
-                        applicationId={app.id}
-                        contacts={[]}
-                        compact
-                      />
+                      {app.pipeline && (
+                        <ApplicationPipelineActions
+                          pipelineId={app.pipeline.pipeline_id}
+                          status={app.pipeline.status}
+                          currentStage={app.pipeline.current_stage}
+                          error={app.pipeline.error}
+                          canResume={app.pipeline.can_resume}
+                          compact
+                        />
+                      )}
                       <button
                         type="button"
                         title="Delete application"
@@ -277,11 +282,16 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <QuickApplyExistingButton
-                        applicationId={app.id}
-                        contacts={[]}
-                        compact
-                      />
+                      {app.pipeline && (
+                        <ApplicationPipelineActions
+                          pipelineId={app.pipeline.pipeline_id}
+                          status={app.pipeline.status}
+                          currentStage={app.pipeline.current_stage}
+                          error={app.pipeline.error}
+                          canResume={app.pipeline.can_resume}
+                          compact
+                        />
+                      )}
                       <button
                         type="button"
                         title="Delete application"

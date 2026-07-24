@@ -26,6 +26,13 @@ export interface ApplicationListItem {
   resume_version_count: number;
   latest_resume_version: number | null;
   is_incomplete: boolean;
+  pipeline?: {
+    pipeline_id: string;
+    status: string;
+    current_stage: string | null;
+    error: string | null;
+    can_resume: boolean;
+  } | null;
 }
 
 export interface ApplicationSearchResult {

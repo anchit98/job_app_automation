@@ -329,3 +329,74 @@ export async function findPipelineByPromptRun(
   }
   return null;
 }
+
+/** Pipelines currently doing work (not queued / terminal). */
+export async function listBusyPipelineRuns(): Promise<PipelineRunRecord[]> {
+  const rows = (await dbAll(
+    `SELECT * FROM pipeline_runs
+     WHERE status IN ('running', 'awaiting_chatgpt')
+     ORDER BY created_at::timestamptz ASC`,
+  )) as Record<string, unknown>[];
+  return rows.map(mapPipelineRow);
+}
+
+export async function listQueuedPipelineRuns(): Promise<PipelineRunRecord[]> {
+  const rows = (await dbAll(
+    `SELECT * FROM pipeline_runs
+     WHERE status = 'queued'
+     ORDER BY created_at::timestamptz ASC`,
+  )) as Record<string, unknown>[];
+  return rows.map(mapPipelineRow);
+}
+
+export async function getLatestPipelineForApplication(
+  applicationId: string,
+): Promise<PipelineRunRecord | null> {
+  const row = (await dbGet(
+    `SELECT * FROM pipeline_runs
+     WHERE application_id = ?
+     ORDER BY created_at::timestamptz DESC
+     LIMIT 1`,
+    applicationId,
+  )) as Record<string, unknown> | undefined;
+  return row ? mapPipelineRow(row) : null;
+}
+
+export async function listLatestPipelinesForApplications(
+  applicationIds: string[],
+): Promise<Map<string, PipelineRunRecord>> {
+  const map = new Map<string, PipelineRunRecord>();
+  if (applicationIds.length === 0) return map;
+  const placeholders = applicationIds.map(() => "?").join(", ");
+  const rows = (await dbAll(
+    `SELECT DISTINCT ON (application_id) *
+     FROM pipeline_runs
+     WHERE application_id IN (${placeholders})
+     ORDER BY application_id, created_at::timestamptz DESC`,
+    ...applicationIds,
+  )) as Record<string, unknown>[];
+  for (const row of rows) {
+    const run = mapPipelineRow(row);
+    map.set(run.application_id, run);
+  }
+  return map;
+}
+
+export async function claimNextQueuedPipeline(): Promise<PipelineRunRecord | null> {
+  const busy = await listBusyPipelineRuns();
+  if (busy.length > 0) return null;
+
+  const row = (await dbGet(
+    `UPDATE pipeline_runs
+     SET status = 'running',
+         updated_at = (NOW() AT TIME ZONE 'utc')::text
+     WHERE id = (
+       SELECT id FROM pipeline_runs
+       WHERE status = 'queued'
+       ORDER BY created_at::timestamptz ASC
+       LIMIT 1
+     )
+     RETURNING *`,
+  )) as Record<string, unknown> | undefined;
+  return row ? mapPipelineRow(row) : null;
+}

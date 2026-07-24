@@ -48,7 +48,8 @@ function stagesSettled(pipeline: PipelineRunRecord) {
 function pipelineStillActive(pipeline: PipelineRunRecord) {
   if (
     pipeline.status === "running" ||
-    pipeline.status === "awaiting_chatgpt"
+    pipeline.status === "awaiting_chatgpt" ||
+    pipeline.status === "queued"
   ) {
     return true;
   }
@@ -610,6 +611,16 @@ export function PipelineProgress({
         </div>
       )}
 
+      {pipeline.status === "queued" && (
+        <div className="li-card p-4 space-y-2">
+          <h3 className="text-[16px] font-medium text-on-surface">Queued</h3>
+          <p className="text-[13px] text-on-surface-variant">
+            Another application is running first. This one starts automatically
+            when that finishes — you can navigate away.
+          </p>
+        </div>
+      )}
+
       {/* Compact bridge status — not an error banner. */}
       {pipeline.status === "awaiting_chatgpt" && (
         <p className="text-[12px] text-on-surface-variant px-1">
@@ -654,9 +665,9 @@ export function PipelineProgress({
           ) : (
             <>
               <p className="text-[13px] text-on-surface-variant">
-                ChatGPT runs this stage (including JD parsing). Keep this pipeline
-                tab open — the extension is re-signaled automatically if it misses
-                the first open.
+                ChatGPT runs this stage (including JD parsing). You can leave this
+                page — ApplyForge keeps the pipeline moving from any screen and
+                wakes JobApp Bridge automatically.
               </p>
               <button
                 type="button"

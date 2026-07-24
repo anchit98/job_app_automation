@@ -15,7 +15,7 @@ import {
   ResumeArtifacts,
 } from "@/components/applications/application-artifacts";
 import { FollowUpFlow } from "@/components/follow-ups/follow-up-flow";
-import { QuickApplyExistingButton } from "@/components/pipeline/quick-apply-existing-button";
+import { ApplicationPipelineActions } from "@/components/applications/application-pipeline-actions";
 import type {
   Application,
   Contact,
@@ -38,6 +38,13 @@ interface ApplicationWorkspaceProps {
   followUps: FollowUp[];
   googleConnected: boolean;
   timelineEvents: TimelineEvent[];
+  pipeline?: {
+    pipeline_id: string;
+    status: string;
+    current_stage: string | null;
+    error: string | null;
+    can_resume: boolean;
+  } | null;
 }
 
 export function ApplicationWorkspace({
@@ -51,6 +58,7 @@ export function ApplicationWorkspace({
   followUps,
   googleConnected: _googleConnected,
   timelineEvents,
+  pipeline,
 }: ApplicationWorkspaceProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -96,10 +104,15 @@ export function ApplicationWorkspace({
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <QuickApplyExistingButton
-            applicationId={application.id}
-            contacts={contacts}
-          />
+          {pipeline && (
+            <ApplicationPipelineActions
+              pipelineId={pipeline.pipeline_id}
+              status={pipeline.status}
+              currentStage={pipeline.current_stage}
+              error={pipeline.error}
+              canResume={pipeline.can_resume}
+            />
+          )}
           <ApplicationStatusSelect
             applicationId={application.id}
             currentStatus={application.status}

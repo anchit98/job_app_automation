@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { PipelineKeeper } from "@/components/pipeline/pipeline-keeper";
 
 const links = [
   { href: "/dashboard", icon: "home", label: "Home" },
@@ -25,6 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
+      <PipelineKeeper />
       <header className="sticky top-0 z-50 h-nav-height bg-surface border-b border-border-hairline">
         <div className="mx-auto h-full max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
