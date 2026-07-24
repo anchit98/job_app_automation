@@ -286,11 +286,36 @@ export async function createOrReusePendingPromptRun(
     }
 
     const id = randomUUID();
-    await tx`
-      INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
-      VALUES (${id}, ${kind}, '', 'pending', ${target.entity}, ${target.entityId})
-    `;
-    return { id, existingPromptText: null };
+    try {
+      await tx`
+        INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
+        VALUES (${id}, ${kind}, '', 'pending', ${target.entity}, ${target.entityId})
+      `;
+      return { id, existingPromptText: null };
+    } catch (e) {
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code: unknown }).code)
+          : "";
+      // Unique index prompt_runs_one_pending_stage_idx — reuse the winner's row.
+      if (code !== "23505") throw e;
+      const again = await tx<{ id: string; prompt_text: string }[]>`
+        SELECT id, prompt_text
+        FROM prompt_runs
+        WHERE kind = ${kind}
+          AND target_entity_id = ${target.entityId}
+          AND status = 'pending'
+        ORDER BY exported_at DESC NULLS LAST, created_at DESC
+        LIMIT 1
+      `;
+      if (!again[0]) throw e;
+      return {
+        id: again[0].id,
+        existingPromptText: again[0].prompt_text?.trim()
+          ? again[0].prompt_text
+          : null,
+      };
+    }
   });
 }
 
