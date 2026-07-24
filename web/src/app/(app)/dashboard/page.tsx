@@ -22,13 +22,13 @@ export default async function DashboardPage({
     typeof params.google_error === "string" ? params.google_error : null;
 
   const [
-    { metrics, metricsFormatted },
+    dashboard,
     profile,
     resume,
     connected,
     extensionStatus,
   ] = await Promise.all([
-    getDashboardData(),
+    getDashboardData().catch(() => null),
     getProfile().catch(() => null),
     getMasterResume().catch(() => null),
     isGoogleConnected().catch(() => false),
@@ -38,6 +38,25 @@ export default async function DashboardPage({
       created_at: null,
     })),
   ]);
+
+  const metrics = dashboard?.metrics ?? {
+    totalApplications: 0,
+    applicationsThisWeek: 0,
+    responseRate: null,
+    interviewRate: null,
+    offerRate: null,
+    pendingFollowUps: 0,
+    snoozedFollowUps: 0,
+    companiesContacted: 0,
+    emailsSent: 0,
+    pendingPrompts: 0,
+    incompleteApplied: 0,
+  };
+  const metricsFormatted = dashboard?.metricsFormatted ?? {
+    responseRate: "—",
+    interviewRate: "—",
+    offerRate: "—",
+  };
 
   const profileDone = Boolean(
     profile?.full_name &&

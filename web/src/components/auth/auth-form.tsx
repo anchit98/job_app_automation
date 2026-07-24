@@ -24,16 +24,22 @@ export function AuthForm({
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result =
-        mode === "signup"
-          ? await signUp({ email, password, full_name: fullName })
-          : await signIn({ email, password });
-      if (!result.ok) {
-        setError(result.error);
-        return;
+      try {
+        const result =
+          mode === "signup"
+            ? await signUp({ email, password, full_name: fullName })
+            : await signIn({ email, password });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        router.replace(nextPath || "/dashboard");
+        router.refresh();
+      } catch {
+        setError(
+          "Sign-in failed. If this is production, confirm AUTH_SECRET is set on Vercel and redeploy.",
+        );
       }
-      router.replace(nextPath || "/dashboard");
-      router.refresh();
     });
   }
 

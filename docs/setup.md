@@ -61,6 +61,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 | `GOOGLE_OAUTH_REDIRECT_URI` | Yes | Must match Google Console |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypts Google tokens in the DB |
 | `NEXT_PUBLIC_APP_URL` | Yes | `http://localhost:3000` for local |
+| `AUTH_SECRET` | Yes | Session signing secret (`openssl rand -base64 32`) |
 | `RESUME_MASTER_DOC_ID` | No | Default master resume Google Doc ID |
 
 **Note:** Switching from SQLite to Supabase starts a **fresh** database. Re-connect Google, re-sync master docs, and re-create the extension token. Your old `web/data/app.db` is not auto-imported.
@@ -85,10 +86,10 @@ Must contain uppercase headers: `WORK EXPERIENCE`, `PROJECTS` (optional), `SKILL
 
 ## 6. Hosting (Vercel) — after local works on Supabase
 
-1. Deploy `web/` to Vercel; set the same env vars (`DATABASE_URL` = **pooler** URI, `NEXT_PUBLIC_APP_URL` = your Vercel URL, Google redirect = production callback).
+1. Deploy `web/` to Vercel; set the same env vars (`DATABASE_URL` = **pooler** URI, `AUTH_SECRET`, `NEXT_PUBLIC_APP_URL` = your Vercel URL, Google redirect = production callback).
 2. Add the Vercel origin + redirect URI in Google Cloud Console.
 3. Update `extension/manifest.json` host permissions + content_scripts to include `https://your-app.vercel.app/*`, reload extension, set Options App URL to the Vercel URL, paste a token from the **hosted** Settings page.
-4. There is still **no app login** — anyone with the URL can use the app. For personal use, keep the URL private or add auth later.
+4. Confirm readiness at `/api/health` (`auth_secret` and `database` must be true).
 
 ## Troubleshooting
 
