@@ -16,7 +16,7 @@ import {
   insertResumeVersion,
   listResumeVersions,
   markResumeVersionUploadFailed,
-  createPromptRun,
+  createOrReusePendingPromptRun,
   updatePromptRunText,
   updatePromptRunValidationErrors,
   updateResumeVersionDriveIds,
@@ -137,10 +137,19 @@ export async function exportResumePrompt(
     ? condenseMasterResume(masterParsed.data)
     : masterParsed.data;
 
-  const runId = await createPromptRun("resume", {
-    entity: "applications",
-    entityId: applicationId,
-  });
+  const { id: runId, existingPromptText } = await createOrReusePendingPromptRun(
+    "resume",
+    { entity: "applications", entityId: applicationId },
+  );
+
+  if (existingPromptText) {
+    return {
+      prompt_run_id: runId,
+      prompt_text: existingPromptText,
+      length_warning: warnIfPromptTooLong(existingPromptText),
+      chatgpt_url: "https://chat.openai.com/",
+    };
+  }
 
   const masterRules = getLockedMasterResumeRules(masterRow!.rules);
 

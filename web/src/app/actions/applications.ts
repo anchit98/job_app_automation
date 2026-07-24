@@ -7,7 +7,7 @@ import { isApplicationStatus } from "@/lib/applications/status";
 import {
   getApplicationById,
   getActivePromptTemplate,
-  createPromptRun,
+  createOrReusePendingPromptRun,
   insertApplication,
   listApplications,
   updateApplicationJdParsed,
@@ -207,10 +207,19 @@ export async function exportJdParsePrompt(applicationId: string) {
     throw new Error("No active template found for kind: jd_parse");
   }
 
-  const runId = await createPromptRun("jd_parse", {
-    entity: "applications",
-    entityId: applicationId,
-  });
+  const { id: runId, existingPromptText } = await createOrReusePendingPromptRun(
+    "jd_parse",
+    { entity: "applications", entityId: applicationId },
+  );
+
+  if (existingPromptText) {
+    return {
+      prompt_run_id: runId,
+      prompt_text: existingPromptText,
+      length_warning: warnIfPromptTooLong(existingPromptText),
+      chatgpt_url: "https://chatgpt.com/",
+    };
+  }
 
   const jdWrapped = wrapJdForPrompt(application.jd_raw);
   const promptText = composePrompt(template, { jd_wrapped: jdWrapped }, runId);

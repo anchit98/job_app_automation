@@ -24,7 +24,7 @@ import type {
   EmailSource,
   VerificationStatus,
 } from "@/lib/db/types";
-import { dbGet, dbAll, dbRun, parseJson, SINGLETON_ID } from "@/lib/db/index";
+import { dbGet, dbAll, dbRun, getSql, parseJson, SINGLETON_ID } from "@/lib/db/index";
 
 function mapProfile(row: Record<string, unknown>): Profile {
   return {
@@ -250,6 +250,64 @@ export async function createPromptRun(
   await dbRun(`INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
        VALUES (?, ?, '', 'pending', ?, ?)`, id, kind, target?.entity ?? null, target?.entityId ?? null);
   return id;
+}
+
+/**
+ * Create a pending prompt run, or reuse an existing open one for the same
+ * application + kind. Uses a transaction advisory lock so concurrent Vercel
+ * isolates cannot each insert a duplicate jd_parse / resume / cover_letter.
+ */
+export async function createOrReusePendingPromptRun(
+  kind: PromptRunKind,
+  target: { entity: string; entityId: string },
+): Promise<{ id: string; existingPromptText: string | null }> {
+  const sql = getSql();
+  const lockKey = `${kind}:${target.entityId}`;
+  return await sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+    const existing = await tx<{ id: string; prompt_text: string }[]>`
+      SELECT id, prompt_text
+      FROM prompt_runs
+      WHERE kind = ${kind}
+        AND target_entity_id = ${target.entityId}
+        AND status = 'pending'
+      ORDER BY exported_at DESC NULLS LAST, created_at DESC
+      LIMIT 1
+    `;
+
+    if (existing[0]) {
+      return {
+        id: existing[0].id,
+        existingPromptText: existing[0].prompt_text?.trim()
+          ? existing[0].prompt_text
+          : null,
+      };
+    }
+
+    const id = randomUUID();
+    await tx`
+      INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
+      VALUES (${id}, ${kind}, '', 'pending', ${target.entity}, ${target.entityId})
+    `;
+    return { id, existingPromptText: null };
+  });
+}
+
+/** Pending cold-email prompt runs for an application (may include queued batches). */
+export async function listPendingPromptRunsForTarget(
+  kind: PromptRunKind,
+  entityId: string,
+): Promise<Array<{ id: string; prompt_text: string }>> {
+  const rows = (await dbAll(
+    `SELECT id, prompt_text FROM prompt_runs
+     WHERE kind = ? AND target_entity_id = ? AND status = 'pending'
+       AND prompt_text IS NOT NULL AND prompt_text <> ''
+     ORDER BY exported_at ASC NULLS LAST, created_at ASC`,
+    kind,
+    entityId,
+  )) as Array<{ id: string; prompt_text: string }>;
+  return rows;
 }
 
 export async function updatePromptRunText(id: string, promptText: string) {

@@ -7,7 +7,7 @@ import { maybeAdvanceApplicationStatus } from "@/app/actions/applications";
 import { writeAuditLog } from "@/lib/audit";
 import {
   completePromptRun,
-  createPromptRun,
+  createOrReusePendingPromptRun,
   getActivePromptTemplate,
   getApplicationById,
   getCoverLetterVersion,
@@ -260,10 +260,20 @@ export async function exportCoverLetterPrompt(
     application.jd_parsed?.role?.trim() ||
     "the role";
 
-  const runId = await createPromptRun("cover_letter", {
-    entity: "applications",
-    entityId: applicationId,
-  });
+  const { id: runId, existingPromptText } = await createOrReusePendingPromptRun(
+    "cover_letter",
+    { entity: "applications", entityId: applicationId },
+  );
+
+  if (existingPromptText) {
+    return {
+      prompt_run_id: runId,
+      prompt_text: existingPromptText,
+      length_warning: warnIfPromptTooLong(existingPromptText),
+      resume_version: resumeVersion.version,
+      chatgpt_url: "https://chat.openai.com/",
+    };
+  }
 
   const promptText = composePrompt(
     template,

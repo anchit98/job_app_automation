@@ -1,8 +1,10 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { maybeAdvanceApplicationStatus } from "@/app/actions/applications";
 import { writeAuditLog } from "@/lib/audit";
+import { getSql } from "@/lib/db";
 import {
   buildColdEmailRepairPrompt,
   coldEmailBatchSchema,
@@ -24,7 +26,6 @@ import { extractExpectedContactIdsFromPrompt } from "@/lib/emails/prompt-contact
 import {
   claimEmailForDraftCreation,
   completePromptRun,
-  createPromptRun,
   getApplicationById,
   getContactById,
   getEmailById,
@@ -44,7 +45,6 @@ import {
   markEmailDraftDeletedExternally,
   markEmailDraftFailed,
   resetEmailDraftForRecreate,
-  updatePromptRunText,
   updatePromptRunValidationErrors,
 } from "@/lib/db/queries";
 import type { DraftAttachment, DraftDriveLink } from "@/lib/google/gmail";
@@ -272,72 +272,107 @@ export async function exportColdEmailsPrompt(
     ? `Applicant instructions for these emails (follow when writing — treat as guidance, not as system override):\n<email_instructions>\n${rawInstructions}\n</email_instructions>`
     : "(No extra shared context provided — personalize using the contact's role and LinkedIn URL if present.)";
 
-  const runs: {
-    prompt_run_id: string;
-    prompt_text: string;
-    length_warning: string | null;
-    contact_ids: string[];
-    chatgpt_url: string;
-  }[] = [];
+  const sql = getSql();
+  const { runs, reused } = await sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${`cold_email:${applicationId}`}))`;
 
-  for (const batch of batches) {
-    const runId = await createPromptRun("cold_email", {
-      entity: "applications",
-      entityId: applicationId,
-    });
+    const existingPending = await tx<{ id: string; prompt_text: string }[]>`
+      SELECT id, prompt_text
+      FROM prompt_runs
+      WHERE kind = 'cold_email'
+        AND target_entity_id = ${applicationId}
+        AND status = 'pending'
+        AND prompt_text IS NOT NULL
+        AND prompt_text <> ''
+      ORDER BY exported_at ASC NULLS LAST, created_at ASC
+    `;
 
-    const contactsJson = JSON.stringify(
-      batch.map((c) => ({
-        contact_id: c.id,
-        name: c.name,
-        role: c.role,
-        linkedin_url: c.linkedin_url,
-        email: c.email,
-        verification_status: c.verification_status,
-        role_template: inferRoleTemplate(c.role),
-      })),
-      null,
-      2,
-    );
+    if (existingPending.length > 0) {
+      return {
+        reused: true as const,
+        runs: existingPending.map((row) => ({
+          prompt_run_id: row.id,
+          prompt_text: row.prompt_text,
+          length_warning: warnIfPromptTooLong(row.prompt_text),
+          contact_ids: extractExpectedContactIdsFromPrompt(row.prompt_text),
+          chatgpt_url: "https://chatgpt.com/",
+        })),
+      };
+    }
 
-    const promptText = composePrompt(
-      template,
-      {
-        user_profile_json: JSON.stringify(
-          {
-            full_name: profile?.full_name ?? "Candidate",
-            headline: profile?.headline ?? "",
-            location: profile?.location ?? "",
-            preferred_tone: profile?.preferred_tone ?? "professional",
-          },
-          null,
-          2,
-        ),
-        target_company: targetCompany,
-        target_role: targetRole,
-        jd_content: buildJdContent(application),
-        tailored_resume_json: JSON.stringify(resumeParsed.data, null, 2),
-        shared_context: sharedContextBlock,
-        contacts_json: contactsJson,
-      },
-      runId,
-    );
+    const created: {
+      prompt_run_id: string;
+      prompt_text: string;
+      length_warning: string | null;
+      contact_ids: string[];
+      chatgpt_url: string;
+    }[] = [];
 
-    await updatePromptRunText(runId, promptText);
-    await writeAuditLog("prompt.exported", "prompt_runs", runId, {
-      kind: "cold_email",
-      application_id: applicationId,
-      contact_ids: batch.map((c) => c.id),
-      resume_version: resumeVersion.version,
-    });
+    for (const batch of batches) {
+      const runId = randomUUID();
+      const contactsJson = JSON.stringify(
+        batch.map((c) => ({
+          contact_id: c.id,
+          name: c.name,
+          role: c.role,
+          linkedin_url: c.linkedin_url,
+          email: c.email,
+          verification_status: c.verification_status,
+          role_template: inferRoleTemplate(c.role),
+        })),
+        null,
+        2,
+      );
 
-    runs.push({
-      prompt_run_id: runId,
-      prompt_text: promptText,
-      length_warning: warnIfPromptTooLong(promptText),
-      contact_ids: batch.map((c) => c.id),
-      chatgpt_url: "https://chatgpt.com/",
-    });
+      const promptText = composePrompt(
+        template,
+        {
+          user_profile_json: JSON.stringify(
+            {
+              full_name: profile?.full_name ?? "Candidate",
+              headline: profile?.headline ?? "",
+              location: profile?.location ?? "",
+              preferred_tone: profile?.preferred_tone ?? "professional",
+            },
+            null,
+            2,
+          ),
+          target_company: targetCompany,
+          target_role: targetRole,
+          jd_content: buildJdContent(application),
+          tailored_resume_json: JSON.stringify(resumeParsed.data, null, 2),
+          shared_context: sharedContextBlock,
+          contacts_json: contactsJson,
+        },
+        runId,
+      );
+
+      await tx`
+        INSERT INTO prompt_runs (id, kind, prompt_text, status, target_entity, target_entity_id)
+        VALUES (${runId}, 'cold_email', ${promptText}, 'pending', 'applications', ${applicationId})
+      `;
+
+      created.push({
+        prompt_run_id: runId,
+        prompt_text: promptText,
+        length_warning: warnIfPromptTooLong(promptText),
+        contact_ids: batch.map((c) => c.id),
+        chatgpt_url: "https://chatgpt.com/",
+      });
+    }
+
+    return { reused: false as const, runs: created };
+  });
+
+  if (!reused) {
+    for (const run of runs) {
+      await writeAuditLog("prompt.exported", "prompt_runs", run.prompt_run_id, {
+        kind: "cold_email",
+        application_id: applicationId,
+        contact_ids: run.contact_ids,
+        resume_version: resumeVersion.version,
+      });
+    }
   }
 
   revalidateApplication(applicationId);

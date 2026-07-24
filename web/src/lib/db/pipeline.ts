@@ -98,7 +98,9 @@ export async function claimPipelineStageStart(
   if (!existing) return null;
 
   const stage = existing.stages.find((s) => s.id === stageId);
-  if (!stage || stage.status !== "pending") return null;
+  if (!stage || (stage.status !== "pending" && stage.status !== "failed")) {
+    return null;
+  }
 
   const stages = existing.stages.map((s) =>
     s.id === stageId
@@ -122,7 +124,8 @@ export async function claimPipelineStageStart(
        AND EXISTS (
          SELECT 1
          FROM jsonb_array_elements(stages_json::jsonb) AS e
-         WHERE e->>'id' = ? AND e->>'status' = 'pending'
+         WHERE e->>'id' = ?
+           AND e->>'status' IN ('pending', 'failed')
        )
      RETURNING *`,
     stageId,

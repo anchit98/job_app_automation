@@ -87,6 +87,13 @@ CREATE TABLE IF NOT EXISTS prompt_runs (
 CREATE INDEX IF NOT EXISTS prompt_runs_status_exported_idx
   ON prompt_runs (status, exported_at DESC);
 
+-- At most one open ChatGPT stage prompt per application (cold_email allows batches).
+CREATE UNIQUE INDEX IF NOT EXISTS prompt_runs_one_pending_stage_idx
+  ON prompt_runs (kind, target_entity_id)
+  WHERE status = 'pending'
+    AND target_entity_id IS NOT NULL
+    AND kind IN ('jd_parse', 'resume', 'cover_letter');
+
 CREATE TABLE IF NOT EXISTS google_tokens (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   encrypted_access_token TEXT NOT NULL,

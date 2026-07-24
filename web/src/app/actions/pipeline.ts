@@ -484,6 +484,16 @@ async function advancePipelineInner(
   // Never treat an in-flight stage as "nothing left to do".
   const runningStage = run.stages.find((s) => s.status === "running");
   if (runningStage) {
+    // Another isolate may have claimed a ChatGPT stage and still be exporting —
+    // wait for awaiting_chatgpt so paste-back can chain the next tab.
+    if (
+      runningStage.id === "jd_parse" ||
+      runningStage.id === "resume" ||
+      runningStage.id === "cover_letter" ||
+      runningStage.id === "cold_email"
+    ) {
+      return awaitExistingChatGptStage(pipelineId, runningStage.id, run);
+    }
     return { ok: true as const, pipeline: run };
   }
 
