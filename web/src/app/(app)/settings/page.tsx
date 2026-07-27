@@ -1,9 +1,13 @@
 import { ExtensionSettingsPanel } from "@/components/settings/extension-settings-panel";
 import { UpdatePasswordForm } from "@/components/settings/update-password-form";
+import { DeleteAccountForm } from "@/components/settings/delete-account-form";
 import { ReopenSetupGuideButton } from "@/components/setup/reopen-setup-guide-button";
 import Link from "next/link";
+import { requireUser } from "@/lib/auth/user";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const user = await requireUser();
+
   return (
     <div className="space-y-3">
       <div>
@@ -24,6 +28,7 @@ export default function SettingsPage() {
         <div className="lg:col-span-8 space-y-3">
           <UpdatePasswordForm />
           <ExtensionSettingsPanel />
+          <DeleteAccountForm userEmail={user.email} />
         </div>
         <div className="lg:col-span-4 space-y-3">
           <div className="li-card p-4">

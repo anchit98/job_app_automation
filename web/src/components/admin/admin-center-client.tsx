@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import {
   adminCreateRecoveryLink,
   adminCreateUser,
+  adminDeleteUser,
   adminResetUserPassword,
 } from "@/app/actions/admin";
 import type { AdminUserSummary } from "@/lib/admin/queries";
@@ -219,6 +220,34 @@ export function AdminCenterClient({
                           }}
                         >
                           Email reset link
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pending || user.id === currentUserId}
+                          className="li-btn-ghost text-[12px] justify-center text-error disabled:opacity-50"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Permanently delete ${user.email}? All applications and data for this user will be removed.`,
+                              )
+                            ) {
+                              return;
+                            }
+                            clearFeedback();
+                            startTransition(async () => {
+                              const result = await adminDeleteUser({
+                                userId: user.id,
+                              });
+                              if (!result.ok) {
+                                setError(result.error);
+                                return;
+                              }
+                              setMessage(`Deleted account ${result.email}.`);
+                              router.refresh();
+                            });
+                          }}
+                        >
+                          Delete account
                         </button>
                       </div>
                     </td>

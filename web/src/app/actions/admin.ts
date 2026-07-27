@@ -9,10 +9,13 @@ import { sendPasswordResetEmail } from "@/lib/auth/password-reset-email";
 import {
   createUser,
   deleteAllUserSessions,
+  deleteUserAccount,
   ensureUserProfile,
   getUserByEmail,
+  getUserById,
   requireAdmin,
   setUserPassword,
+  countAdmins,
 } from "@/lib/auth/user";
 import { dbGet } from "@/lib/db";
 
@@ -134,6 +137,50 @@ export async function adminCreateRecoveryLink(input: { userId: string }) {
       emailedTo: user.email,
       expires_at: token.expires_at,
     };
+  } catch (error) {
+    return { ok: false as const, error: adminFailureMessage(error) };
+  }
+}
+
+export async function adminDeleteUser(input: { userId: string }) {
+  const parsed = userIdSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      error: parsed.error.issues[0]?.message ?? "Invalid input.",
+    };
+  }
+
+  try {
+    const admin = await requireAdmin();
+    const targetId = parsed.data.userId;
+
+    if (targetId === admin.id) {
+      return {
+        ok: false as const,
+        error: "Delete your own account from Privacy & Settings.",
+      };
+    }
+
+    const user = await getUserById(targetId);
+    if (!user) {
+      return { ok: false as const, error: "User not found." };
+    }
+
+    if (user.is_admin && (await countAdmins()) <= 1) {
+      return {
+        ok: false as const,
+        error: "Cannot delete the only admin account.",
+      };
+    }
+
+    await writeAuditLog("admin.user_delete", "users", targetId, {
+      admin_user_id: admin.id,
+      email: user.email,
+    });
+    await deleteUserAccount(targetId);
+    revalidatePath("/admin-center");
+    return { ok: true as const, email: user.email };
   } catch (error) {
     return { ok: false as const, error: adminFailureMessage(error) };
   }

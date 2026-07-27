@@ -6,11 +6,14 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySession } from "@/lib/auth/session";
 import {
   claimOrphanedData,
+  countAdmins,
   countUsers,
   createUser,
   deleteAllUserSessions,
+  deleteUserAccount,
   ensureUserProfile,
   getUserByEmail,
+  getUserById,
   requireUser,
   setUserPassword,
 } from "@/lib/auth/user";
@@ -309,6 +312,64 @@ export async function updatePassword(input: {
       must_reset_password: false,
     });
     return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: authFailureMessage(error) };
+  }
+}
+
+const deleteAccountSchema = z.object({
+  password: z.string().min(1, "Enter your password to confirm."),
+  confirmEmail: z.string().email("Enter your account email to confirm."),
+});
+
+export async function deleteMyAccount(input: {
+  password: string;
+  confirmEmail: string;
+}) {
+  const parsed = deleteAccountSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      error: parsed.error.issues[0]?.message ?? "Invalid input.",
+    };
+  }
+
+  try {
+    const sessionUser = await requireUser();
+    const user = await getUserById(sessionUser.id);
+    if (!user) {
+      return { ok: false as const, error: "Account not found." };
+    }
+
+    const confirmEmail = parsed.data.confirmEmail.trim().toLowerCase();
+    if (confirmEmail !== user.email) {
+      return {
+        ok: false as const,
+        error: "Confirmation email does not match your account.",
+      };
+    }
+
+    const valid = await verifyPassword(parsed.data.password, user.password_hash);
+    if (!valid) {
+      return { ok: false as const, error: "Password is incorrect." };
+    }
+
+    if (user.is_admin && (await countAdmins()) <= 1) {
+      return {
+        ok: false as const,
+        error:
+          "You are the only admin. Add another admin before deleting your account.",
+      };
+    }
+
+    const { writeAuditLog } = await import("@/lib/audit");
+    await writeAuditLog("account.deleted", "users", user.id, {
+      email: user.email,
+      self_delete: true,
+    });
+    await deleteUserAccount(user.id);
+    await destroySession();
+    redirect("/login");
   } catch (error) {
     return { ok: false as const, error: authFailureMessage(error) };
   }

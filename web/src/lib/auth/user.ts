@@ -39,6 +39,31 @@ export async function countUsers(): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
+export async function countAdmins(): Promise<number> {
+  const row = (await dbGet(
+    `SELECT COUNT(*)::int AS n FROM users WHERE is_admin = true`,
+  )) as { n: number } | undefined;
+  return Number(row?.n ?? 0);
+}
+
+export async function getUserById(userId: string) {
+  return (await dbGet(
+    `SELECT id, email, password_hash, full_name, is_admin, must_reset_password
+       FROM users
+      WHERE id = ?`,
+    userId,
+  )) as
+    | {
+        id: string;
+        email: string;
+        password_hash: string;
+        full_name: string | null;
+        is_admin: boolean;
+        must_reset_password: boolean;
+      }
+    | undefined;
+}
+
 export async function getUserByEmail(email: string) {
   return (await dbGet(
     `SELECT id, email, password_hash, full_name, is_admin, must_reset_password
@@ -261,6 +286,22 @@ export async function setUserPassword(
 
 export async function deleteAllUserSessions(userId: string) {
   await dbRun(`DELETE FROM sessions WHERE user_id = ?`, userId);
+}
+
+/**
+ * Permanently deletes a user and cascades related rows. Clears extension
+ * pending rows first — their FKs do not cascade on prompt/pipeline delete.
+ */
+export async function deleteUserAccount(userId: string): Promise<void> {
+  const sql = getSql();
+  await sql.begin(async (tx) => {
+    await tx`
+      DELETE FROM pending_extension_runs
+      WHERE prompt_run_id IN (SELECT id FROM prompt_runs WHERE user_id = ${userId})
+         OR pipeline_run_id IN (SELECT id FROM pipeline_runs WHERE user_id = ${userId})
+    `;
+    await tx`DELETE FROM users WHERE id = ${userId}`;
+  });
 }
 
 export { destroySession };
