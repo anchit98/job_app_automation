@@ -7,6 +7,8 @@ const SESSION_COOKIE = "applyforge_session";
 const PUBLIC_PREFIXES = [
   "/login",
   "/signup",
+  "/forgot-password",
+  "/reset-password",
   "/_next",
   "/favicon",
   "/brand",
@@ -24,27 +26,46 @@ function isPublic(pathname: string) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  let sessionPayload:
+    | {
+        must_reset_password: boolean;
+      }
+    | undefined;
+
+  if (token && process.env.AUTH_SECRET) {
+    try {
+      const { payload } = await jwtVerify(
+        token,
+        new TextEncoder().encode(process.env.AUTH_SECRET),
+      );
+      sessionPayload = {
+        must_reset_password: Boolean(payload.must_reset_password),
+      };
+    } catch {
+      sessionPayload = undefined;
+    }
+  }
 
   if (isPublic(pathname)) {
     // Logged-in users hitting login/signup → dashboard
-    if (pathname === "/login" || pathname === "/signup") {
-      const token = request.cookies.get(SESSION_COOKIE)?.value;
-      if (token && process.env.AUTH_SECRET) {
-        try {
-          await jwtVerify(
-            token,
-            new TextEncoder().encode(process.env.AUTH_SECRET),
-          );
-          return NextResponse.redirect(new URL("/dashboard", request.url));
-        } catch {
-          /* continue to auth page */
-        }
+    if (
+      pathname === "/login" ||
+      pathname === "/signup" ||
+      pathname === "/forgot-password"
+    ) {
+      if (sessionPayload?.must_reset_password) {
+        return NextResponse.redirect(
+          new URL("/reset-password-required", request.url),
+        );
+      }
+      if (sessionPayload) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
       }
     }
     return NextResponse.next();
   }
 
-  const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (!token || !process.env.AUTH_SECRET) {
     const login = new URL("/login", request.url);
     login.searchParams.set("next", pathname);
@@ -52,10 +73,19 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    await jwtVerify(
+    const { payload } = await jwtVerify(
       token,
       new TextEncoder().encode(process.env.AUTH_SECRET),
     );
+    const mustReset = Boolean(payload.must_reset_password);
+    if (mustReset && pathname !== "/reset-password-required") {
+      return NextResponse.redirect(
+        new URL("/reset-password-required", request.url),
+      );
+    }
+    if (!mustReset && pathname === "/reset-password-required") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
     return NextResponse.next();
   } catch {
     const login = new URL("/login", request.url);

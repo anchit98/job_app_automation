@@ -63,20 +63,11 @@ export function QuickApplyExistingButton({
         applicationId,
         email_instructions: emailInstructions.trim() || undefined,
         // Omit contacts when using saved ones — server loads from DB.
-        contacts:
-          withContacts === undefined
-            ? undefined
-            : cleaned.length > 0
-              ? cleaned
-              : undefined,
+        // Pass [] explicitly when the modal submits with no rows (skip emails).
+        contacts: withContacts === undefined ? undefined : cleaned,
       });
 
       if (!result.ok) {
-        if ("needs_contacts" in result && result.needs_contacts) {
-          setOpen(true);
-          setError(result.error);
-          return;
-        }
         setError(result.error);
         setOpen(true);
         return;
@@ -118,8 +109,8 @@ export function QuickApplyExistingButton({
                   Quick Apply this application
                 </h3>
                 <p className="text-[13px] text-on-surface-variant mt-1">
-                  Re-runs resume → cover letter → cold emails → Gmail drafts for this
-                  role. Confirm contacts with emails below.
+                  Re-runs resume → cover letter. Cold emails and Gmail drafts run
+                  only if contacts with emails are included (optional).
                 </p>
               </div>
               <button
@@ -146,7 +137,7 @@ export function QuickApplyExistingButton({
                         ),
                       )
                     }
-                    placeholder="Name *"
+                    placeholder="Name"
                     className="rounded-lg border border-outline-variant bg-surface-container-highest px-3 py-2 text-[13px]"
                   />
                   <input
@@ -158,7 +149,7 @@ export function QuickApplyExistingButton({
                         ),
                       )
                     }
-                    placeholder="Email *"
+                    placeholder="Email"
                     className="rounded-lg border border-outline-variant bg-surface-container-highest px-3 py-2 text-[13px]"
                   />
                   <input

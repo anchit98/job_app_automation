@@ -25,25 +25,24 @@ export function EnqueueFollowUpsButton() {
   }
 
   return (
-    <div className="li-card p-4 space-y-2">
-      <p className="li-meta">
-        Due follow-ups are normally enqueued by a daily cron (
-        <code className="text-[11px]">POST /api/cron/enqueue-follow-up-prompts</code>
-        ). Run manually if your machine was off.
-      </p>
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={pending}
-          onClick={enqueue}
-          className="li-btn-secondary text-[13px] disabled:opacity-50"
-        >
-          {pending ? "Enqueuing…" : "Enqueue due follow-ups"}
-        </button>
-        {message && (
-          <span className="li-meta">{message}</span>
-        )}
+    <div className="li-card p-4 lg:px-5 lg:py-4 shrink-0 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+      <div className="min-w-0 flex-1 space-y-1">
+        <h2 className="li-section-title">Follow-ups</h2>
+        <p className="li-meta">
+          Due follow-ups are normally enqueued by a daily cron (
+          <code className="text-[11px]">POST /api/cron/enqueue-follow-up-prompts</code>
+          ). Run manually if your machine was off.
+        </p>
+        {message && <p className="li-meta text-on-surface">{message}</p>}
       </div>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={enqueue}
+        className="li-btn-secondary text-[13px] shrink-0 disabled:opacity-50 justify-center"
+      >
+        {pending ? "Enqueuing…" : "Enqueue due follow-ups"}
+      </button>
     </div>
   );
 }

@@ -33,7 +33,11 @@ export function AuthForm({
           setError(result.error);
           return;
         }
-        router.replace(nextPath || "/dashboard");
+        router.replace(
+          result.user?.must_reset_password
+            ? "/reset-password-required"
+            : nextPath || "/dashboard",
+        );
         router.refresh();
       } catch {
         setError(
@@ -48,14 +52,15 @@ export function AuthForm({
       <div className="text-center space-y-2">
         <Link href="/" className="inline-flex items-center gap-2 no-underline">
           <Image
-            src="/brand/logo.svg"
-            alt="ApplyForge"
-            width={40}
-            height={40}
-            className="h-10 w-10 rounded-[4px]"
+            src="/brand/jobapp-os-logo.png"
+            alt="JobApp OS"
+            width={102}
+            height={60}
+            className="h-[60px] w-auto"
             priority
+            unoptimized
           />
-          <span className="text-[22px] font-semibold text-primary">ApplyForge</span>
+          <span className="text-[24px] font-semibold text-primary">JobApp OS</span>
         </Link>
         <h1 className="text-[24px] font-semibold text-on-surface">
           {mode === "signup" ? "Create your account" : "Sign in"}
@@ -141,6 +146,10 @@ export function AuthForm({
             New here?{" "}
             <Link href="/signup" className="text-primary font-semibold">
               Create an account
+            </Link>
+            <span className="mx-2 text-on-surface-variant">·</span>
+            <Link href="/forgot-password" className="text-primary font-semibold">
+              Forgot password?
             </Link>
           </>
         )}

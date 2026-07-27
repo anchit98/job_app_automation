@@ -17,6 +17,7 @@ export default async function AppLayout({
       userEmail={user?.email}
       userName={profile?.full_name || user?.full_name}
       avatarSrc={profileAvatarSrc(profile)}
+      isAdmin={user?.is_admin}
     >
       {children}
     </AppShell>

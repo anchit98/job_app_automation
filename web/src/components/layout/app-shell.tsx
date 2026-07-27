@@ -25,11 +25,13 @@ export function AppShell({
   userEmail,
   userName,
   avatarSrc,
+  isAdmin,
 }: {
   children: React.ReactNode;
   userEmail?: string | null;
   userName?: string | null;
   avatarSrc?: string | null;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -42,6 +44,7 @@ export function AppShell({
   }, [pathname]);
 
   const activePath = optimisticPath ?? pathname;
+  const showApplicationSearch = activePath === "/applications";
 
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
@@ -56,43 +59,48 @@ export function AppShell({
               className="flex items-center gap-2 shrink-0 no-underline"
             >
               <Image
-                src="/brand/logo.svg"
-                alt="ApplyForge"
-                width={32}
-                height={32}
-                className="h-8 w-8 rounded-[4px]"
+                src="/brand/jobapp-os-logo.png"
+                alt="JobApp OS"
+                width={56}
+                height={33}
+                className="h-8 w-auto"
                 priority
+                unoptimized
               />
               <span className="hidden sm:inline text-[20px] font-semibold text-primary tracking-tight">
-                ApplyForge
+                JobApp OS
               </span>
             </Link>
-            <div className="hidden md:flex items-center gap-2 rounded-lg bg-surface-container-low border border-transparent focus-within:border-primary px-3 py-1.5 w-full max-w-[320px]">
-              <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
-                search
-              </span>
-              <input
-                type="search"
-                placeholder="Search applications"
-                className="bg-transparent border-0 outline-none text-[14px] w-full text-on-surface placeholder:text-on-surface-variant"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const q = (e.target as HTMLInputElement).value.trim();
-                    const href = q
-                      ? `/applications?q=${encodeURIComponent(q)}`
-                      : "/applications";
-                    setOptimisticPath("/applications");
-                    startSearchNav(() => {
-                      router.push(href);
-                    });
-                  }
-                }}
-              />
-            </div>
+            {showApplicationSearch ? (
+              <div className="hidden md:flex items-center gap-2 rounded-lg bg-surface-container-low border border-transparent focus-within:border-primary px-3 py-1.5 w-full max-w-[320px]">
+                <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
+                  search
+                </span>
+                <input
+                  type="search"
+                  placeholder="Search applications"
+                  className="bg-transparent border-0 outline-none text-[14px] w-full text-on-surface placeholder:text-on-surface-variant"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const q = (e.target as HTMLInputElement).value.trim();
+                      const href = q
+                        ? `/applications?q=${encodeURIComponent(q)}`
+                        : "/applications";
+                      setOptimisticPath("/applications");
+                      startSearchNav(() => {
+                        router.push(href);
+                      });
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
 
           <nav className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-            {links.map((link) => {
+            {[...links, ...(isAdmin
+              ? [{ href: "/admin-center", icon: "admin_panel_settings", label: "Admin Center" }]
+              : [])].map((link) => {
               const active = isActive(activePath, link.href);
               return (
                 <Link
@@ -129,6 +137,7 @@ export function AppShell({
               userEmail={userEmail}
               userName={userName}
               avatarSrc={avatarSrc}
+              isAdmin={isAdmin}
             />
           </nav>
         </div>

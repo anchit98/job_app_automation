@@ -232,14 +232,14 @@ export function SetupGuide({ status }: { status: SetupGuideStatus }) {
           </span>
           <button
             type="button"
-            className="li-btn-ghost text-[13px] gap-1"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border-hairline px-3 text-[13px] font-semibold text-on-surface transition-colors hover:bg-[var(--ghost-hover)]"
             onClick={() => persistMinimized(true)}
             aria-expanded={true}
           >
-            <span className="material-symbols-outlined text-[18px]">
-              minimize
+            <span className="material-symbols-outlined text-[16px] leading-none">
+              keyboard_arrow_down
             </span>
-            Minimize
+            <span className="leading-none">Minimize</span>
           </button>
         </div>
       </div>
@@ -290,6 +290,11 @@ export function SetupGuide({ status }: { status: SetupGuideStatus }) {
                   <li>
                     <code className="text-[11px]">
                       https://www.googleapis.com/auth/gmail.compose
+                    </code>
+                  </li>
+                  <li>
+                    <code className="text-[11px]">
+                      https://www.googleapis.com/auth/gmail.send
                     </code>
                   </li>
                   <li>
@@ -469,7 +474,7 @@ export function SetupGuide({ status }: { status: SetupGuideStatus }) {
                 href="/settings"
                 className="text-primary font-semibold hover:underline"
               >
-                Settings
+                Privacy &amp; Settings
               </Link>
               .
             </p>

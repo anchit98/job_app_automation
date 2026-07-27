@@ -72,22 +72,23 @@ export default async function DashboardPage({
   const headline = profile?.headline || "Job application command center";
 
   return (
-    <div className="min-h-[calc(100vh-52px-2rem)] flex flex-col gap-4 lg:gap-5">
-      <section className="li-card p-5 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-center">
-        <div className="lg:col-span-7 flex items-start gap-4 min-w-0">
+    <div className="h-[calc(100vh-56px-2.5rem)] md:h-[calc(100vh-56px-2.75rem)] flex flex-col gap-3 lg:gap-4 overflow-y-auto">
+      <section className="li-card p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-center shrink-0">
+        <div className="lg:col-span-7 flex items-start gap-3 min-w-0">
           <UserAvatar
             src={profileAvatarSrc(profile)}
             name={displayName}
-            size={64}
+            size={56}
             className="border-2"
           />
           <div className="min-w-0">
-            <p className="li-meta">Home</p>
-            <h1 className="li-page-title mt-0.5 truncate">{displayName}</h1>
-            <p className="text-[15px] text-on-surface-variant mt-1 line-clamp-2">
+            <h1 className="li-page-title truncate text-[22px] lg:text-[24px]">
+              {displayName}
+            </h1>
+            <p className="text-[14px] text-on-surface-variant mt-0.5 line-clamp-1">
               {headline}
             </p>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
               <span className="text-on-surface-variant">
                 Applications{" "}
                 <strong className="text-primary font-semibold">
@@ -104,14 +105,7 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        <div className="lg:col-span-5 flex flex-col sm:flex-row lg:flex-col xl:flex-row items-stretch sm:items-center gap-3 lg:justify-end">
-          <div className="min-w-0 flex-1 xl:text-right">
-            <h2 className="li-section-title">Quick Apply</h2>
-            <p className="li-meta mt-1">
-              Paste a JD + contacts — resume, cover letter, emails, and Gmail
-              drafts run automatically.
-            </p>
-          </div>
+        <div className="lg:col-span-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 shrink-0">
           <Link
             href="/apply"
             className="li-btn-primary shrink-0 no-underline justify-center"
@@ -120,6 +114,27 @@ export default async function DashboardPage({
               rocket_launch
             </span>
             Start Quick Apply
+          </Link>
+          <Link
+            href="/onboarding"
+            className="group shrink-0 no-underline inline-flex items-stretch overflow-hidden rounded-lg border border-border-hairline bg-surface shadow-[var(--shadow-card)] hover:border-outline/60 transition-colors"
+          >
+            <span
+              className="flex items-center justify-center px-2.5 border-r border-border-hairline bg-surface-container-low text-on-surface-variant group-hover:bg-primary-container group-hover:text-primary transition-colors"
+              aria-hidden
+            >
+              <span className="material-symbols-outlined text-[20px]">
+                contact_page
+              </span>
+            </span>
+            <span className="flex items-center gap-1 px-3 py-2 text-[13px] font-semibold text-on-surface">
+              Update Profile
+              <span
+                className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:text-primary group-hover:translate-x-0.5 transition-all"
+              >
+                arrow_forward
+              </span>
+            </span>
           </Link>
         </div>
       </section>
@@ -138,7 +153,7 @@ export default async function DashboardPage({
       />
 
       {metrics.pendingPrompts > 0 && (
-        <div className="li-card-flat p-4 border-l-4 border-l-status-waiting bg-status-waiting-container">
+        <div className="li-card-flat p-3 border-l-4 border-l-status-waiting bg-status-waiting-container shrink-0">
           <p className="text-[14px] font-semibold text-on-surface">
             {metrics.pendingPrompts} ChatGPT step
             {metrics.pendingPrompts === 1 ? "" : "s"} pending
@@ -151,69 +166,14 @@ export default async function DashboardPage({
         </div>
       )}
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 items-stretch">
-        <section className="lg:col-span-8 flex flex-col gap-4">
-          <div className="li-card p-5 lg:p-6 flex-1">
-            <DashboardMetricsGrid
-              metrics={metrics}
-              formatted={metricsFormatted}
-            />
-          </div>
-          <EnqueueFollowUpsButton />
+      <div className="flex-1 min-h-0 flex flex-col gap-3 lg:gap-4">
+        <section className="li-card p-4 lg:p-5 flex-1 min-h-0 flex flex-col">
+          <DashboardMetricsGrid
+            metrics={metrics}
+            formatted={metricsFormatted}
+          />
         </section>
-
-        <aside className="lg:col-span-4 flex flex-col gap-4">
-          <div className="li-card p-4 grid grid-cols-2 gap-3">
-            <Link
-              href="/apply"
-              className="rounded-lg border border-border-hairline p-4 hover:bg-[var(--ghost-hover)] no-underline"
-            >
-              <span className="material-symbols-outlined text-primary text-[22px]">
-                rocket_launch
-              </span>
-              <p className="text-[14px] font-semibold mt-2 text-on-surface">
-                Apply
-              </p>
-              <p className="li-meta mt-0.5">New pipeline</p>
-            </Link>
-            <Link
-              href="/applications"
-              className="rounded-lg border border-border-hairline p-4 hover:bg-[var(--ghost-hover)] no-underline"
-            >
-              <span className="material-symbols-outlined text-primary text-[22px]">
-                work
-              </span>
-              <p className="text-[14px] font-semibold mt-2 text-on-surface">
-                Jobs
-              </p>
-              <p className="li-meta mt-0.5">All applications</p>
-            </Link>
-            <Link
-              href="/onboarding"
-              className="rounded-lg border border-border-hairline p-4 hover:bg-[var(--ghost-hover)] no-underline"
-            >
-              <span className="material-symbols-outlined text-primary text-[22px]">
-                person
-              </span>
-              <p className="text-[14px] font-semibold mt-2 text-on-surface">
-                Profile
-              </p>
-              <p className="li-meta mt-0.5">Resume & docs</p>
-            </Link>
-            <Link
-              href="/settings"
-              className="rounded-lg border border-border-hairline p-4 hover:bg-[var(--ghost-hover)] no-underline"
-            >
-              <span className="material-symbols-outlined text-primary text-[22px]">
-                extension
-              </span>
-              <p className="text-[14px] font-semibold mt-2 text-on-surface">
-                Settings
-              </p>
-              <p className="li-meta mt-0.5">Bridge & health</p>
-            </Link>
-          </div>
-        </aside>
+        <EnqueueFollowUpsButton />
       </div>
     </div>
   );

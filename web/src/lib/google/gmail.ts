@@ -159,6 +159,31 @@ export class GmailClient {
     }
   }
 
+  async sendMessage(input: CreateDraftInput): Promise<{ messageId: string | null }> {
+    const attachments = (input.attachments ?? []).filter((a) => a.buffer?.length);
+    const rawMime = buildRawMime({
+      ...input,
+      attachments,
+      driveLinks: input.driveLinks ?? [],
+    });
+    const raw = encodeBase64Url(rawMime);
+
+    try {
+      const res = await this.gmail().users.messages.send({
+        userId: "me",
+        requestBody: { raw },
+      });
+      return { messageId: res.data.id ?? null };
+    } catch (error) {
+      if (isMissingScopeError(error)) {
+        throw new GmailScopeMissingError(
+          "Gmail send scope missing — reconnect Google with gmail.send access.",
+        );
+      }
+      throw error;
+    }
+  }
+
   async getDraft(draftId: string): Promise<boolean> {
     try {
       await this.gmail().users.drafts.get({

@@ -5,13 +5,13 @@ Closes the ChatGPT loop for Quick Apply: paste prompt → wait for reply → POS
 ## Install (required once)
 
 1. Start the app: `npm run dev` in `web/` → http://localhost:3000
-2. Open **Settings** (or start a Quick Apply — a token is auto-created).
+2. Open **Privacy & Settings** (or start a Quick Apply — a token is auto-created).
 3. Chrome → `chrome://extensions` → **Developer mode** → **Load unpacked** → select this `extension/` folder.
 4. Extension **Options**:
    - App URL: `http://localhost:3000`
-   - Paste the token from Settings
+   - Paste the token from Privacy & Settings
    - Enabled: on → **Save**
-5. Reload the JobApp tab. Status should show **extension detected**.
+5. Reload the JobApp OS tab. Status should show **extension detected**.
 
 After code updates to this folder, click **Reload** on the extension card in `chrome://extensions`.
 
@@ -28,9 +28,9 @@ After code updates to this folder, click **Reload** on the extension card in `ch
 
 | Symptom | Fix |
 |---|---|
-| Stuck on “Tailor resume” | No token / extension not loaded — complete Settings setup, reload extension |
+| Stuck on “Tailor resume” | No token / extension not loaded — complete Privacy & Settings setup, reload extension |
 | “Could not find ChatGPT input” | Stay logged into chatgpt.com; reload extension; try a fresh ChatGPT tab |
-| 401 on paste-back | Token mismatch — Rotate token in Settings and paste into Options again |
+| 401 on paste-back | Token mismatch — Rotate token in Privacy & Settings and paste into Options again |
 | Claimed but never finishes | Wait 90s for auto-requeue, or Reload extension and refresh the pipeline page |
 
 ## Edge cases covered

@@ -10,10 +10,12 @@ export function ProfileMenu({
   userEmail,
   userName,
   avatarSrc,
+  isAdmin,
 }: {
   userEmail?: string | null;
   userName?: string | null;
   avatarSrc?: string | null;
+  isAdmin?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -97,9 +99,17 @@ export function ProfileMenu({
             <MenuLink
               href="/settings"
               icon="settings"
-              label="Settings"
+              label="Privacy & Settings"
               onNavigate={() => setOpen(false)}
             />
+            {isAdmin ? (
+              <MenuLink
+                href="/admin-center"
+                icon="admin_panel_settings"
+                label="Admin Center"
+                onNavigate={() => setOpen(false)}
+              />
+            ) : null}
             <button
               type="button"
               role="menuitem"

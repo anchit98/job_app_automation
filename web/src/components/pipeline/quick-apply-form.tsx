@@ -30,10 +30,13 @@ export function QuickApplyForm() {
   const [contacts, setContacts] = useState<ContactRow[]>([emptyContact()]);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = useMemo(() => {
-    if (jd.trim().length < 50) return false;
-    return contacts.some((c) => c.name.trim() && c.email.trim());
-  }, [jd, contacts]);
+  const canSubmit = useMemo(
+    () =>
+      jd.trim().length >= 50 &&
+      company.trim().length > 0 &&
+      role.trim().length > 0,
+    [jd, company, role],
+  );
 
   function updateContact(index: number, patch: Partial<ContactRow>) {
     setContacts((prev) =>
@@ -54,15 +57,10 @@ export function QuickApplyForm() {
           }))
           .filter((c) => c.name && c.email);
 
-        if (cleaned.length === 0) {
-          setError("Add at least one contact with a name and email.");
-          return;
-        }
-
         const result = await startQuickApplyPipeline({
           jd,
-          company: company.trim() || undefined,
-          role: role.trim() || undefined,
+          company: company.trim(),
+          role: role.trim(),
           job_url: jobUrl.trim() || undefined,
           notes: notes.trim() || undefined,
           email_instructions: emailInstructions.trim() || undefined,
@@ -98,7 +96,8 @@ export function QuickApplyForm() {
           <div>
             <h2 className="li-section-title">Job description</h2>
             <p className="li-meta mt-1">
-              Paste the full JD. Parsing through Gmail drafts run automatically.
+              Paste the full JD. Parsing through cover letter run automatically.
+              Cold email and Gmail drafts run only when contacts are added.
             </p>
           </div>
           <textarea
@@ -112,13 +111,15 @@ export function QuickApplyForm() {
             <input
               value={company}
               onChange={(e) => setCompany(e.target.value)}
-              placeholder="Company (optional)"
+              placeholder="Company *"
+              required
               className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary outline-none"
             />
             <input
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              placeholder="Role (optional)"
+              placeholder="Role *"
+              required
               className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary outline-none"
             />
             <input
@@ -150,7 +151,9 @@ export function QuickApplyForm() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="li-section-title">Contacts</h2>
-                <p className="li-meta mt-1">Name + email required.</p>
+                <p className="li-meta mt-1">
+                  Optional — skip cold email &amp; Gmail drafts if empty.
+                </p>
               </div>
               <button
                 type="button"
@@ -171,13 +174,13 @@ export function QuickApplyForm() {
                     <input
                       value={c.name}
                       onChange={(e) => updateContact(i, { name: e.target.value })}
-                      placeholder="Full name *"
+                      placeholder="Full name"
                       className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[13px] focus:border-primary outline-none"
                     />
                     <input
                       value={c.email}
                       onChange={(e) => updateContact(i, { email: e.target.value })}
-                      placeholder="Email *"
+                      placeholder="Email"
                       className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[13px] focus:border-primary outline-none"
                     />
                     <input
@@ -195,17 +198,19 @@ export function QuickApplyForm() {
                       className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[13px] focus:border-primary outline-none"
                     />
                   </div>
-                  {contacts.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setContacts((prev) => prev.filter((_, idx) => idx !== i))
-                      }
-                      className="text-[12px] text-on-surface-variant hover:text-error text-left"
-                    >
-                      Remove
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setContacts((prev) =>
+                        prev.length === 1
+                          ? [emptyContact()]
+                          : prev.filter((_, idx) => idx !== i),
+                      )
+                    }
+                    className="text-[12px] text-on-surface-variant hover:text-error text-left"
+                  >
+                    Clear
+                  </button>
                 </div>
               ))}
             </div>

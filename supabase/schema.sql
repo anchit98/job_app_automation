@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   full_name TEXT,
+  is_admin BOOLEAN NOT NULL DEFAULT false,
+  must_reset_password BOOLEAN NOT NULL DEFAULT false,
   created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
   updated_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
 );
@@ -25,6 +27,30 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
 CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at);
+
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
+  resolved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS password_reset_requests_user_idx
+  ON password_reset_requests (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL CHECK (kind IN ('forgot_password', 'admin_reset')),
+  issued_by_admin_id TEXT REFERENCES users (id) ON DELETE SET NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
+);
+
+CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx
+  ON password_reset_tokens (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS profiles (
   user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,

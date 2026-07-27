@@ -22,16 +22,16 @@ export function MetricCard({
 
   const inner = (
     <div
-      className={`rounded-lg border p-4 h-full flex flex-col gap-1.5 ${accentClass} ${href ? "hover:bg-[var(--ghost-hover)] transition-colors" : ""}`}
+      className={`rounded-lg border p-3 sm:p-4 h-full min-h-0 flex flex-col justify-center gap-1 ${accentClass} ${href ? "hover:bg-[var(--ghost-hover)] transition-colors" : ""}`}
     >
-      <span className="text-[12px] font-semibold uppercase tracking-wide text-on-surface-variant">
+      <span className="text-[11px] sm:text-[12px] font-semibold uppercase tracking-wide text-on-surface-variant">
         {label}
       </span>
-      <span className="text-[28px] font-semibold leading-8 text-on-surface">
+      <span className="text-[24px] sm:text-[28px] lg:text-[32px] font-semibold leading-none text-on-surface">
         {value}
       </span>
       {hint && (
-        <span className="text-[12px] text-on-surface-variant mt-auto line-clamp-2" title={hint}>
+        <span className="text-[11px] sm:text-[12px] text-on-surface-variant line-clamp-2" title={hint}>
           {hint}
         </span>
       )}

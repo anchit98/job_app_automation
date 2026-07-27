@@ -62,12 +62,12 @@ const contactSchema = z.object({
 
 const startSchema = z.object({
   jd: z.string().min(50),
-  company: z.string().optional(),
-  role: z.string().optional(),
+  company: z.string().trim().min(1, "Company is required."),
+  role: z.string().trim().min(1, "Role is required."),
   job_url: z.string().optional(),
   notes: z.string().optional(),
   email_instructions: z.string().optional(),
-  contacts: z.array(contactSchema).min(1, "Add at least one contact with an email."),
+  contacts: z.array(contactSchema).default([]),
   skip_jd_parse: z.boolean().optional(),
 });
 
@@ -77,6 +77,18 @@ function patchStage(
   patch: Partial<PipelineStage>,
 ): PipelineStage[] {
   return stages.map((s) => (s.id === id ? { ...s, ...patch } : s));
+}
+
+/** Skip contact save + cold email + Gmail when Quick Apply has no contacts. */
+function skipContactEmailStages(stages: PipelineStage[]): PipelineStage[] {
+  let next = stages;
+  for (const id of ["save_contacts", "cold_email", "gmail_drafts"] as const) {
+    next = patchStage(next, id, {
+      status: "skipped",
+      detail: "Skipped — no contacts",
+    });
+  }
+  return next;
 }
 
 function findStage(
@@ -158,7 +170,9 @@ async function bootstrapAndAdvancePipeline(input: {
     });
   }
 
-  if (contactsAlreadySaved) {
+  if (input.contacts.length === 0) {
+    stages = skipContactEmailStages(stages);
+  } else if (contactsAlreadySaved) {
     stages = patchStage(stages, "save_contacts", {
       status: "skipped",
       detail: "Contacts saved at start",
@@ -290,7 +304,9 @@ export async function startQuickApplyForApplication(
     let contacts = parsed.data.contacts ?? [];
     let contactsAlreadySaved = false;
 
-    if (contacts.length === 0) {
+    // Only fall back to saved contacts when the client omitted the field.
+    // An explicit empty array means "skip cold email / Gmail drafts".
+    if (parsed.data.contacts === undefined) {
       contacts = (await listContacts(application.id))
         .filter((c) => Boolean(c.email?.trim()))
         .map((c) => ({
@@ -300,15 +316,6 @@ export async function startQuickApplyForApplication(
           linkedin_url: c.linkedin_url ?? undefined,
         }));
       contactsAlreadySaved = contacts.length > 0;
-    }
-
-    if (contacts.length === 0) {
-      return {
-        ok: false as const,
-        error:
-          "Add at least one contact with an email before Quick Apply (name + email).",
-        needs_contacts: true as const,
-      };
     }
 
     return await bootstrapAndAdvancePipeline({
@@ -773,6 +780,17 @@ async function runSaveContactsStage(
   run: PipelineRunRecord,
   options: AdvanceOptions = {},
 ): Promise<AdvanceResult> {
+  const contacts = run.contacts as PipelineContactInput[];
+  if (contacts.length === 0) {
+    const stages = skipContactEmailStages(run.stages);
+    await updatePipelineRun(pipelineId, {
+      status: "running",
+      current_stage: null,
+      stages,
+    });
+    return advancePipelineInner(pipelineId, options);
+  }
+
   const stagesRunning = patchStage(run.stages, "save_contacts", {
     status: "running",
   });
@@ -782,7 +800,6 @@ async function runSaveContactsStage(
     stages: stagesRunning,
   });
 
-  const contacts = run.contacts as PipelineContactInput[];
   for (const c of contacts) {
     const result = await saveManualContact(run.application_id, {
       name: c.name,
@@ -848,11 +865,54 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
   }
 
   const application = await getApplicationById(claimed.application_id);
-  const exported = await exportColdEmailsPrompt(claimed.application_id, {
-    sharedContext: application?.email_instructions ?? undefined,
-  });
+  let exported: Awaited<ReturnType<typeof exportColdEmailsPrompt>>;
+  try {
+    exported = await exportColdEmailsPrompt(claimed.application_id, {
+      sharedContext: application?.email_instructions ?? undefined,
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Cold email export failed.";
+    if (/no eligible contacts|no cold email contacts/i.test(message)) {
+      const stages = patchStage(
+        patchStage(claimed.stages, "cold_email", {
+          status: "skipped",
+          detail: "Skipped — no contacts",
+        }),
+        "gmail_drafts",
+        {
+          status: "skipped",
+          detail: "Skipped — no contacts",
+        },
+      );
+      await updatePipelineRun(pipelineId, {
+        status: "running",
+        current_stage: null,
+        stages,
+      });
+      return advancePipelineInner(pipelineId);
+    }
+    throw e;
+  }
   const first = exported.primary;
-  if (!first) throw new Error("No cold email contacts available.");
+  if (!first) {
+    const stages = patchStage(
+      patchStage(claimed.stages, "cold_email", {
+        status: "skipped",
+        detail: "Skipped — no contacts",
+      }),
+      "gmail_drafts",
+      {
+        status: "skipped",
+        detail: "Skipped — no contacts",
+      },
+    );
+    await updatePipelineRun(pipelineId, {
+      status: "running",
+      current_stage: null,
+      stages,
+    });
+    return advancePipelineInner(pipelineId);
+  }
   const rest = exported.additional_batches ?? [];
 
   return markAwaitingChatGpt(

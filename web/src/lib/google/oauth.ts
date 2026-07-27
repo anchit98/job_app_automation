@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.compose",
+  "https://www.googleapis.com/auth/gmail.send",
   // drive.file alone cannot read/copy the user's existing master Google Doc.
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/drive.file",

@@ -24,6 +24,14 @@ export const requireUser = cache(async (): Promise<SessionUser> => {
   return user;
 });
 
+export const requireAdmin = cache(async (): Promise<SessionUser> => {
+  const user = await requireUser();
+  if (!user.is_admin) {
+    throw new AuthRequiredError("Admin access required.");
+  }
+  return user;
+});
+
 export async function countUsers(): Promise<number> {
   const row = (await dbGet(`SELECT COUNT(*)::int AS n FROM users`)) as
     | { n: number }
@@ -33,7 +41,9 @@ export async function countUsers(): Promise<number> {
 
 export async function getUserByEmail(email: string) {
   return (await dbGet(
-    `SELECT id, email, password_hash, full_name FROM users WHERE lower(email) = lower(?)`,
+    `SELECT id, email, password_hash, full_name, is_admin, must_reset_password
+       FROM users
+      WHERE lower(email) = lower(?)`,
     email.trim(),
   )) as
     | {
@@ -41,6 +51,8 @@ export async function getUserByEmail(email: string) {
         email: string;
         password_hash: string;
         full_name: string | null;
+        is_admin: boolean;
+        must_reset_password: boolean;
       }
     | undefined;
 }
@@ -49,20 +61,28 @@ export async function createUser(input: {
   email: string;
   passwordHash: string;
   fullName?: string | null;
+  isAdmin?: boolean;
+  mustResetPassword?: boolean;
 }): Promise<SessionUser> {
   const id = randomUUID();
   await dbRun(
-    `INSERT INTO users (id, email, password_hash, full_name)
-     VALUES (?, ?, ?, ?)`,
+    `INSERT INTO users (
+       id, email, password_hash, full_name, is_admin, must_reset_password
+     )
+     VALUES (?, ?, ?, ?, ?, ?)`,
     id,
     input.email.trim().toLowerCase(),
     input.passwordHash,
     input.fullName?.trim() || null,
+    input.isAdmin ?? false,
+    input.mustResetPassword ?? false,
   );
   return {
     id,
     email: input.email.trim().toLowerCase(),
     full_name: input.fullName?.trim() || null,
+    is_admin: input.isAdmin ?? false,
+    must_reset_password: input.mustResetPassword ?? false,
   };
 }
 
@@ -215,6 +235,32 @@ export async function ensureUserProfile(userId: string, fullName?: string | null
     userId,
     fullName ?? null,
   );
+}
+
+export async function setUserPassword(
+  userId: string,
+  input: {
+    passwordHash: string;
+    mustResetPassword?: boolean;
+    fullName?: string | null;
+  },
+) {
+  await dbRun(
+    `UPDATE users
+        SET password_hash = ?,
+            must_reset_password = ?,
+            full_name = COALESCE(?, full_name),
+            updated_at = ((NOW() AT TIME ZONE 'utc')::text)
+      WHERE id = ?`,
+    input.passwordHash,
+    input.mustResetPassword ?? false,
+    input.fullName ?? null,
+    userId,
+  );
+}
+
+export async function deleteAllUserSessions(userId: string) {
+  await dbRun(`DELETE FROM sessions WHERE user_id = ?`, userId);
 }
 
 export { destroySession };

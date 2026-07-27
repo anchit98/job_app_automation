@@ -29,25 +29,27 @@ export async function saveGoogleTokens(
   refreshToken: string,
   scope: string,
   expiresAt: Date,
+  userId?: string,
 ) {
   await saveGoogleTokensRow({
     encrypted_access_token: encryptSecret(accessToken),
     encrypted_refresh_token: encryptSecret(refreshToken),
     scope,
     expires_at: expiresAt.toISOString(),
+    userId,
   });
 }
 
-export async function markGoogleTokensRevoked() {
-  await markGoogleTokensRevokedRow();
+export async function markGoogleTokensRevoked(userId?: string) {
+  await markGoogleTokensRevokedRow(userId);
 }
 
-export async function disconnectGoogle() {
-  await deleteGoogleTokensRow();
+export async function disconnectGoogle(userId?: string) {
+  await deleteGoogleTokensRow(userId);
 }
 
-export async function getGoogleAuthClient() {
-  const row = await getGoogleTokensRow();
+export async function getGoogleAuthClient(userId?: string) {
+  const row = await getGoogleTokensRow(userId);
   if (!row || row.status === "revoked") {
     throw new GoogleNotConnectedError();
   }
@@ -70,11 +72,12 @@ export async function getGoogleAuthClient() {
           credentials.refresh_token ?? refreshToken,
           row.scope,
           newExpiry,
+          userId,
         );
         client.setCredentials(credentials);
       }
     } catch {
-      await markGoogleTokensRevoked();
+      await markGoogleTokensRevoked(userId);
       throw new GoogleTokenRevokedError();
     }
   }
@@ -89,6 +92,7 @@ export async function getGoogleAuthClient() {
       tokens.refresh_token ?? refreshToken,
       row.scope,
       expiry,
+      userId,
     );
   });
 

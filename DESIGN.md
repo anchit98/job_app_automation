@@ -168,3 +168,61 @@ The shape language is disciplined and professional. A standard radius of **8px**
 - **Bridge Status Banners:** Full-width alerts at the top of the workspace. Use `#E5EDF4` (light blue tint) for info and `#FDF1E8` for 'waiting' states, with a 1px stroke of the darker equivalent.
 - **Checklists & Data Tables:** Tables use a "zebra-striping" approach with the Canvas color (#F4F2EE) for alternating rows. No vertical borders; only horizontal hairlines.
 - **Gmail-style Drafts:** Minimalist text editors with a clean white surface and a fixed bottom action bar. The "Send" button is always the Primary Blue, while secondary actions are ghost buttons with Navy text.
+
+---
+
+## Dark Mode
+
+The app supports **light / dark / system** theme, stored in `applyforge_theme` cookie. A `<script>` in `<head>` reads the cookie and sets `class="dark"` on `<html>` before first paint to avoid flash.
+
+Dark-mode colors are defined in `globals.css` under `.dark { … }` using the same CSS variable names (e.g., `--surface`, `--on-surface`, `--canvas`). Key dark palette:
+
+- `--surface: #1B1F23`, `--on-surface: #E0E3E8`
+- `--canvas: #121416`
+- `--primary: #A8C8FF`, `--on-primary: #002F65`
+- `--outline: #8C919D`, `--outline-variant: #414752`
+- `--border-hairline: #2D3135`
+
+The theme can be cycled from the **Me dropdown** (header profile menu).
+
+---
+
+## Me Menu & Profile Avatar
+
+- **Me dropdown** in the top-right header: rounded-full avatar button (28px), no label.
+- Avatar is either an uploaded image or **initials** derived from the user's name (2-char uppercase, e.g. "AB").
+- Dropdown contains: user name + email, View Profile, **Privacy & Settings**, theme cycle (light/dark/system icon), Sign out.
+- Profile avatar is uploaded on `/onboarding`; stored in DB (`profiles.avatar_data`); served at `/api/profile/avatar` with cache-busting via `?v={updated_at}`.
+
+---
+
+## Branding
+
+- Product name: **JobApp OS**
+- Header logo: `web/public/brand/jobapp-os-logo.png` (landscape, transparent)
+- Favicons / apple-touch icons derived from the same brand mark
+
+---
+
+## Home
+
+- Compact profile header with **Start Quick Apply** (primary) and **Update Profile** (split card / secondary CTA)
+- Full-width **pipeline metrics** + follow-ups bar — no Apply / Jobs / Profile / Settings shortcut tiles
+- Setup guide accordion or floating pill overlays; does not own the main column
+
+---
+
+## Header search
+
+- **Search applications** appears in the sticky header **only on the Jobs page** (`/applications`)
+- Hidden on Home, Quick Apply, workspaces, and other routes
+
+---
+
+## Setup Guide Pill
+
+When the Home setup guide is **minimized**, it collapses to a **floating bottom-right pill**:
+
+- Height: 36px, `rounded-full`, hairline border, semi-transparent backdrop
+- Content: logo icon + "Setup Guide" label + expand chevron
+- Click reopens the full accordion; persisted to `profiles.setup_guide_collapsed`

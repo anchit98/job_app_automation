@@ -2,8 +2,6 @@ import { getProfile, syncSignatureLinksFromResume } from "@/app/actions/profile"
 import { getMasterResume } from "@/app/actions/master-resume";
 import { getMasterCoverLetter } from "@/app/actions/cover-letter";
 import { OnboardingForms } from "@/components/onboarding/onboarding-forms";
-import { loadAnchitMasterResumeDefault } from "@/lib/resume/anchit-default";
-import { env } from "@/lib/env";
 
 export default async function OnboardingPage() {
   const [profile, masterResume, masterCoverLetter] = await Promise.all([
@@ -15,6 +13,7 @@ export default async function OnboardingPage() {
   let resolvedProfile = profile;
   if (
     masterResume?.content &&
+    Object.keys(masterResume.content).length > 0 &&
     resolvedProfile?.full_name &&
     (!resolvedProfile.linkedin_url ||
       !resolvedProfile.github_url ||
@@ -23,8 +22,6 @@ export default async function OnboardingPage() {
     await syncSignatureLinksFromResume({ overwrite: false }).catch(() => null);
     resolvedProfile = (await getProfile().catch(() => null)) ?? resolvedProfile;
   }
-
-  const defaultResumeContent = loadAnchitMasterResumeDefault();
 
   return (
     <div className="space-y-3">
@@ -38,9 +35,6 @@ export default async function OnboardingPage() {
         profile={resolvedProfile}
         masterResume={masterResume}
         masterCoverLetter={masterCoverLetter}
-        defaultResumeContent={defaultResumeContent}
-        defaultMasterDocId={env.resumeMasterDocId()}
-        defaultCoverLetterDocId={env.coverLetterMasterDocId()}
       />
     </div>
   );

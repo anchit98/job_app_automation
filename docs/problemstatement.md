@@ -111,8 +111,10 @@ Build an AI-powered workflow automation platform that reduces the end-to-end eff
 
 The platform should transform a largely manual workflow into an AI-assisted pipeline where the user provides only:
 
-- Job Description
-- Hiring manager/recruiter LinkedIn URLs
+- Job Description (required)
+- Company name (required)
+- Role title (required)
+- Contacts / hiring manager details (optional — cold email + Gmail drafts run only when provided)
 
 The platform handles the remaining workflow automatically.
 
@@ -144,18 +146,15 @@ For every application, the user provides:
 
 ### Mandatory
 
-- Job Description
-
-
+- Job Description (minimum ~50 characters)
+- Company name
+- Role title
 
 ### Optional
 
-- Company name
 - Job URL
-- Hiring Manager LinkedIn URL
-- Recruiter LinkedIn URL
-- Founder LinkedIn URL
-- Director/CPO LinkedIn URL
+- Contacts (name + email; one or more) — if omitted, cold email + Gmail draft stages are **skipped**
+- Email instructions (tone, constraints)
 - Notes
 
 ---
@@ -504,9 +503,15 @@ Product success will be measured by:
 
 # 12. Future Enhancements
 
-- Browser extension to capture JDs directly from LinkedIn
-- Chrome extension with one-click import
-- Gmail integration for sending and tracking emails
+**Shipped (moved from future to current):**
+- ✅ Browser extension (**JobApp Bridge**) — automates ChatGPT paste flow end-to-end
+- ✅ Gmail integration — drafts created via Gmail API (send remains manual by design)
+- ✅ Multi-user hosted deploy with email/password auth
+- ✅ Analytics dashboard with application metrics + funnel rates
+- ✅ Admin Center + email password recovery
+- ✅ JobApp OS branding
+
+**Still planned:**
 - Calendar integration for interview scheduling
 - Automatic recruiter discovery from company pages
 - AI-based recruiter prioritization
@@ -514,7 +519,6 @@ Product success will be measured by:
 - Interview preparation packs tailored to each JD
 - Skill gap analysis with learning recommendations
 - Job match scoring
-- Analytics dashboard with funnel conversion metrics
 - Multi-resume personas (e.g., PM, Growth PM, AI PM, Platform PM)
 - Integration with job boards beyond LinkedIn
 - Mobile push notifications for follow-ups

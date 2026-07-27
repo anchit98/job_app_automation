@@ -12,6 +12,8 @@ export type SessionUser = {
   id: string;
   email: string;
   full_name: string | null;
+  is_admin: boolean;
+  must_reset_password: boolean;
 };
 
 function secretKey() {
@@ -24,7 +26,12 @@ function expiryIso(days = SESSION_DAYS): string {
 
 export async function createSession(
   userId: string,
-  claims?: { email?: string; full_name?: string | null },
+  claims?: {
+    email?: string;
+    full_name?: string | null;
+    is_admin?: boolean;
+    must_reset_password?: boolean;
+  },
 ): Promise<string> {
   const sessionId = randomUUID();
   const expiresAt = expiryIso();
@@ -40,6 +47,8 @@ export async function createSession(
     uid: userId,
     email: claims?.email ?? undefined,
     name: claims?.full_name ?? undefined,
+    is_admin: claims?.is_admin ?? false,
+    must_reset_password: claims?.must_reset_password ?? false,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -126,7 +135,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 
     // One round-trip: validate session + load user
     const row = (await dbGet(
-      `SELECT s.id AS session_id, s.expires_at, u.id, u.email, u.full_name
+      `SELECT s.id AS session_id, s.expires_at, u.id, u.email, u.full_name,
+              u.is_admin, u.must_reset_password
          FROM sessions s
          INNER JOIN users u ON u.id = s.user_id
         WHERE s.id = ? AND s.user_id = ?`,
@@ -139,6 +149,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
           id: string;
           email: string;
           full_name: string | null;
+          is_admin: boolean;
+          must_reset_password: boolean;
         }
       | undefined;
 
@@ -152,6 +164,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       id: row.id,
       email: row.email,
       full_name: row.full_name,
+      is_admin: Boolean(row.is_admin),
+      must_reset_password: Boolean(row.must_reset_password),
     };
   } catch {
     return null;

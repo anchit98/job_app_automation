@@ -66,7 +66,7 @@ export default async function HealthPage() {
           href="/settings"
           className="li-meta hover:text-primary no-underline"
         >
-          ← Settings
+          ← Privacy &amp; Settings
         </Link>
         <h1 className="li-page-title mt-1">Health</h1>
       </div>

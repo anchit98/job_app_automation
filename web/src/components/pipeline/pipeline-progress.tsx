@@ -633,7 +633,7 @@ export function PipelineProgress({
           {bridgeConfigured ? " · token ready" : ""}
           {" · "}
           <Link href="/settings" className="text-primary hover:underline">
-            Settings
+            Privacy &amp; Settings
           </Link>
         </p>
       )}
@@ -666,7 +666,7 @@ export function PipelineProgress({
             <>
               <p className="text-[13px] text-on-surface-variant">
                 ChatGPT runs this stage (including JD parsing). You can leave this
-                page — ApplyForge keeps the pipeline moving from any screen and
+                page — JobApp OS keeps the pipeline moving from any screen and
                 wakes JobApp Bridge automatically.
               </p>
               <button

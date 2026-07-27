@@ -12,22 +12,30 @@ import { Label } from "@/components/ui/label";
 import { profileAvatarSrc } from "@/lib/profile-avatar";
 import type { MasterCoverLetter, MasterResume, Profile } from "@/lib/db/types";
 
+const RESUME_STRUCTURE_REF_URL =
+  "https://docs.google.com/document/d/1qZ9eluvDK-hu-QeBskgL-g7FJEeKpuLUlVouVWp3p88/edit?usp=sharing";
+const COVER_LETTER_STRUCTURE_REF_URL =
+  "https://docs.google.com/document/d/1I1Zo1xL93XYaL9vMT6fI7RHuUb-_YZL5aaW5nIne9Bo/edit?usp=sharing";
+
 interface OnboardingFormsProps {
   profile: Profile | null;
   masterResume: MasterResume | null;
   masterCoverLetter: MasterCoverLetter | null;
-  defaultResumeContent?: Record<string, unknown>;
-  defaultMasterDocId?: string;
-  defaultCoverLetterDocId?: string;
+}
+
+function blankMasterResumeJson(): string {
+  return "{\n}\n";
+}
+
+function hasMasterResumeContent(content: Record<string, unknown> | null | undefined) {
+  if (!content) return false;
+  return Object.keys(content).length > 0;
 }
 
 export function OnboardingForms({
   profile,
   masterResume,
   masterCoverLetter,
-  defaultResumeContent,
-  defaultMasterDocId = "",
-  defaultCoverLetterDocId = "",
 }: OnboardingFormsProps) {
   const [fullName, setFullName] = useState(profile?.full_name ?? "");
   const [headline, setHeadline] = useState(profile?.headline ?? "");
@@ -37,28 +45,26 @@ export function OnboardingForms({
       Intl.DateTimeFormat().resolvedOptions().timeZone ??
       "UTC",
   );
-  const [phone, setPhone] = useState(profile?.phone ?? "+91-99109-80793");
+  const [phone, setPhone] = useState(profile?.phone ?? "");
   const [linkedinUrl, setLinkedinUrl] = useState(profile?.linkedin_url ?? "");
   const [githubUrl, setGithubUrl] = useState(profile?.github_url ?? "");
   const [portfolioUrl, setPortfolioUrl] = useState(profile?.portfolio_url ?? "");
-  const [resumeJson, setResumeJson] = useState(
-    JSON.stringify(
-      masterResume?.content ?? defaultResumeContent ?? { experience: [], projects: [], skills: [], education: [] },
-      null,
-      2,
-    ),
+  const [resumeJson, setResumeJson] = useState(() =>
+    hasMasterResumeContent(masterResume?.content)
+      ? JSON.stringify(masterResume!.content, null, 2)
+      : blankMasterResumeJson(),
   );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [docId, setDocId] = useState(() => {
     const layout = masterResume?.doc_layout as { master_doc_id?: string } | null;
-    return layout?.master_doc_id ?? defaultMasterDocId;
+    return layout?.master_doc_id ?? "";
   });
   const [syncing, startSync] = useTransition();
   const [coverLetterDocId, setCoverLetterDocId] = useState(() => {
     const layout = masterCoverLetter?.doc_layout as { master_doc_id?: string } | null;
-    return layout?.master_doc_id ?? defaultCoverLetterDocId;
+    return layout?.master_doc_id ?? "";
   });
   const [syncingCoverLetter, startCoverLetterSync] = useTransition();
 
@@ -184,7 +190,7 @@ export function OnboardingForms({
                   id="phone"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+91-99109-80793"
+                  placeholder="+1-555-000-0000"
                 />
               </div>
               <div>
@@ -232,7 +238,8 @@ export function OnboardingForms({
           <div>
             <h2 className="li-section-title">Master resume (JSON)</h2>
             <p className="li-meta mt-1">
-              Auto-populated from Google Doc sync. Edit manually if needed.
+              Blank until you sync a Google Doc. Then it fills automatically —
+              edit manually only if needed.
             </p>
           </div>
           <textarea
@@ -247,6 +254,47 @@ export function OnboardingForms({
 
         {/* Google Doc syncs */}
         <div className="lg:col-span-4 flex flex-col gap-3">
+          <div className="li-card p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">
+                library_books
+              </span>
+              <h2 className="li-section-title">Structure references</h2>
+            </div>
+            <p className="li-meta">
+              Starting from scratch? Use these view-only templates to see the
+              recommended resume and cover letter structure, then build your own
+              copy.
+            </p>
+            <ul className="space-y-2 text-[13px]">
+              <li>
+                <a
+                  href={RESUME_STRUCTURE_REF_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-primary hover:underline"
+                >
+                  Resume structure reference
+                </a>
+              </li>
+              <li>
+                <a
+                  href={COVER_LETTER_STRUCTURE_REF_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-primary hover:underline"
+                >
+                  Cover letter structure reference
+                </a>
+              </li>
+            </ul>
+            <p className="li-meta rounded-md border border-border-hairline bg-surface-container-low px-3 py-2">
+              These links are <strong>view only</strong>. Make a copy in your own
+              Google Drive before editing. Work in Google Docs only for best
+              sync results — paste your finished Doc URL below and sync.
+            </p>
+          </div>
+
           <div className="li-card p-4 space-y-3">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">description</span>
@@ -285,6 +333,9 @@ export function OnboardingForms({
                   startSync(async () => {
                     try {
                       const res = await syncMasterFromGoogleDoc(rawId);
+                      if (res.content) {
+                        setResumeJson(JSON.stringify(res.content, null, 2));
+                      }
                       setMessage(
                         `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects).`,
                       );

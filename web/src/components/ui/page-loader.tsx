@@ -1,13 +1,14 @@
 import Image from "next/image";
 
 export function PageLoader({
-  label = "Loading ApplyForge…",
+  label = "Loading JobApp OS…",
   compact = false,
 }: {
   label?: string;
   compact?: boolean;
 }) {
-  const size = compact ? 44 : 56;
+  const height = compact ? 44 : 64;
+  const width = Math.round(height * (402 / 235));
   const barWidth = compact ? "w-28" : "w-36";
 
   return (
@@ -29,7 +30,7 @@ export function PageLoader({
           }}
         />
       ) : null}
-      <LoaderMark size={size} />
+      <LoaderMark width={width} height={height} />
       <div className="relative text-center space-y-1">
         <p
           className={`font-semibold tracking-tight ${
@@ -53,8 +54,8 @@ export function PageLoader({
   );
 }
 
-function LoaderMark({ size }: { size: number }) {
-  const ring = size + 18;
+function LoaderMark({ width, height }: { width: number; height: number }) {
+  const ring = Math.max(width, height) + 18;
   return (
     <div
       className="relative flex items-center justify-center"
@@ -71,12 +72,14 @@ function LoaderMark({ size }: { size: number }) {
         aria-hidden
       />
       <Image
-        src="/brand/logo.svg"
+        src="/brand/jobapp-os-logo.png"
         alt=""
-        width={size}
-        height={size}
-        className="relative rounded-[6px] shadow-[var(--shadow-card)]"
+        width={width}
+        height={height}
+        className="relative h-auto w-auto"
+        style={{ width, height }}
         priority
+        unoptimized
       />
     </div>
   );
