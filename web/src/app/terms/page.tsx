@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalBackLink } from "@/components/layout/legal-back-link";
 
 export const metadata: Metadata = {
   title: "Terms of Service | JobApp OS",
@@ -10,6 +11,7 @@ const updatedAt = "July 28, 2026";
 export default function TermsPage() {
   return (
     <div className="mx-auto w-full max-w-4xl px-margin-mobile py-8 md:px-margin-desktop md:py-10">
+      <LegalBackLink />
       <article className="li-card p-6 md:p-8">
         <div className="space-y-2">
           <h1 className="li-page-title">Terms of Service</h1>

@@ -9,7 +9,7 @@ import { ProfileMenu } from "@/components/layout/profile-menu";
 
 const paidLinks = [
   { href: "/dashboard", icon: "home", label: "Home" },
-  { href: "/apply", icon: "rocket_launch", label: "Quick Apply" },
+  { href: "/apply", icon: "rocket_launch", label: "Apply" },
   { href: "/applications", icon: "work", label: "Jobs" },
 ];
 
@@ -17,7 +17,10 @@ function isActive(pathname: string, href: string) {
   if (href === "/dashboard") {
     return pathname === "/" || pathname.startsWith("/dashboard");
   }
-  return pathname.startsWith(href);
+  if (href === "/applications") {
+    return pathname === "/applications" || pathname.startsWith("/applications/");
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function AppShell({
@@ -53,7 +56,7 @@ export function AppShell({
     ? [
         ...paidLinks,
         ...(isAdmin
-          ? [{ href: "/admin-center", icon: "admin_panel_settings", label: "Admin Center" }]
+          ? [{ href: "/admin-center", icon: "admin_panel_settings", label: "Admin" }]
           : []),
       ]
     : [
@@ -62,11 +65,11 @@ export function AppShell({
       ];
 
   return (
-    <div className="min-h-screen bg-canvas flex flex-col">
+    <div className="min-h-[100dvh] bg-canvas flex flex-col">
       {isPaid ? <PipelineKeeper /> : null}
-      <header className="sticky top-0 z-50 h-nav-height bg-surface border-b border-border-hairline">
-        <div className="mx-auto h-full max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+      <header className="sticky top-0 z-50 h-nav-height bg-surface border-b border-border-hairline pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto h-full max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Link
               href={homeHref}
               prefetch
@@ -78,7 +81,7 @@ export function AppShell({
                 alt="JobApp OS"
                 width={56}
                 height={33}
-                className="h-8 w-auto"
+                className="h-7 w-auto sm:h-8"
                 priority
                 unoptimized
               />
@@ -87,9 +90,12 @@ export function AppShell({
               </span>
             </Link>
             {!isPaid ? (
-              <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-status-waiting/30 bg-status-waiting-container px-2.5 py-1 text-[11px] font-semibold text-status-waiting">
-                <span className="material-symbols-outlined text-[14px]">lock</span>
-                Locked until payment
+              <span className="inline-flex items-center gap-1 rounded-full border border-status-waiting/30 bg-status-waiting-container px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-status-waiting">
+                <span className="material-symbols-outlined text-[12px] sm:text-[14px]">
+                  lock
+                </span>
+                <span className="sm:hidden">Locked</span>
+                <span className="hidden sm:inline">Locked until payment</span>
               </span>
             ) : null}
             {showApplicationSearch ? (
@@ -118,65 +124,67 @@ export function AppShell({
             ) : null}
           </div>
 
-          <nav className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-            {navLinks.map((link) => {
-              const active = isActive(activePath, link.href);
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  prefetch
-                  onClick={() => {
-                    if (!isActive(pathname, link.href)) {
-                      setOptimisticPath(link.href);
-                    }
-                  }}
-                  className={`
-                    flex flex-col items-center justify-center min-w-[52px] sm:min-w-[72px] px-1 py-1
-                    border-b-2 transition-colors no-underline
-                    ${
-                      active
-                        ? "border-on-surface text-on-surface"
-                        : "border-transparent text-on-surface-variant hover:text-on-surface"
-                    }
-                  `}
-                >
-                  <span
-                    className={`material-symbols-outlined text-[22px] ${active ? "filled" : ""}`}
-                  >
-                    {link.icon}
-                  </span>
-                  <span className="hidden sm:block text-[11px] font-semibold mt-0.5 leading-none">
-                    {link.label}
-                  </span>
-                </Link>
-              );
-            })}
-            {!isPaid
-              ? paidLinks.map((link) => (
+          <div className="flex items-center gap-0.5 shrink-0">
+            <nav className="hidden md:flex items-center gap-0.5 sm:gap-1">
+              {navLinks.map((link) => {
+                const active = isActive(activePath, link.href);
+                return (
                   <Link
-                    key={`locked-${link.href}`}
-                    href="/billing"
+                    key={link.href}
+                    href={link.href}
                     prefetch
-                    onClick={() => setOptimisticPath("/billing")}
-                    title="Unlock with payment"
-                    className="hidden md:flex flex-col items-center justify-center min-w-[72px] px-1 py-1 border-b-2 border-transparent text-on-surface-variant/50 no-underline hover:text-on-surface-variant"
+                    onClick={() => {
+                      if (!isActive(pathname, link.href)) {
+                        setOptimisticPath(link.href);
+                      }
+                    }}
+                    className={`
+                      flex flex-col items-center justify-center min-w-[72px] px-1 py-1
+                      border-b-2 transition-colors no-underline
+                      ${
+                        active
+                          ? "border-on-surface text-on-surface"
+                          : "border-transparent text-on-surface-variant hover:text-on-surface"
+                      }
+                    `}
                   >
-                    <span className="relative material-symbols-outlined text-[22px]">
+                    <span
+                      className={`material-symbols-outlined text-[22px] ${active ? "filled" : ""}`}
+                    >
                       {link.icon}
-                      <span
-                        className="material-symbols-outlined absolute -right-1 -top-1 text-status-waiting"
-                        style={{ fontSize: 12 }}
-                      >
-                        lock
-                      </span>
                     </span>
                     <span className="text-[11px] font-semibold mt-0.5 leading-none">
                       {link.label}
                     </span>
                   </Link>
-                ))
-              : null}
+                );
+              })}
+              {!isPaid
+                ? paidLinks.map((link) => (
+                    <Link
+                      key={`locked-${link.href}`}
+                      href="/billing"
+                      prefetch
+                      onClick={() => setOptimisticPath("/billing")}
+                      title="Unlock with payment"
+                      className="flex flex-col items-center justify-center min-w-[72px] px-1 py-1 border-b-2 border-transparent text-on-surface-variant/50 no-underline hover:text-on-surface-variant"
+                    >
+                      <span className="relative material-symbols-outlined text-[22px]">
+                        {link.icon}
+                        <span
+                          className="material-symbols-outlined absolute -right-1 -top-1 text-status-waiting"
+                          style={{ fontSize: 12 }}
+                        >
+                          lock
+                        </span>
+                      </span>
+                      <span className="text-[11px] font-semibold mt-0.5 leading-none">
+                        {link.label}
+                      </span>
+                    </Link>
+                  ))
+                : null}
+            </nav>
             <ProfileMenu
               userEmail={userEmail}
               userName={userName}
@@ -184,22 +192,58 @@ export function AppShell({
               isAdmin={isAdmin}
               isPaid={isPaid}
             />
-          </nav>
+          </div>
         </div>
       </header>
 
       <main
         className={`
-          flex-1 w-full
+          flex-1 w-full min-w-0
           ${
             isWorkspace && isPaid
               ? "overflow-hidden"
-              : "mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-4 md:py-5 pb-8"
+              : "mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-3 sm:py-4 md:py-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8"
           }
         `}
       >
         {children}
       </main>
+
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border-hairline bg-surface/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
+        aria-label="Primary"
+      >
+        <div className="mx-auto flex max-w-content-max items-stretch justify-around px-1">
+          {navLinks.map((link) => {
+            const active = isActive(activePath, link.href);
+            return (
+              <Link
+                key={`mobile-${link.href}`}
+                href={link.href}
+                prefetch
+                onClick={() => {
+                  if (!isActive(pathname, link.href)) {
+                    setOptimisticPath(link.href);
+                  }
+                }}
+                className={`
+                  flex min-h-[56px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 no-underline
+                  ${active ? "text-primary" : "text-on-surface-variant"}
+                `}
+              >
+                <span
+                  className={`material-symbols-outlined text-[24px] ${active ? "filled" : ""}`}
+                >
+                  {link.icon}
+                </span>
+                <span className="max-w-full truncate text-[10px] font-semibold leading-none">
+                  {link.label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

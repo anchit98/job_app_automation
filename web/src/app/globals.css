@@ -225,6 +225,71 @@ body {
   font-size: 14px;
   line-height: 20px;
   transition: background-color 0.2s ease, color 0.2s ease;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+@media (max-width: 767px) {
+  .li-page-title {
+    font-size: 20px;
+    line-height: 28px;
+  }
+
+  .li-btn-primary,
+  .li-btn-secondary,
+  .li-btn-ghost {
+    min-height: 44px;
+  }
+
+  .li-btn-primary,
+  .li-btn-secondary {
+    width: 100%;
+  }
+
+  .mobile-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .mobile-stack > * {
+    width: 100%;
+  }
+
+  .mobile-action-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .mobile-action-row > * {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .mobile-meta-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .mobile-card-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  .mobile-card-row > .mobile-avatar {
+    width: 2.75rem;
+    height: 2.75rem;
+    flex-shrink: 0;
+  }
 }
 
 .li-card {

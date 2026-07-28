@@ -126,9 +126,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 | `COVER_LETTER_MASTER_DOC_ID` | No | Default master cover-letter Doc ID |
 | `NEXT_PUBLIC_UPI_ID` | Yes (for paywall) | Your UPI VPA shown on `/billing` |
 | `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | No | Amount on paywall (default `499`) |
+| `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | No | Plan label (default `JobApp OS access`) |
 | `ADMIN_NOTIFY_EMAIL` | No | Payment-claim alert recipients (comma-separated). Defaults to all admin emails |
+| `CRON_SECRET` | Recommended in prod | Bearer token for `/api/cron/*` |
 
 **Note:** App login (`AUTH_SECRET` + `users`/`sessions`) is separate from **Connect Google** (Drive/Gmail). You need both for Quick Apply end-to-end.
+
+QR asset for billing: `web/public/billing/upi-qr.png` (Show QR on `/billing`).
 
 ---
 
@@ -183,12 +187,22 @@ Details: [`extension/README.md`](../extension/README.md).
 ## 7. Hosting (Vercel)
 
 1. Deploy the `web/` directory.  
-2. Set the same env vars (`DATABASE_URL` = **pooler** URI, `AUTH_SECRET`, `NEXT_PUBLIC_APP_URL` = your Vercel URL, Google redirect = production callback, **`NEXT_PUBLIC_UPI_ID`**).  
-3. Add the Vercel origin + redirect URI in Google Cloud Console.  
-4. Update `extension/manifest.json` host permissions if needed; set Options App URL to production; paste a token from the **hosted** Privacy & Settings page.  
-5. Confirm readiness at `/api/health` — `auth_secret` and `database` must be `true`.
+2. Set env vars for **Production**:
+   - `DATABASE_URL` = **Transaction pooler** URI (port `6543`)
+   - `AUTH_SECRET`, `GOOGLE_TOKEN_ENCRYPTION_KEY`
+   - `NEXT_PUBLIC_APP_URL` = `https://YOUR_DOMAIN` (**not** localhost)
+   - `GOOGLE_OAUTH_REDIRECT_URI` = `https://YOUR_DOMAIN/api/auth/google/callback`
+   - `NEXT_PUBLIC_UPI_ID` (+ optional amount / plan label)
+   - `ADMIN_NOTIFY_EMAIL` (recommended so alerts go to your preferred inbox)
+   - `CRON_SECRET` (recommended)
+3. Google Cloud Console → OAuth Web client:
+   - Authorized origin: `https://YOUR_DOMAIN`
+   - Authorized redirect: `https://YOUR_DOMAIN/api/auth/google/callback`
+4. Redeploy after env changes. Confirm `/api/health` — `auth_secret` and `database` must be `true`.
+5. Admin: **Connect Google** with `gmail.send` so payment + password emails work.
+6. JobApp Bridge Options: production App URL + token from Privacy & Settings.
 
-Missing `AUTH_SECRET` on Vercel causes login to fail with a server error.
+Missing or localhost `NEXT_PUBLIC_APP_URL` / redirect causes `redirect_uri_mismatch` or redirects to localhost after Google connect.
 
 ---
 
@@ -199,8 +213,11 @@ Missing `AUTH_SECRET` on Vercel causes login to fail with a server error.
 | `Missing DATABASE_URL` / `AUTH_SECRET` | Add to `web/.env.local` (and Vercel env) |
 | Login 500 on Vercel | Set `AUTH_SECRET`, redeploy; check `/api/health` |
 | `No active template for …` | Run `node scripts/seed-prompt-templates.mjs` |
-| `redirect_uri_mismatch` | Google redirect must match `GOOGLE_OAUTH_REDIRECT_URI` |
-| `access_denied` on Google | Add your email under OAuth **Test users** |
+| `redirect_uri_mismatch` | Google redirect must match production `GOOGLE_OAUTH_REDIRECT_URI` |
+| Google connect lands on localhost | Set production `NEXT_PUBLIC_APP_URL` + redirect; redeploy |
+| Payment email went to wrong inbox | Set `ADMIN_NOTIFY_EMAIL` on Vercel; check admin Gmail Sent |
+| `access_denied` on Google | Add email under OAuth **Test users**, or publish the app |
 | `invalid_grant` | Reconnect Google, or publish the OAuth app |
+| Admin email: needs `gmail.send` | Disconnect → Connect Google as admin after scope is added |
 | DB timeout on Vercel | Use **Transaction pooler** URI (port 6543) |
 | Bridge stuck / 401 | Rotate token in Settings; reload extension |

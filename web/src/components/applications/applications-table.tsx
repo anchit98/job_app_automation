@@ -100,14 +100,14 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
 
   return (
     <>
-      <div className="li-card p-3 flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="flex items-center gap-1 overflow-x-auto">
+      <div className="li-card p-3 flex flex-col gap-3">
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 -mx-0.5 px-0.5">
           {STATUS_FILTERS.map((filter) => (
             <button
               key={filter.id || "all"}
               type="button"
               onClick={() => pushParams({ status: filter.id || null })}
-              className={`px-3 py-1.5 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors border ${
+              className={`px-3 py-2 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors border min-h-10 ${
                 activeStatus === filter.id
                   ? "bg-primary text-on-primary border-primary"
                   : "bg-surface text-on-surface-variant border-border-hairline hover:bg-[var(--ghost-hover)] hover:text-on-surface"
@@ -118,7 +118,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
           ))}
         </div>
 
-        <div className="flex-1 min-w-0 max-w-md relative">
+        <div className="relative w-full">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">
             search
           </span>
@@ -127,11 +127,11 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search JD, notes, company, role…"
-            className="w-full bg-canvas border border-border-hairline text-on-surface pl-10 pr-4 py-2 text-[14px] rounded-lg focus:border-primary outline-none"
+            className="w-full min-h-11 bg-canvas border border-border-hairline text-on-surface pl-10 pr-4 py-2.5 text-[14px] rounded-lg focus:border-primary outline-none"
           />
         </div>
 
-        <p className="li-meta whitespace-nowrap">
+        <p className="li-meta">
           {total} result{total === 1 ? "" : "s"}
           {pending ? " · updating…" : ""}
         </p>
@@ -241,26 +241,21 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
 
             <div className="md:hidden space-y-2">
               {items.map((app) => (
-                <div
-                  key={app.id}
-                  className="li-card p-4 space-y-3"
-                >
+                <div key={app.id} className="li-card p-4 space-y-3">
                   <Link
                     href={`/applications/${app.id}`}
-                    className="flex items-start justify-between gap-2 no-underline"
+                    className="mobile-card-row no-underline"
                   >
-                    <div className="flex gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-[4px] bg-primary-container text-primary flex items-center justify-center font-semibold shrink-0">
-                        {(app.company || "U").charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="text-[15px] font-semibold text-on-surface">
-                          {app.company || "Unknown"}
-                        </p>
-                        <p className="text-[13px] text-on-surface-variant">
-                          {app.role || "Unknown role"}
-                        </p>
-                      </div>
+                    <div className="mobile-avatar rounded-[6px] bg-primary-container text-primary flex items-center justify-center font-semibold text-[16px]">
+                      {(app.company || "U").charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15px] font-semibold text-on-surface truncate">
+                        {app.company || "Unknown"}
+                      </p>
+                      <p className="text-[13px] text-on-surface-variant truncate">
+                        {app.role || "Unknown role"}
+                      </p>
                     </div>
                     <span
                       className={`shrink-0 li-chip border ${getStatusStyle(app.status)}`}
@@ -268,47 +263,61 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                       {APPLICATION_STATUS_LABELS[app.status]}
                     </span>
                   </Link>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex flex-wrap gap-3 text-[11px] text-on-surface-variant">
-                      <span>
-                        Resume:{" "}
+
+                  <div className="grid grid-cols-2 gap-2 text-[12px] text-on-surface-variant border-t border-border-hairline pt-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide font-semibold">
+                        Resume
+                      </p>
+                      <p className="mt-0.5 text-on-surface font-medium">
                         {app.latest_resume_version != null
                           ? `v${app.latest_resume_version}`
                           : "—"}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] uppercase tracking-wide font-semibold">
+                        Updated
+                      </p>
+                      <p className="mt-0.5 text-on-surface font-medium">
+                        {formatRelativeTime(app.updated_at)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {app.is_incomplete ? (
+                    <p className="text-[12px] text-error font-medium">
+                      No resume attached
+                    </p>
+                  ) : null}
+
+                  <div className="flex items-center justify-end gap-1 border-t border-border-hairline pt-2">
+                    {app.pipeline && (
+                      <ApplicationPipelineActions
+                        pipelineId={app.pipeline.pipeline_id}
+                        status={app.pipeline.status}
+                        currentStage={app.pipeline.current_stage}
+                        error={app.pipeline.error}
+                        canResume={app.pipeline.can_resume}
+                        compact
+                      />
+                    )}
+                    <button
+                      type="button"
+                      title="Delete application"
+                      disabled={pending}
+                      onClick={() =>
+                        handleDelete(
+                          app.id,
+                          `${app.company || "Unknown"} — ${app.role || "role"}`,
+                        )
+                      }
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-md text-on-surface-variant hover:text-error hover:bg-error-container/40 disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">
+                        delete
                       </span>
-                      <span>{formatRelativeTime(app.updated_at)}</span>
-                      {app.is_incomplete && (
-                        <span className="text-error">No resume</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {app.pipeline && (
-                        <ApplicationPipelineActions
-                          pipelineId={app.pipeline.pipeline_id}
-                          status={app.pipeline.status}
-                          currentStage={app.pipeline.current_stage}
-                          error={app.pipeline.error}
-                          canResume={app.pipeline.can_resume}
-                          compact
-                        />
-                      )}
-                      <button
-                        type="button"
-                        title="Delete application"
-                        disabled={pending}
-                        onClick={() =>
-                          handleDelete(
-                            app.id,
-                            `${app.company || "Unknown"} — ${app.role || "role"}`,
-                          )
-                        }
-                        className="p-1.5 rounded-md text-on-surface-variant hover:text-error hover:bg-error-container/40 disabled:opacity-50"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">
-                          delete
-                        </span>
-                      </button>
-                    </div>
+                    </button>
                   </div>
                 </div>
               ))}

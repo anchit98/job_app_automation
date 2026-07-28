@@ -510,6 +510,9 @@ Product success will be measured by:
 - ✅ Analytics dashboard with application metrics + funnel rates
 - ✅ Admin Center + email password recovery
 - ✅ JobApp OS branding
+- ✅ Manual UPI paywall + admin payment review (including phone review links)
+- ✅ Mobile-ready app shell (bottom tabs, Jobs cards, aligned metrics)
+- ✅ Privacy Policy + Terms of Service
 
 **Still planned:**
 - Calendar integration for interview scheduling
@@ -523,6 +526,7 @@ Product success will be measured by:
 - Integration with job boards beyond LinkedIn
 - Mobile push notifications for follow-ups
 - AI suggestions for networking messages on LinkedIn
+- Stripe / automated card billing (currently manual UPI)
 
 ---
 

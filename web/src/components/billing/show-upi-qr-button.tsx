@@ -32,7 +32,7 @@ export function ShowUpiQrButton({
     <>
       <button
         type="button"
-        className="li-btn-secondary text-[13px] justify-center"
+        className="li-btn-secondary text-[13px] justify-center md:w-auto"
         onClick={() => setOpen(true)}
       >
         Show QR

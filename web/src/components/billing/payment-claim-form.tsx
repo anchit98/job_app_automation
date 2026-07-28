@@ -65,7 +65,7 @@ export function PaymentClaimForm({
           value={upiReference}
           onChange={(e) => setUpiReference(e.target.value)}
           placeholder="e.g. 412345678901"
-          className="w-full rounded-md border border-border-hairline bg-surface px-3 py-2 text-[14px]"
+          className="w-full min-h-11 rounded-md border border-border-hairline bg-surface px-3 py-2.5 text-[14px]"
         />
         <span className="li-meta">
           Copy the transaction ID from your UPI app after paying.

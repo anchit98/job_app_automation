@@ -75,7 +75,7 @@ export function ProfileMenu({
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+6px)] z-[60] w-[260px] rounded-lg border border-border-hairline bg-surface shadow-[var(--shadow-card)] overflow-hidden"
+          className="absolute right-0 top-[calc(100%+6px)] z-[60] w-[min(280px,calc(100vw-1.5rem))] rounded-lg border border-border-hairline bg-surface shadow-[var(--shadow-card)] overflow-hidden"
         >
           <div className="flex items-center gap-3 px-3 py-3 border-b border-border-hairline">
             <UserAvatar src={avatarSrc} name={userName} size={48} />
@@ -120,6 +120,18 @@ export function ProfileMenu({
                 onNavigate={() => setOpen(false)}
               />
             ) : null}
+            <MenuLink
+              href="/privacy-policy"
+              icon="policy"
+              label="Privacy Policy"
+              onNavigate={() => setOpen(false)}
+            />
+            <MenuLink
+              href="/terms"
+              icon="gavel"
+              label="Terms of Service"
+              onNavigate={() => setOpen(false)}
+            />
             <button
               type="button"
               role="menuitem"

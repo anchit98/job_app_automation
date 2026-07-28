@@ -225,6 +225,16 @@ These bite everywhere — they must be handled in shared code, not per-phase.
   - *Mitigation:* Setup guide lists both localhost and production URIs. Callback route logs the requested `redirect_uri` for debugging.
   - *Severity:* Low.
 
+- **Production `NEXT_PUBLIC_APP_URL` / `GOOGLE_OAUTH_REDIRECT_URI` still point at localhost.**
+  - *Symptom:* Google connect fails with `redirect_uri_mismatch`, or succeeds then bounces to `localhost`.
+  - *Mitigation:* Set both env vars to the deployed HTTPS origin; add the matching redirect in Google Cloud; redeploy. See `docs/setup.md` §7.
+  - *Severity:* High in production until fixed.
+
+- **Payment-claim email lands in the wrong inbox (or seems “missing”).**
+  - *Symptom:* Admin expects mail at a personal/work address; message was sent to the admin account email (fallback when `ADMIN_NOTIFY_EMAIL` is unset) or only visible in Gmail Sent.
+  - *Mitigation:* Set `ADMIN_NOTIFY_EMAIL` on Vercel; ensure the admin has Connect Google with `gmail.send`. Check Sent for confirmation.
+  - *Severity:* Medium (ops confusion, not a payment-data loss).
+
 ### 2.2 Master Resume Import
 
 - **User uploads a `.docx` with tables or images.**

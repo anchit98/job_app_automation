@@ -111,10 +111,11 @@ First signup claims orphaned legacy singleton rows (if any).
 
 | Table | Scope | Purpose |
 |---|---|---|
-| `users` | PK `id` | App accounts (`is_admin`, `must_reset_password`) |
+| `users` | PK `id` | App accounts (`is_admin`, `must_reset_password`, `is_paid`, `paid_at`) |
 | `sessions` | FK `user_id` | Active sessions |
 | `password_reset_tokens` | FK `user_id` | One-time email reset links |
 | `password_reset_requests` | FK `user_id` | Recovery request audit |
+| `payment_claims` | FK `user_id` | Manual UPI payment reviews |
 | `profiles` | PK `user_id` | Name, links, avatar, setup flags |
 | `master_resume` | PK `user_id` | Resume JSON + Doc sync |
 | `master_cover_letter` | PK `user_id` | Cover letter Doc sync |
@@ -199,12 +200,24 @@ Progress is tracked with a bar and per-step checkmarks. Minimize state is persis
 - **"Command Precision"** design language (LinkedIn-ish, see `DESIGN.md`)  
 - Brand: **JobApp OS** logo (`public/brand/jobapp-os-logo.png`)  
 - **Light + dark + system** theme; cookie `applyforge_theme`; boot script avoids flash  
-- **Me dropdown** — avatar (uploaded or initials), View Profile, Privacy & Settings, theme cycle, Sign out  
+- **Me dropdown** — avatar, View Profile, Privacy & Settings, Privacy Policy, Terms, theme, Sign out  
 - **Profile avatar** — upload on Profile page; stored in `profiles.avatar_data/avatar_mime`; served at `/api/profile/avatar`  
-- **Nav**: Home · Quick Apply · Jobs (+ Admin Center) + Me avatar  
-- **Search applications** — header search shown **only** on `/applications` (Jobs)  
+- **Desktop nav**: Home · Apply · Jobs (+ Admin) + Me avatar  
+- **Mobile nav**: fixed bottom tabs (Home / Apply / Jobs / Admin or Billing) + compact top header  
+- **Jobs** — desktop table; mobile cards with aligned meta rows  
+- **Dashboard metrics** — fixed label / value / hint bands so numbers align on mobile  
+- **Search applications** — on `/applications` (Jobs)  
+- **Legal footer** — Privacy Policy + Terms (desktop / public pages); Back control on legal pages  
 - Client router cache (`staleTimes`) keeps visited pages instant on revisit  
 - **PageLoader** — branded centered spinner on route transitions
+
+### Billing & payment review
+
+- Unpaid users gated to `/billing` (admins treated as paid)  
+- Pay via UPI ID, **Show QR** modal, or `upi://` deep link  
+- Submit UTR → `payment_claims`; email alert via admin Gmail (`gmail.send`)  
+- Email CTA → `/review-payment/[signed-token]` (7-day JWT) for approve/reject on phone  
+- Admin Center lists pending claims + user ⋮ menu (mark paid, admin role, reset password, delete)
 
 ---
 
@@ -223,8 +236,12 @@ Progress is tracked with a bar and per-step checkmarks. Minimize state is persis
 | `/pipeline/[id]` | Pipeline progress UI |
 | `/onboarding` | Profile, avatar, master resume/cover |
 | `/prompts` | Prompts inbox |
-| `/settings` | Privacy & Settings (password, extension token, bridge) |
-| `/admin-center` | Admin user management |
+| `/settings` | Privacy & Settings (password, extension, account delete) |
+| `/billing` | Manual UPI + QR paywall |
+| `/review-payment/[token]` | Signed mobile payment review |
+| `/admin-center` | Admin user + payment management |
+| `/privacy-policy` | Privacy Policy |
+| `/terms` | Terms of Service |
 | `/health` | Google / prompt / DB health |
 | `/demo` | Paste-flow sandbox |
 | `/api/health` | Public readiness check |
@@ -240,12 +257,17 @@ Progress is tracked with a bar and per-step checkmarks. Minimize state is persis
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Yes | Supabase Postgres (pooler `:6543` for Vercel) |
-| `AUTH_SECRET` | Yes | Signs session JWTs |
-| `NEXT_PUBLIC_APP_URL` | Yes | Public app URL |
+| `AUTH_SECRET` | Yes | Signs session JWTs + payment-review tokens |
+| `NEXT_PUBLIC_APP_URL` | Yes | Public app URL (production must not be localhost) |
 | `GOOGLE_OAUTH_CLIENT_ID` | Yes | OAuth client |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Yes | OAuth secret |
-| `GOOGLE_OAUTH_REDIRECT_URI` | Yes | Must match Google Console |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Yes | Must match Google Console (`…/api/auth/google/callback`) |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypts stored Google tokens |
+| `NEXT_PUBLIC_UPI_ID` | Yes (paywall) | UPI VPA on billing |
+| `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | No | Amount (default `499`) |
+| `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | No | Plan label |
+| `ADMIN_NOTIFY_EMAIL` | No | Payment alert recipients (else all admins) |
+| `CRON_SECRET` | No | Bearer auth for `/api/cron/*` |
 | `RESUME_MASTER_DOC_ID` | No | Default master resume Doc |
 | `COVER_LETTER_MASTER_DOC_ID` | No | Default cover letter Doc |
 
@@ -256,9 +278,11 @@ Progress is tracked with a bar and per-step checkmarks. Minimize state is persis
 ### OAuth flow
 
 1. User clicks **Connect Google** on Home  
-2. App redirects to Google consent (both Gmail + Drive scopes)  
-3. Google callback → app exchanges code → encrypts tokens → stores in `google_tokens`  
-4. Tokens refresh transparently; `invalid_grant` triggers a "Reconnect Google" banner
+2. App redirects to Google consent (Gmail + Drive + Docs scopes)  
+3. Google callback → app exchanges code → encrypts tokens → stores in `google_tokens` (per user)  
+4. Tokens refresh transparently; `invalid_grant` triggers a "Reconnect Google" banner  
+
+**Shared OAuth app config** (one client ID/secret for the product). Each user stores **their own** tokens. Admin Gmail send (password reset + payment alerts) uses a connected **admin** account with `gmail.send`.
 
 ### Drive file layout
 
@@ -274,7 +298,7 @@ Job Application Automation/
 ### Gmail
 
 - **Draft-only for outreach** (scope `gmail.compose`)
-- **Password reset emails** use `gmail.send` from a connected admin Google account
+- **Password reset + payment-claim emails** use `gmail.send` from a connected admin Google account
 - Cold email → Gmail draft with resume PDF attachment
 - Follow-up → Gmail draft
 
@@ -293,11 +317,14 @@ Job Application Automation/
 | `web/scripts/promote-admin-user.mjs` | Set `is_admin` for an email |
 | `web/scripts/seed-prompt-templates.mjs` | Loads `_prompt_templates.json` into `prompt_templates` |
 | `web/scripts/pack-extension-zip.mjs` | Packs `extension/` → `public/downloads/jobapp-bridge.zip` |
+| `web/scripts/inspect-payment-email.mjs` | Debug payment claim + Gmail notify state |
+| `web/scripts/print-payment-review-url.ts` | Print mobile review URL for latest pending claim |
 
 ---
 
 ## 12. Change Log
 
+- **v1.3** — **Mobile-ready UI** (bottom tabs, card Jobs list, aligned metrics). **Legal pages** + footer. Billing **QR** + **phone payment review** links. Admin user **⋮** actions menu. Production OAuth/env guidance tightened.
 - **v1.2** — **Manual UPI paywall.** Unpaid users gated to `/billing`; submit UTR for admin approval. Admins can approve/reject claims or mark paid / revoke access.
 - **v1.1** — **JobApp OS branding**, Admin Center, email password recovery, forced resets. Quick Apply requires company + role. Home simplified (metrics + follow-ups; Update Profile CTA). Header search only on Jobs. Privacy & Settings rename. Gmail `gmail.send` for reset emails.
 - **v1.0** — **Multi-user hosted deploy.** Email/password auth, `user_id` scoping, Supabase Postgres, Vercel-ready. Home setup guide with minimize/pill. Optional contacts in Quick Apply (cold email + Gmail skipped when empty). Theme (light/dark/system). Profile avatar upload. Me dropdown. Client router caching for instant revisits.

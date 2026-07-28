@@ -72,30 +72,30 @@ export default async function DashboardPage({
   const headline = profile?.headline || "Job application command center";
 
   return (
-    <div className="h-[calc(100vh-56px-2.5rem)] md:h-[calc(100vh-56px-2.75rem)] flex flex-col gap-3 lg:gap-4 overflow-y-auto">
-      <section className="li-card p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-center shrink-0">
-        <div className="lg:col-span-7 flex items-start gap-3 min-w-0">
+    <div className="min-h-0 flex flex-col gap-3 lg:gap-4 overflow-y-auto pb-2 md:h-[calc(100vh-56px-2.75rem)] md:pb-0">
+      <section className="li-card p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start lg:items-center shrink-0">
+        <div className="lg:col-span-7 flex items-center gap-3 min-w-0">
           <UserAvatar
             src={profileAvatarSrc(profile)}
             name={displayName}
-            size={56}
+            size={48}
             className="border-2"
           />
-          <div className="min-w-0">
-            <h1 className="li-page-title truncate text-[22px] lg:text-[24px]">
+          <div className="min-w-0 flex-1">
+            <h1 className="li-page-title truncate text-[20px] sm:text-[22px] lg:text-[24px]">
               {displayName}
             </h1>
-            <p className="text-[14px] text-on-surface-variant mt-0.5 line-clamp-1">
+            <p className="text-[13px] sm:text-[14px] text-on-surface-variant mt-0.5 line-clamp-2 sm:line-clamp-1">
               {headline}
             </p>
-            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
-              <span className="text-on-surface-variant">
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[13px] max-w-xs md:flex md:flex-wrap md:max-w-none md:gap-x-5 md:gap-y-1">
+              <span className="rounded-md bg-surface-container-low px-2.5 py-1.5 text-on-surface-variant md:bg-transparent md:p-0">
                 Applications{" "}
                 <strong className="text-primary font-semibold">
                   {metrics.totalApplications}
                 </strong>
               </span>
-              <span className="text-on-surface-variant">
+              <span className="rounded-md bg-surface-container-low px-2.5 py-1.5 text-on-surface-variant md:bg-transparent md:p-0">
                 This week{" "}
                 <strong className="text-on-surface font-semibold">
                   {metrics.applicationsThisWeek}
@@ -105,10 +105,10 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        <div className="lg:col-span-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 shrink-0">
+        <div className="lg:col-span-5 mobile-stack md:flex md:flex-row md:items-stretch md:justify-end shrink-0">
           <Link
             href="/apply"
-            className="li-btn-primary shrink-0 no-underline justify-center"
+            className="li-btn-primary shrink-0 no-underline justify-center md:w-auto"
           >
             <span className="material-symbols-outlined text-[18px]">
               rocket_launch
@@ -117,24 +117,12 @@ export default async function DashboardPage({
           </Link>
           <Link
             href="/onboarding"
-            className="group shrink-0 no-underline inline-flex items-stretch overflow-hidden rounded-lg border border-border-hairline bg-surface shadow-[var(--shadow-card)] hover:border-outline/60 transition-colors"
+            className="li-btn-secondary shrink-0 no-underline justify-center gap-2 md:w-auto"
           >
-            <span
-              className="flex items-center justify-center px-2.5 border-r border-border-hairline bg-surface-container-low text-on-surface-variant group-hover:bg-primary-container group-hover:text-primary transition-colors"
-              aria-hidden
-            >
-              <span className="material-symbols-outlined text-[20px]">
-                contact_page
-              </span>
+            <span className="material-symbols-outlined text-[18px]">
+              contact_page
             </span>
-            <span className="flex items-center gap-1 px-3 py-2 text-[13px] font-semibold text-on-surface">
-              Update Profile
-              <span
-                className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:text-primary group-hover:translate-x-0.5 transition-all"
-              >
-                arrow_forward
-              </span>
-            </span>
+            Update Profile
           </Link>
         </div>
       </section>
