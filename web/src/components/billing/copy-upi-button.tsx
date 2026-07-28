@@ -8,7 +8,7 @@ export function CopyUpiButton({ upiId }: { upiId: string }) {
   return (
     <button
       type="button"
-      className="li-btn-secondary text-[13px] justify-center md:w-auto"
+      className="li-btn-secondary text-[13px] justify-center w-full md:w-auto"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(upiId);

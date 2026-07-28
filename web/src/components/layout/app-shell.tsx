@@ -65,11 +65,11 @@ export function AppShell({
       ];
 
   return (
-    <div className="min-h-[100dvh] bg-canvas flex flex-col">
+    <div className="app-shell bg-canvas flex flex-col max-md:overflow-hidden md:min-h-[100dvh]">
       {isPaid ? <PipelineKeeper /> : null}
-      <header className="sticky top-0 z-50 h-nav-height bg-surface border-b border-border-hairline pt-[env(safe-area-inset-top)]">
-        <div className="mx-auto h-full max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-2 sm:gap-4">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+      <header className="z-50 shrink-0 bg-surface border-b border-border-hairline pt-[env(safe-area-inset-top,0px)] md:pt-0">
+        <div className="mx-auto h-nav-height max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-2 md:gap-4">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
             <Link
               href={homeHref}
               prefetch
@@ -81,7 +81,7 @@ export function AppShell({
                 alt="JobApp OS"
                 width={56}
                 height={33}
-                className="h-7 w-auto sm:h-8"
+                className="h-8 w-auto"
                 priority
                 unoptimized
               />
@@ -90,8 +90,8 @@ export function AppShell({
               </span>
             </Link>
             {!isPaid ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-status-waiting/30 bg-status-waiting-container px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-status-waiting">
-                <span className="material-symbols-outlined text-[12px] sm:text-[14px]">
+              <span className="inline-flex items-center gap-1 rounded-full border border-status-waiting/30 bg-status-waiting-container px-2.5 py-1 text-[11px] font-semibold text-status-waiting max-md:px-2 max-md:py-0.5 max-md:text-[10px]">
+                <span className="material-symbols-outlined text-[14px] max-md:text-[12px]">
                   lock
                 </span>
                 <span className="sm:hidden">Locked</span>
@@ -201,8 +201,8 @@ export function AppShell({
           flex-1 w-full min-w-0
           ${
             isWorkspace && isPaid
-              ? "overflow-hidden"
-              : "mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-3 sm:py-4 md:py-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8"
+              ? "overflow-hidden min-h-0"
+              : "mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-4 md:py-5 pb-8 max-md:min-h-0 max-md:overflow-y-auto max-md:py-3 max-md:pb-3"
           }
         `}
       >
@@ -210,10 +210,10 @@ export function AppShell({
       </main>
 
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border-hairline bg-surface/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
+        className="md:hidden shrink-0 z-50 border-t border-border-hairline bg-surface pb-[env(safe-area-inset-bottom,0px)]"
         aria-label="Primary"
       >
-        <div className="mx-auto flex max-w-content-max items-stretch justify-around px-1">
+        <div className="mx-auto flex h-14 max-w-content-max items-stretch justify-around px-1">
           {navLinks.map((link) => {
             const active = isActive(activePath, link.href);
             return (
@@ -227,7 +227,7 @@ export function AppShell({
                   }
                 }}
                 className={`
-                  flex min-h-[56px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 no-underline
+                  flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 no-underline
                   ${active ? "text-primary" : "text-on-surface-variant"}
                 `}
               >

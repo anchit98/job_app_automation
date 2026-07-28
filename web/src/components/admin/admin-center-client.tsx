@@ -111,7 +111,7 @@ export function AdminCenterClient({
           <button
             type="submit"
             disabled={pending}
-            className="li-btn-primary justify-center disabled:opacity-50 md:w-auto"
+            className="li-btn-primary justify-center disabled:opacity-50 w-full md:w-auto"
           >
             Add user
           </button>

@@ -29,7 +29,7 @@ export function DashboardMetricsGrid({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 md:grid-rows-3 md:gap-3 lg:gap-4 flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
+      <div className="grid grid-cols-2 md:grid-cols-3 md:grid-rows-3 gap-3 lg:gap-4 max-md:gap-2 flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
         <MetricCard label="Total applications" value={metrics.totalApplications} />
         <MetricCard
           label="This week"
