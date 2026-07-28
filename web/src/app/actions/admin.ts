@@ -15,8 +15,14 @@ import {
   getUserById,
   requireAdmin,
   setUserPassword,
+  setUserPaid,
+  setUserAdmin,
   countAdmins,
 } from "@/lib/auth/user";
+import {
+  getPaymentClaimById,
+  reviewPaymentClaim,
+} from "@/lib/billing/payment-claims";
 import { dbGet } from "@/lib/db";
 
 const DEFAULT_PASSWORD = "abc12345";
@@ -181,6 +187,181 @@ export async function adminDeleteUser(input: { userId: string }) {
     await deleteUserAccount(targetId);
     revalidatePath("/admin-center");
     return { ok: true as const, email: user.email };
+  } catch (error) {
+    return { ok: false as const, error: adminFailureMessage(error) };
+  }
+}
+
+const claimIdSchema = z.object({
+  claimId: z.string().min(1, "Missing claim id."),
+});
+
+export async function adminApprovePaymentClaim(input: { claimId: string }) {
+  const parsed = claimIdSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      error: parsed.error.issues[0]?.message ?? "Invalid input.",
+    };
+  }
+
+  try {
+    const admin = await requireAdmin();
+    const claim = await getPaymentClaimById(parsed.data.claimId);
+    if (!claim) {
+      return { ok: false as const, error: "Payment claim not found." };
+    }
+    if (claim.status !== "pending") {
+      return { ok: false as const, error: "This claim was already reviewed." };
+    }
+
+    await reviewPaymentClaim({
+      claimId: claim.id,
+      status: "approved",
+      adminId: admin.id,
+    });
+    await setUserPaid(claim.user_id, true);
+    await writeAuditLog("admin.payment_approved", "payment_claims", claim.id, {
+      admin_user_id: admin.id,
+      user_id: claim.user_id,
+      upi_reference: claim.upi_reference,
+    });
+    revalidatePath("/admin-center");
+    revalidatePath("/billing");
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: adminFailureMessage(error) };
+  }
+}
+
+export async function adminRejectPaymentClaim(input: { claimId: string }) {
+  const parsed = claimIdSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      error: parsed.error.issues[0]?.message ?? "Invalid input.",
+    };
+  }
+
+  try {
+    const admin = await requireAdmin();
+    const claim = await getPaymentClaimById(parsed.data.claimId);
+    if (!claim) {
+      return { ok: false as const, error: "Payment claim not found." };
+    }
+    if (claim.status !== "pending") {
+      return { ok: false as const, error: "This claim was already reviewed." };
+    }
+
+    await reviewPaymentClaim({
+      claimId: claim.id,
+      status: "rejected",
+      adminId: admin.id,
+    });
+    await writeAuditLog("admin.payment_rejected", "payment_claims", claim.id, {
+      admin_user_id: admin.id,
+      user_id: claim.user_id,
+      upi_reference: claim.upi_reference,
+    });
+    revalidatePath("/admin-center");
+    revalidatePath("/billing");
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: adminFailureMessage(error) };
+  }
+}
+
+export async function adminSetUserPaid(input: {
+  userId: string;
+  paid: boolean;
+}) {
+  const parsed = z
+    .object({
+      userId: z.string().min(1),
+      paid: z.boolean(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      error: parsed.error.issues[0]?.message ?? "Invalid input.",
+    };
+  }
+
+  try {
+    const admin = await requireAdmin();
+    const user = await getUserById(parsed.data.userId);
+    if (!user) {
+      return { ok: false as const, error: "User not found." };
+    }
+
+    await setUserPaid(parsed.data.userId, parsed.data.paid);
+    await writeAuditLog(
+      parsed.data.paid ? "admin.user_marked_paid" : "admin.user_access_revoked",
+      "users",
+      parsed.data.userId,
+      { admin_user_id: admin.id, email: user.email },
+    );
+    revalidatePath("/admin-center");
+    revalidatePath("/billing");
+    return { ok: true as const, email: user.email, paid: parsed.data.paid };
+  } catch (error) {
+    return { ok: false as const, error: adminFailureMessage(error) };
+  }
+}
+
+export async function adminSetUserAdmin(input: {
+  userId: string;
+  isAdmin: boolean;
+}) {
+  const parsed = z
+    .object({
+      userId: z.string().min(1),
+      isAdmin: z.boolean(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      error: parsed.error.issues[0]?.message ?? "Invalid input.",
+    };
+  }
+
+  try {
+    const admin = await requireAdmin();
+    const user = await getUserById(parsed.data.userId);
+    if (!user) {
+      return { ok: false as const, error: "User not found." };
+    }
+
+    if (!parsed.data.isAdmin) {
+      if (parsed.data.userId === admin.id) {
+        return {
+          ok: false as const,
+          error: "You cannot remove your own admin role here.",
+        };
+      }
+      if (user.is_admin && (await countAdmins()) <= 1) {
+        return {
+          ok: false as const,
+          error: "Cannot remove the only admin.",
+        };
+      }
+    }
+
+    await setUserAdmin(parsed.data.userId, parsed.data.isAdmin);
+    await writeAuditLog(
+      parsed.data.isAdmin ? "admin.user_promoted" : "admin.user_demoted",
+      "users",
+      parsed.data.userId,
+      { admin_user_id: admin.id, email: user.email },
+    );
+    revalidatePath("/admin-center");
+    return {
+      ok: true as const,
+      email: user.email,
+      isAdmin: parsed.data.isAdmin,
+    };
   } catch (error) {
     return { ok: false as const, error: adminFailureMessage(error) };
   }

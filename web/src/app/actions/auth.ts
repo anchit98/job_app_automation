@@ -111,7 +111,10 @@ export async function signIn(input: { email: string; password: string }) {
   try {
     const user = await getUserByEmail(parsed.data.email);
     if (!user) {
-      return { ok: false as const, error: "Invalid email or password." };
+      return {
+        ok: false as const,
+        error: "No account was found for this email. Create an account to log in.",
+      };
     }
 
     const valid = await verifyPassword(
@@ -136,6 +139,7 @@ export async function signIn(input: { email: string; password: string }) {
         full_name: user.full_name,
         is_admin: Boolean(user.is_admin),
         must_reset_password: Boolean(user.must_reset_password),
+        is_paid: Boolean(user.is_admin) || Boolean(user.is_paid),
       },
     };
   } catch (error) {

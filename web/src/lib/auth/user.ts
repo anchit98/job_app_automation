@@ -48,7 +48,7 @@ export async function countAdmins(): Promise<number> {
 
 export async function getUserById(userId: string) {
   return (await dbGet(
-    `SELECT id, email, password_hash, full_name, is_admin, must_reset_password
+    `SELECT id, email, password_hash, full_name, is_admin, must_reset_password, is_paid
        FROM users
       WHERE id = ?`,
     userId,
@@ -60,13 +60,14 @@ export async function getUserById(userId: string) {
         full_name: string | null;
         is_admin: boolean;
         must_reset_password: boolean;
+        is_paid: boolean;
       }
     | undefined;
 }
 
 export async function getUserByEmail(email: string) {
   return (await dbGet(
-    `SELECT id, email, password_hash, full_name, is_admin, must_reset_password
+    `SELECT id, email, password_hash, full_name, is_admin, must_reset_password, is_paid
        FROM users
       WHERE lower(email) = lower(?)`,
     email.trim(),
@@ -78,6 +79,7 @@ export async function getUserByEmail(email: string) {
         full_name: string | null;
         is_admin: boolean;
         must_reset_password: boolean;
+        is_paid: boolean;
       }
     | undefined;
 }
@@ -88,26 +90,33 @@ export async function createUser(input: {
   fullName?: string | null;
   isAdmin?: boolean;
   mustResetPassword?: boolean;
+  isPaid?: boolean;
 }): Promise<SessionUser> {
   const id = randomUUID();
+  const isAdmin = input.isAdmin ?? false;
+  const isPaid = input.isPaid ?? isAdmin;
   await dbRun(
     `INSERT INTO users (
-       id, email, password_hash, full_name, is_admin, must_reset_password
+       id, email, password_hash, full_name, is_admin, must_reset_password,
+       is_paid, paid_at
      )
-     VALUES (?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.email.trim().toLowerCase(),
     input.passwordHash,
     input.fullName?.trim() || null,
-    input.isAdmin ?? false,
+    isAdmin,
     input.mustResetPassword ?? false,
+    isPaid,
+    isPaid ? new Date().toISOString() : null,
   );
   return {
     id,
     email: input.email.trim().toLowerCase(),
     full_name: input.fullName?.trim() || null,
-    is_admin: input.isAdmin ?? false,
+    is_admin: isAdmin,
     must_reset_password: input.mustResetPassword ?? false,
+    is_paid: isPaid || isAdmin,
   };
 }
 
@@ -282,6 +291,53 @@ export async function setUserPassword(
     input.fullName ?? null,
     userId,
   );
+}
+
+export async function setUserPaid(
+  userId: string,
+  paid: boolean,
+): Promise<void> {
+  await dbRun(
+    `UPDATE users
+        SET is_paid = ?,
+            paid_at = CASE
+              WHEN ? THEN COALESCE(paid_at, ((NOW() AT TIME ZONE 'utc')::text))
+              ELSE NULL
+            END,
+            updated_at = ((NOW() AT TIME ZONE 'utc')::text)
+      WHERE id = ?`,
+    paid,
+    paid,
+    userId,
+  );
+}
+
+export async function setUserAdmin(
+  userId: string,
+  isAdmin: boolean,
+): Promise<void> {
+  await dbRun(
+    `UPDATE users
+        SET is_admin = ?,
+            is_paid = CASE WHEN ? THEN true ELSE is_paid END,
+            paid_at = CASE
+              WHEN ? THEN COALESCE(paid_at, ((NOW() AT TIME ZONE 'utc')::text))
+              ELSE paid_at
+            END,
+            updated_at = ((NOW() AT TIME ZONE 'utc')::text)
+      WHERE id = ?`,
+    isAdmin,
+    isAdmin,
+    isAdmin,
+    userId,
+  );
+}
+
+export function userHasPaidAccess(user: {
+  is_admin: boolean;
+  is_paid: boolean;
+}): boolean {
+  return Boolean(user.is_admin || user.is_paid);
 }
 
 export async function deleteAllUserSessions(userId: string) {

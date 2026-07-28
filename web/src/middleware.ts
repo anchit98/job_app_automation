@@ -9,6 +9,7 @@ const PUBLIC_PREFIXES = [
   "/signup",
   "/forgot-password",
   "/reset-password",
+  "/review-payment",
   "/_next",
   "/favicon",
   "/brand",
@@ -47,6 +48,9 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+
   if (isPublic(pathname)) {
     // Logged-in users hitting login/signup → dashboard
     if (
@@ -60,10 +64,13 @@ export async function middleware(request: NextRequest) {
         );
       }
       if (sessionPayload) {
+        // Unpaid users land on billing; paid status is checked in app layout.
         return NextResponse.redirect(new URL("/dashboard", request.url));
       }
     }
-    return NextResponse.next();
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
   }
 
   if (!token || !process.env.AUTH_SECRET) {
@@ -86,7 +93,9 @@ export async function middleware(request: NextRequest) {
     if (!mustReset && pathname === "/reset-password-required") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
-    return NextResponse.next();
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
   } catch {
     const login = new URL("/login", request.url);
     login.searchParams.set("next", pathname);

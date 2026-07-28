@@ -29,6 +29,17 @@ export const env = {
       "COVER_LETTER_MASTER_DOC_ID",
       "1niJmOSYR6oL1rc4aX08oVWc7cCwE8dXtXNrwsmO3nh4",
     ),
+  /** Displayed on the billing paywall for manual UPI transfer */
+  upiId: () => optional("NEXT_PUBLIC_UPI_ID", optional("UPI_ID")),
+  paymentAmountInr: () =>
+    optional("NEXT_PUBLIC_PAYMENT_AMOUNT_INR", optional("PAYMENT_AMOUNT_INR", "499")),
+  paymentPlanLabel: () =>
+    optional(
+      "NEXT_PUBLIC_PAYMENT_PLAN_LABEL",
+      optional("PAYMENT_PLAN_LABEL", "JobApp OS access"),
+    ),
+  /** Optional override for payment-claim alert recipients (comma-separated). */
+  adminNotifyEmail: () => optional("ADMIN_NOTIFY_EMAIL"),
 };
 
 export function hasGoogleConfig(): boolean {

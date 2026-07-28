@@ -1,4 +1,4 @@
-# JobApp OS — Job Application Automation
+# JobApp OS | Job Application Automation
 
 **JobApp OS** turns a pasted job description into a tracked application package: tailored resume, cover letter, optional cold emails, Gmail drafts, and follow-ups — with ChatGPT in the loop via paste or the **JobApp Bridge** Chrome extension.
 
@@ -77,7 +77,8 @@ Emails are always **drafts** until you send them from Gmail.
 | `/pipeline/[id]` | Live pipeline progress |
 | `/onboarding` | Profile, avatar, master resume/cover Docs |
 | `/settings` | Privacy & Settings — password, extension token / bridge |
-| `/admin-center` | Admin-only user management |
+| `/billing` | Manual UPI paywall (unpaid users only) |
+| `/admin-center` | Admin-only user management + payment approvals |
 | `/prompts` | Prompts inbox |
 | `/health` | Ops / Google / DB status |
 | `/api/health` | Public readiness JSON (`auth_secret`, `database`, …) |

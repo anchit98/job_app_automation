@@ -31,11 +31,26 @@ node scripts/migrate-auth-multitenant.mjs   # users, sessions, user_id scoping
 node scripts/migrate-setup-guide.mjs       # setup guide flags
 node scripts/migrate-profile-avatar.mjs    # avatar columns
 node scripts/migrate-admin-auth.mjs        # is_admin, must_reset_password, password reset tables
+node scripts/migrate-manual-payments.mjs   # is_paid, payment_claims (UPI paywall)
 ```
 
 Prefer applying the full [`supabase/schema.sql`](../supabase/schema.sql) for new projects.
 
 **Admin:** first signup on an empty `users` table becomes admin. Promote later with `node scripts/promote-admin-user.mjs <email>`.
+
+### Manual UPI paywall
+
+New signups land on `/billing` until an admin approves payment. Set:
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_UPI_ID` | Your UPI VPA (e.g. `name@okaxis`) |
+| `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | Amount shown (default `499`) |
+| `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | Label on paywall |
+
+Existing users are marked paid by the migration so current accounts keep access.
+
+Payment-claim emails include a **Review on phone** link (`/review-payment/...`) — a signed mobile page to approve or reject without opening Admin Center. Links expire after 7 days.
 
 ---
 
@@ -54,6 +69,27 @@ See [`architecture.md`](architecture.md) § Integration Setup for the full walkt
 4. **Credentials** → **OAuth client ID** → **Web application**:
    - Origins: `http://localhost:3000` (add production URL later)
    - Redirect: `http://localhost:3000/api/auth/google/callback`
+
+### Gmail send (password recovery + payment-claim alerts)
+
+The app sends real email via the **admin’s connected Google account** using `gmail.send`.
+
+**In Google Cloud Console, confirm:**
+
+1. **APIs & Services → Library** → **Gmail API** is **Enabled**.
+2. **APIs & Services → OAuth consent screen → Scopes** includes:
+   - `https://www.googleapis.com/auth/gmail.send`
+   - `https://www.googleapis.com/auth/gmail.compose`
+3. If the app is still in **Testing**, your admin Google account email is listed under **Test users**.
+4. After adding `gmail.send` (or if Connect Google was done before it existed), the admin must **Disconnect Google** then **Connect Google** again in JobApp OS so the new scope is granted and stored in `google_tokens.scope`.
+
+**In JobApp OS:**
+
+1. Sign in as an **admin**.
+2. Complete **Connect Google** (Home setup guide) with the Gmail inbox you want alerts to come *from*.
+3. Optional env: `ADMIN_NOTIFY_EMAIL=you@gmail.com` (comma-separated). If unset, all admin account emails are notified when someone submits a UPI payment claim.
+
+Payment claims still succeed even if email fails (check server logs / audit log).
 
 ---
 
@@ -88,6 +124,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypts Google tokens in the DB |
 | `RESUME_MASTER_DOC_ID` | No | Default master resume Google Doc ID |
 | `COVER_LETTER_MASTER_DOC_ID` | No | Default master cover-letter Doc ID |
+| `NEXT_PUBLIC_UPI_ID` | Yes (for paywall) | Your UPI VPA shown on `/billing` |
+| `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | No | Amount on paywall (default `499`) |
+| `ADMIN_NOTIFY_EMAIL` | No | Payment-claim alert recipients (comma-separated). Defaults to all admin emails |
 
 **Note:** App login (`AUTH_SECRET` + `users`/`sessions`) is separate from **Connect Google** (Drive/Gmail). You need both for Quick Apply end-to-end.
 
@@ -144,7 +183,7 @@ Details: [`extension/README.md`](../extension/README.md).
 ## 7. Hosting (Vercel)
 
 1. Deploy the `web/` directory.  
-2. Set the same env vars (`DATABASE_URL` = **pooler** URI, `AUTH_SECRET`, `NEXT_PUBLIC_APP_URL` = your Vercel URL, Google redirect = production callback).  
+2. Set the same env vars (`DATABASE_URL` = **pooler** URI, `AUTH_SECRET`, `NEXT_PUBLIC_APP_URL` = your Vercel URL, Google redirect = production callback, **`NEXT_PUBLIC_UPI_ID`**).  
 3. Add the Vercel origin + redirect URI in Google Cloud Console.  
 4. Update `extension/manifest.json` host permissions if needed; set Options App URL to production; paste a token from the **hosted** Privacy & Settings page.  
 5. Confirm readiness at `/api/health` — `auth_secret` and `database` must be `true`.

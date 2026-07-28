@@ -289,6 +289,7 @@ Job Application Automation/
 | `web/scripts/migrate-setup-guide.mjs` | `setup_console_done_at`, `setup_guide_collapsed` (v45) |
 | `web/scripts/migrate-profile-avatar.mjs` | `avatar_data`, `avatar_mime` (v46) |
 | `web/scripts/migrate-admin-auth.mjs` | `is_admin`, `must_reset_password`, password reset tables (v47) |
+| `web/scripts/migrate-manual-payments.mjs` | `is_paid`, `paid_at`, `payment_claims` (v48) |
 | `web/scripts/promote-admin-user.mjs` | Set `is_admin` for an email |
 | `web/scripts/seed-prompt-templates.mjs` | Loads `_prompt_templates.json` into `prompt_templates` |
 | `web/scripts/pack-extension-zip.mjs` | Packs `extension/` → `public/downloads/jobapp-bridge.zip` |
@@ -297,6 +298,7 @@ Job Application Automation/
 
 ## 12. Change Log
 
+- **v1.2** — **Manual UPI paywall.** Unpaid users gated to `/billing`; submit UTR for admin approval. Admins can approve/reject claims or mark paid / revoke access.
 - **v1.1** — **JobApp OS branding**, Admin Center, email password recovery, forced resets. Quick Apply requires company + role. Home simplified (metrics + follow-ups; Update Profile CTA). Header search only on Jobs. Privacy & Settings rename. Gmail `gmail.send` for reset emails.
 - **v1.0** — **Multi-user hosted deploy.** Email/password auth, `user_id` scoping, Supabase Postgres, Vercel-ready. Home setup guide with minimize/pill. Optional contacts in Quick Apply (cold email + Gmail skipped when empty). Theme (light/dark/system). Profile avatar upload. Me dropdown. Client router caching for instant revisits.
 - **v0.5** — **Local-first pivot.** Dropped Supabase + app login in favour of SQLite.

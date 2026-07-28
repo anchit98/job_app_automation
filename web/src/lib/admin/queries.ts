@@ -3,6 +3,7 @@ import {
   listActivePasswordResetTokens,
   listOpenPasswordResetRequests,
 } from "@/lib/auth/password-reset";
+import { listPendingPaymentClaims } from "@/lib/billing/payment-claims";
 
 export type AdminUserSummary = {
   id: string;
@@ -10,6 +11,8 @@ export type AdminUserSummary = {
   full_name: string | null;
   is_admin: boolean;
   must_reset_password: boolean;
+  is_paid: boolean;
+  paid_at: string | null;
   created_at: string;
   console_done: boolean;
   google_connected: boolean;
@@ -20,7 +23,8 @@ export type AdminUserSummary = {
 
 export async function listAdminUsers(): Promise<AdminUserSummary[]> {
   const rows = (await dbAll(
-    `SELECT u.id, u.email, u.full_name, u.is_admin, u.must_reset_password, u.created_at,
+    `SELECT u.id, u.email, u.full_name, u.is_admin, u.must_reset_password,
+            u.is_paid, u.paid_at, u.created_at,
             p.full_name AS profile_full_name,
             p.setup_console_done_at,
             mr.content AS resume_content,
@@ -39,6 +43,8 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
     full_name: string | null;
     is_admin: boolean;
     must_reset_password: boolean;
+    is_paid: boolean;
+    paid_at: string | null;
     created_at: string;
     profile_full_name: string | null;
     setup_console_done_at: string | null;
@@ -56,12 +62,15 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
     const googleConnected = row.google_status === "active";
     const extensionConfigured =
       Boolean(row.extension_user_id) && row.extension_revoked_at == null;
+    const isAdmin = Boolean(row.is_admin);
     return {
       id: row.id,
       email: row.email,
       full_name: row.profile_full_name || row.full_name,
-      is_admin: Boolean(row.is_admin),
+      is_admin: isAdmin,
       must_reset_password: Boolean(row.must_reset_password),
+      is_paid: isAdmin || Boolean(row.is_paid),
+      paid_at: row.paid_at,
       created_at: row.created_at,
       console_done: consoleDone,
       google_connected: googleConnected,
@@ -74,10 +83,12 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
 }
 
 export async function getAdminCenterData() {
-  const [users, resetRequests, activeResetLinks] = await Promise.all([
-    listAdminUsers(),
-    listOpenPasswordResetRequests(),
-    listActivePasswordResetTokens(),
-  ]);
-  return { users, resetRequests, activeResetLinks };
+  const [users, resetRequests, activeResetLinks, pendingPaymentClaims] =
+    await Promise.all([
+      listAdminUsers(),
+      listOpenPasswordResetRequests(),
+      listActivePasswordResetTokens(),
+      listPendingPaymentClaims(),
+    ]);
+  return { users, resetRequests, activeResetLinks, pendingPaymentClaims };
 }

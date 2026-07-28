@@ -396,6 +396,9 @@ body {
 .af-loader-fade {
   animation: af-fade-up 0.45s ease-out both;
 }
+.af-upi-qr-card {
+  animation: af-fade-up 0.28s ease-out both;
+}
 .af-loader-bar {
   background: linear-gradient(
     90deg,

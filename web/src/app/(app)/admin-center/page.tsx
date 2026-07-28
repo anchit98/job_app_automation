@@ -15,7 +15,8 @@ export default async function AdminCenterPage() {
       <div>
         <h1 className="li-page-title">Admin Center</h1>
         <p className="text-[14px] text-on-surface-variant mt-1">
-          Manage users, monitor setup completion, and handle password recovery.
+          Manage users, UPI payment approvals, setup completion, and password
+          recovery.
         </p>
       </div>
       <AdminCenterClient
@@ -23,6 +24,7 @@ export default async function AdminCenterPage() {
         users={data.users}
         resetRequests={data.resetRequests}
         activeResetLinks={data.activeResetLinks}
+        pendingPaymentClaims={data.pendingPaymentClaims}
       />
     </div>
   );

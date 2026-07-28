@@ -1,4 +1,4 @@
-# JobApp OS — Web App
+# JobApp OS | Web App
 
 Next.js 16.2 (App Router, React 19, Turbopack) application for **JobApp OS**.
 

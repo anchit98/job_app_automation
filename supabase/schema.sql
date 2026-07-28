@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
   full_name TEXT,
   is_admin BOOLEAN NOT NULL DEFAULT false,
   must_reset_password BOOLEAN NOT NULL DEFAULT false,
+  is_paid BOOLEAN NOT NULL DEFAULT false,
+  paid_at TEXT,
   created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
   updated_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
 );
@@ -51,6 +53,23 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 
 CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx
   ON password_reset_tokens (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS payment_claims (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  upi_reference TEXT NOT NULL,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'approved', 'rejected')),
+  reviewed_by_admin_id TEXT REFERENCES users (id) ON DELETE SET NULL,
+  reviewed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
+);
+
+CREATE INDEX IF NOT EXISTS payment_claims_user_idx
+  ON payment_claims (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS payment_claims_status_idx
+  ON payment_claims (status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS profiles (
   user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,

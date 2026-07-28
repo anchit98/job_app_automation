@@ -1,40 +1,9 @@
-import { dbGet } from "@/lib/db";
-import { env } from "@/lib/env";
-import { GmailClient } from "@/lib/google/gmail";
-import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { createPasswordResetToken } from "@/lib/auth/password-reset";
-
-type SenderAdmin = {
-  id: string;
-  email: string;
-  full_name: string | null;
-  scope: string;
-};
-
-async function resolveSenderAdmin(preferredAdminId?: string): Promise<SenderAdmin | null> {
-  if (preferredAdminId) {
-    const row = (await dbGet(
-      `SELECT u.id, u.email, u.full_name, gt.scope
-         FROM users u
-         INNER JOIN google_tokens gt ON gt.user_id = u.id
-        WHERE u.id = ?
-          AND u.is_admin = true
-          AND gt.status = 'active'`,
-      preferredAdminId,
-    )) as SenderAdmin | undefined;
-    if (row) return row;
-  }
-
-  return ((await dbGet(
-    `SELECT u.id, u.email, u.full_name, gt.scope
-       FROM users u
-       INNER JOIN google_tokens gt ON gt.user_id = u.id
-      WHERE u.is_admin = true
-        AND gt.status = 'active'
-      ORDER BY u.created_at ASC
-      LIMIT 1`,
-  )) as SenderAdmin | undefined) ?? null;
-}
+import {
+  AdminGmailConfigError,
+  requireGmailSenderAdmin,
+  sendAdminGmail,
+} from "@/lib/google/admin-gmail";
 
 function resetEmailHtml(input: {
   resetUrl: string;
@@ -76,16 +45,18 @@ export async function sendPasswordResetEmail(input: {
   preferredAdminId?: string;
   kind?: "forgot_password" | "admin_reset";
 }) {
-  const sender = await resolveSenderAdmin(input.preferredAdminId);
-  if (!sender) {
-    throw new PasswordResetEmailConfigError(
-      "Password recovery email is not available yet. Connect an admin Google account first.",
-    );
-  }
-  if (!sender.scope.includes("gmail.send")) {
-    throw new PasswordResetEmailConfigError(
-      "Admin Google account needs gmail.send access. Reconnect Google from the admin account, then try again.",
-    );
+  let sender;
+  try {
+    sender = await requireGmailSenderAdmin(input.preferredAdminId);
+  } catch (error) {
+    if (error instanceof AdminGmailConfigError) {
+      throw new PasswordResetEmailConfigError(
+        error.message.includes("gmail.send")
+          ? error.message
+          : "Password recovery email is not available yet. Connect an admin Google account first.",
+      );
+    }
+    throw error;
   }
 
   const token = await createPasswordResetToken(
@@ -93,10 +64,8 @@ export async function sendPasswordResetEmail(input: {
     input.kind ?? "forgot_password",
     sender.id,
   );
-  const client = new GmailClient(await getGoogleAuthClient(sender.id));
-  const appUrl = env.appUrl().replace(/\/$/, "");
 
-  await client.sendMessage({
+  await sendAdminGmail({
     to: input.email,
     subject: "JobApp OS password reset",
     bodyHtml: resetEmailHtml({
@@ -104,7 +73,7 @@ export async function sendPasswordResetEmail(input: {
       fullName: input.fullName,
       senderName: sender.full_name || sender.email,
     }),
-    driveLinks: [{ label: "JobApp OS", url: appUrl }],
+    preferredAdminId: sender.id,
   });
 
   return token;

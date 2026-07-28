@@ -36,7 +36,12 @@ export function AuthForm({
         router.replace(
           result.user?.must_reset_password
             ? "/reset-password-required"
-            : nextPath || "/dashboard",
+            : result.user &&
+                "is_paid" in result.user &&
+                result.user.is_paid === false &&
+                !result.user.is_admin
+              ? "/billing"
+              : nextPath || "/dashboard",
         );
         router.refresh();
       } catch {

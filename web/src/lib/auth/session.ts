@@ -14,6 +14,7 @@ export type SessionUser = {
   full_name: string | null;
   is_admin: boolean;
   must_reset_password: boolean;
+  is_paid: boolean;
 };
 
 function secretKey() {
@@ -136,7 +137,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     // One round-trip: validate session + load user
     const row = (await dbGet(
       `SELECT s.id AS session_id, s.expires_at, u.id, u.email, u.full_name,
-              u.is_admin, u.must_reset_password
+              u.is_admin, u.must_reset_password, u.is_paid
          FROM sessions s
          INNER JOIN users u ON u.id = s.user_id
         WHERE s.id = ? AND s.user_id = ?`,
@@ -151,6 +152,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
           full_name: string | null;
           is_admin: boolean;
           must_reset_password: boolean;
+          is_paid: boolean;
         }
       | undefined;
 
@@ -166,6 +168,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       full_name: row.full_name,
       is_admin: Boolean(row.is_admin),
       must_reset_password: Boolean(row.must_reset_password),
+      is_paid: Boolean(row.is_admin) || Boolean(row.is_paid),
     };
   } catch {
     return null;

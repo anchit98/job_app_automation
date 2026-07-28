@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { SiteFooter } from "@/components/layout/site-footer";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "JobApp OS — Job Application Automation",
+  title: "JobApp OS | Job Application Automation",
   description: "Job application pipeline — Quick Apply with ChatGPT bridge",
   icons: {
     icon: [
@@ -48,7 +49,12 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-canvas text-on-surface min-h-screen w-full font-sans">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <div className="flex min-h-screen flex-col">
+            <div className="flex-1">{children}</div>
+            <SiteFooter />
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );
