@@ -123,11 +123,12 @@ export function FollowUpFlow({
         <h3 className="text-[16px] font-medium text-on-surface">Follow-ups</h3>
         <p className="text-[13px] text-on-surface-variant mt-1">
           Cadence: 5 business days after email sent, then 10 business days after
-          the first follow-up is sent. Times use your profile timezone.
+          the first follow-up is sent. Times use your profile timezone. Gmail
+          drafts reply in the original cold-email thread (no re-attached PDFs).
         </p>
         {needsConfirm && (
           <p className="text-[12px] text-amber-700 dark:text-amber-300 mt-2">
-            Application status suggests a reply — you will be asked to confirm
+            Application status suggests a reply - you will be asked to confirm
             before running a follow-up.
           </p>
         )}
@@ -157,7 +158,7 @@ export function FollowUpFlow({
                 <div>
                   <p className="text-[14px] font-medium text-on-surface">
                     Follow-up #{fu.sequence}
-                    {contact ? ` — ${contact.name}` : ""}
+                    {contact ? ` - ${contact.name}` : ""}
                   </p>
                   <p className="text-[12px] text-on-surface-variant">
                     {STATUS_LABEL[fu.status]}

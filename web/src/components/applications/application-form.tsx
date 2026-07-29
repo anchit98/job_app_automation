@@ -75,7 +75,7 @@ export function ApplicationForm() {
         <div className="px-internal-padding py-compact-gap bg-surface-container-low rounded-b-lg shrink-0 flex justify-end">
           <span className={`text-[11px] font-medium leading-[16px] ${jdTooLong ? "text-error" : "text-on-surface-variant"}`}>
             {jd.length.toLocaleString()} / {JD_SOFT_CAP.toLocaleString()}
-            {jdTooLong ? " — will be truncated on save" : ""}
+            {jdTooLong ? " - will be truncated on save" : ""}
           </span>
         </div>
       </section>
@@ -143,7 +143,7 @@ export function ApplicationForm() {
                 {similarApps.map((app) => (
                   <li key={app.id}>
                     <Link href={`/applications/${app.id}`} className="text-primary hover:underline">
-                      {app.company || "Company"} — {app.role || "Role"}
+                      {app.company || "Company"} - {app.role || "Role"}
                     </Link>
                   </li>
                 ))}

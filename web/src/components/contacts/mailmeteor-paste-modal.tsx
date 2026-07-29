@@ -146,7 +146,7 @@ export function MailmeteorPasteModal({
                 onClick={copyAndOpen}
                 className="w-full bg-primary text-on-primary text-[14px] font-medium px-6 py-2.5 rounded-full hover:opacity-90 transition-colors"
               >
-                {copied ? "Copied — opening Mailmeteor…" : "Copy URL & open Mailmeteor"}
+                {copied ? "Copied - opening Mailmeteor…" : "Copy URL & open Mailmeteor"}
               </button>
             </>
           )}

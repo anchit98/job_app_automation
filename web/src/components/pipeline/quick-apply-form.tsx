@@ -138,7 +138,7 @@ export function QuickApplyForm() {
             <textarea
               value={emailInstructions}
               onChange={(e) => setEmailInstructions(e.target.value)}
-              placeholder="Email instructions (optional) — e.g. mention relocating in July, ask about team structure, keep under 120 words"
+              placeholder="Email instructions (optional) - e.g. mention relocating in July, ask about team structure, keep under 120 words"
               rows={3}
               className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary outline-none sm:col-span-2"
             />
@@ -152,7 +152,7 @@ export function QuickApplyForm() {
               <div>
                 <h2 className="li-section-title">Contacts</h2>
                 <p className="li-meta mt-1">
-                  Optional — skip cold email &amp; Gmail drafts if empty.
+                  Optional - skip cold email &amp; Gmail drafts if empty.
                 </p>
               </div>
               <button

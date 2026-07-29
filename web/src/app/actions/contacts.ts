@@ -284,14 +284,14 @@ export async function runPatternFallback(input: {
   const notes: string[] = [];
   if (verification.catchAll) {
     notes.push(
-      "Domain appears to use catch-all SMTP — pattern marked unverified.",
+      "Domain appears to use catch-all SMTP - pattern marked unverified.",
     );
   } else if (!verification.smtpAvailable) {
     notes.push(
-      "SMTP verify unavailable on this host — pattern marked unverified.",
+      "SMTP verify unavailable on this host - pattern marked unverified.",
     );
   } else if (verification.best?.result !== "accepted") {
-    notes.push("No SMTP acceptance — best-guess pattern saved as unverified.");
+    notes.push("No SMTP acceptance - best-guess pattern saved as unverified.");
   }
 
   const verificationStatus =

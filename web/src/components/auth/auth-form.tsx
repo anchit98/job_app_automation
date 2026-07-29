@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -55,25 +54,13 @@ export function AuthForm({
   return (
     <div className="w-full max-w-md space-y-6">
       <div className="text-center space-y-2">
-        <Link href="/" className="inline-flex items-center gap-2 no-underline">
-          <Image
-            src="/brand/jobapp-os-logo.png"
-            alt="JobApp OS"
-            width={102}
-            height={60}
-            className="h-[60px] w-auto"
-            priority
-            unoptimized
-          />
-          <span className="text-[24px] font-semibold text-primary">JobApp OS</span>
-        </Link>
         <h1 className="text-[24px] font-semibold text-on-surface">
           {mode === "signup" ? "Create your account" : "Sign in"}
         </h1>
         <p className="text-[14px] text-on-surface-variant">
           {mode === "signup"
             ? "Start automating tailored applications."
-            : "Welcome back — continue your job pipeline."}
+            : "Welcome back. Continue your job pipeline."}
         </p>
       </div>
 

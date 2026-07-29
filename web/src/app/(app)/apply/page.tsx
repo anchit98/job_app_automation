@@ -15,7 +15,7 @@ export default function QuickApplyPage() {
           </Link>
           <h1 className="li-page-title mt-1">Quick Apply</h1>
           <p className="li-meta mt-0.5">
-            Paste a JD — contacts are optional. Without contacts, cold email and
+            Paste a JD - contacts are optional. Without contacts, cold email and
             Gmail drafts are skipped.
           </p>
         </div>

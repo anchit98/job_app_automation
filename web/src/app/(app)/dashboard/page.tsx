@@ -7,7 +7,6 @@ import { isGoogleConnected } from "@/lib/google/tokens";
 import { env } from "@/lib/env";
 import { SetupGuide } from "@/components/setup/setup-guide";
 import { DashboardMetricsGrid } from "@/components/dashboard/dashboard-metrics";
-import { EnqueueFollowUpsButton } from "@/components/dashboard/enqueue-follow-ups-button";
 import { ClearPendingPromptsButton } from "@/components/dashboard/clear-pending-prompts-button";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { profileAvatarSrc } from "@/lib/profile-avatar";
@@ -53,9 +52,9 @@ export default async function DashboardPage({
     incompleteApplied: 0,
   };
   const metricsFormatted = dashboard?.metricsFormatted ?? {
-    responseRate: "—",
-    interviewRate: "—",
-    offerRate: "—",
+    responseRate: "-",
+    interviewRate: "-",
+    offerRate: "-",
   };
 
   const profileDone = Boolean(
@@ -157,7 +156,7 @@ export default async function DashboardPage({
             {metrics.pendingPrompts === 1 ? "" : "s"} pending
           </p>
           <p className="li-meta mt-1">
-            JobApp Bridge handles these automatically — clear if leftover from
+            JobApp Bridge handles these automatically - clear if leftover from
             aborted runs.
           </p>
           <ClearPendingPromptsButton count={metrics.pendingPrompts} />
@@ -171,7 +170,6 @@ export default async function DashboardPage({
             formatted={metricsFormatted}
           />
         </section>
-        <EnqueueFollowUpsButton />
       </div>
     </div>
   );

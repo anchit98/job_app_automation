@@ -13,6 +13,8 @@
     "seed:resume": "node scripts/seed-anchit-master-resume.mjs",
     "render:resume": "npx --yes tsx scripts/render-anchit-master.ts",
     "cron:follow-ups": "node scripts/enqueue-follow-ups.mjs",
+    "db:backfill-email-threads": "tsx scripts/backfill-email-thread-metadata.ts",
+    "db:advance-draft-apps": "tsx scripts/advance-apps-with-cold-drafts.ts",
     "db:seed-templates": "node scripts/seed-prompt-templates.mjs"
   },
   "dependencies": {

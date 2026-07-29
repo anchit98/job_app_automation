@@ -6,7 +6,7 @@ export default function DemoPage() {
       <div>
         <h1 className="li-page-title">Demo prompt</h1>
         <p className="text-[14px] text-on-surface-variant mt-1">
-          Phase 0 exit criterion — paste-to-GPT round trip with schema validation.
+          Phase 0 exit criterion - paste-to-GPT round trip with schema validation.
         </p>
       </div>
       <DemoPromptFlow />

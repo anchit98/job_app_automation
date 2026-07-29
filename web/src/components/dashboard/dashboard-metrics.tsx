@@ -46,10 +46,11 @@ export function DashboardMetricsGrid({
         <MetricCard
           label="Pending follow-ups"
           value={metrics.pendingFollowUps}
+          href="/applications"
           hint={
             metrics.snoozedFollowUps > 0
               ? `${metrics.snoozedFollowUps} snoozed`
-              : "Scheduled in Emails tab"
+              : "Open Jobs to follow up"
           }
         />
         <MetricCard label="Gmail drafts" value={metrics.emailsSent} />

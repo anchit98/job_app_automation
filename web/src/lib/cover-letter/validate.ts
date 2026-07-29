@@ -135,7 +135,7 @@ export function checkNoGreetingInSections(
       return {
         path,
         message:
-          'Do not include a greeting (e.g. "Dear Hiring Team,") in section fields — the app inserts the greeting from the Google Doc template.',
+          'Do not include a greeting (e.g. "Dear Hiring Team,") in section fields - the app inserts the greeting from the Google Doc template.',
       };
     }
   }
@@ -170,7 +170,7 @@ export function checkMetricsHighlighted(
     return {
       path: "evidence_points",
       message:
-        "Evidence paragraphs must reuse specific numbers/metrics from the tailored resume bullets — do not invent metrics.",
+        "Evidence paragraphs must reuse specific numbers/metrics from the tailored resume bullets - do not invent metrics.",
     };
   }
   return null;

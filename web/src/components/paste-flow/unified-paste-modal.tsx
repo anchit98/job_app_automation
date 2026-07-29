@@ -110,7 +110,7 @@ export function UnifiedPasteModal({
         if (result.validation_errors) setValidationErrors(result.validation_errors);
         
         if (result.structural_errors?.length) {
-           // Structural failures use the repair prompt — do not show accept-checkboxes.
+           // Structural failures use the repair prompt - do not show accept-checkboxes.
            setFabricationFlags([]);
            setStep(3);
            return;

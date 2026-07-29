@@ -39,6 +39,6 @@ export async function setSetupGuideCollapsed(collapsed: boolean) {
     collapsed,
     user.id,
   );
-  // Instant UI via client state — no dashboard revalidate.
+  // Instant UI via client state - no dashboard revalidate.
   return { ok: true as const };
 }

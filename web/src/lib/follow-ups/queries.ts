@@ -36,6 +36,16 @@ export async function getFollowUpById(id: string): Promise<FollowUp | null> {
   return row ? mapFollowUp(row) : null;
 }
 
+export async function getFollowUpByDraftEmailId(
+  draftEmailId: string,
+): Promise<FollowUp | null> {
+  const row = await dbGet(
+    `SELECT * FROM follow_ups WHERE draft_email_id = ? LIMIT 1`,
+    draftEmailId,
+  ) as Record<string, unknown> | undefined;
+  return row ? mapFollowUp(row) : null;
+}
+
 export async function getFollowUpByEmailSequence(
   emailId: string,
   sequence: 1 | 2,
@@ -117,8 +127,21 @@ export async function claimFollowUpForProcessing(id: string): Promise<boolean> {
            processing_started_at = (NOW() AT TIME ZONE 'utc')::text
        WHERE id = ?
          AND status IN ('pending', 'snoozed')
-         AND (due_at IS NULL OR due_at <= (NOW() AT TIME ZONE 'utc')::text)
-         AND (snoozed_until IS NULL OR snoozed_until <= (NOW() AT TIME ZONE 'utc')::text)`, id);
+         AND (due_at IS NULL OR due_at::timestamptz <= NOW())
+         AND (snoozed_until IS NULL OR snoozed_until::timestamptz <= NOW())`, id);
+  return result.changes > 0;
+}
+
+/** Claim for an explicit Jobs-page batch (no due-date gate). */
+export async function claimFollowUpForBatch(id: string): Promise<boolean> {
+  const result = await dbRun(
+    `UPDATE follow_ups
+       SET status = 'processing',
+           processing_started_at = (NOW() AT TIME ZONE 'utc')::text
+       WHERE id = ?
+         AND status IN ('pending', 'snoozed', 'enqueued')`,
+    id,
+  );
   return result.changes > 0;
 }
 
@@ -175,8 +198,8 @@ export async function listDueFollowUps(limit = 20): Promise<FollowUp[]> {
        INNER JOIN applications a ON a.id = fu.application_id
        WHERE fu.status IN ('pending', 'snoozed')
          AND fu.due_at IS NOT NULL
-         AND fu.due_at <= (NOW() AT TIME ZONE 'utc')::text
-         AND (fu.snoozed_until IS NULL OR fu.snoozed_until <= (NOW() AT TIME ZONE 'utc')::text)
+         AND fu.due_at::timestamptz <= NOW()
+         AND (fu.snoozed_until IS NULL OR fu.snoozed_until::timestamptz <= NOW())
          AND a.status NOT IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted', 'rejected', 'withdrawn')
          AND (
            fu.sequence = 1
@@ -207,13 +230,138 @@ export async function listDueFollowUps(limit = 20): Promise<FollowUp[]> {
   return rows.map(mapFollowUp);
 }
 
+/**
+ * All runnable follow-ups for one application at a given sequence
+ * (pending / snoozed / processing / enqueued, not waiting/sent/skipped).
+ * Used to fan out one GPT body to every contact.
+ */
+export async function listRunnableFollowUpsForApplication(
+  applicationId: string,
+  sequence: 1 | 2,
+): Promise<FollowUp[]> {
+  const rows = (await dbAll(
+    `SELECT fu.*
+     FROM follow_ups fu
+     INNER JOIN emails e ON e.id = fu.email_id
+     INNER JOIN contacts c ON c.id = e.contact_id
+     WHERE fu.application_id = ?
+       AND fu.sequence = ?
+       AND fu.status IN ('pending', 'snoozed', 'processing', 'enqueued')
+       AND c.email IS NOT NULL
+       AND TRIM(c.email) <> ''
+     ORDER BY fu.due_at ASC NULLS LAST, fu.created_at ASC`,
+    applicationId,
+    sequence,
+  )) as Record<string, unknown>[];
+  return rows.map(mapFollowUp);
+}
+
+/** Earliest due follow-up per application, only when the email has a contact with an address. */
+export async function getDueFollowUpsByApplicationIds(
+  applicationIds: string[],
+): Promise<
+  Record<
+    string,
+    {
+      id: string;
+      sequence: 1 | 2;
+      due_at: string;
+      contact_name: string | null;
+    }
+  >
+> {
+  if (applicationIds.length === 0) return {};
+
+  const placeholders = applicationIds.map(() => "?").join(", ");
+  const rows = (await dbAll(
+    `SELECT DISTINCT ON (fu.application_id)
+        fu.id,
+        fu.application_id,
+        fu.sequence,
+        fu.due_at,
+        c.name AS contact_name
+     FROM follow_ups fu
+     INNER JOIN emails e ON e.id = fu.email_id
+     INNER JOIN contacts c ON c.id = e.contact_id
+     INNER JOIN applications a ON a.id = fu.application_id
+     WHERE fu.application_id IN (${placeholders})
+       AND c.email IS NOT NULL
+       AND TRIM(c.email) <> ''
+       AND fu.status IN ('pending', 'snoozed')
+       AND fu.due_at IS NOT NULL
+       AND fu.due_at::timestamptz <= NOW()
+       AND (fu.snoozed_until IS NULL OR fu.snoozed_until::timestamptz <= NOW())
+       AND a.status NOT IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted', 'rejected', 'withdrawn')
+       AND (
+         fu.sequence = 1
+         OR (
+           fu.sequence = 2
+           AND EXISTS (
+             SELECT 1 FROM follow_ups f1
+             WHERE f1.email_id = fu.email_id
+               AND f1.sequence = 1
+               AND f1.status IN ('sent', 'skipped')
+           )
+         )
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM follow_ups fx
+         WHERE fx.email_id = fu.email_id
+           AND fx.sequence < fu.sequence
+           AND fx.status NOT IN ('sent', 'skipped')
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM follow_ups fe
+         WHERE fe.email_id = fu.email_id
+           AND fe.status IN ('enqueued', 'processing')
+       )
+     ORDER BY fu.application_id, fu.due_at ASC`,
+    ...applicationIds,
+  )) as Record<string, unknown>[];
+
+  const out: Record<
+    string,
+    {
+      id: string;
+      sequence: 1 | 2;
+      due_at: string;
+      contact_name: string | null;
+    }
+  > = {};
+  for (const row of rows) {
+    out[row.application_id as string] = {
+      id: row.id as string,
+      sequence: row.sequence as 1 | 2,
+      due_at: row.due_at as string,
+      contact_name: (row.contact_name as string | null) ?? null,
+    };
+  }
+  return out;
+}
+
+export async function getApplicationsWithContacts(
+  applicationIds: string[],
+): Promise<Set<string>> {
+  if (applicationIds.length === 0) return new Set();
+  const placeholders = applicationIds.map(() => "?").join(", ");
+  const rows = (await dbAll(
+    `SELECT DISTINCT application_id
+     FROM contacts
+     WHERE application_id IN (${placeholders})
+       AND email IS NOT NULL
+       AND TRIM(email) <> ''`,
+    ...applicationIds,
+  )) as { application_id: string }[];
+  return new Set(rows.map((r) => r.application_id));
+}
+
 export async function countPendingFollowUps(): Promise<number> {
   const row = await dbGet(`SELECT COUNT(*) AS c FROM follow_ups
        WHERE status IN ('pending', 'enqueued', 'snoozed', 'processing')
          AND status != 'skipped'
          AND (
            status = 'enqueued'
-           OR (due_at IS NOT NULL AND due_at <= (NOW() AT TIME ZONE 'utc' + INTERVAL '7 days')::text)
+           OR (due_at IS NOT NULL AND due_at::timestamptz <= NOW() + INTERVAL '7 days')
          )`) as { c: number };
   return row.c;
 }

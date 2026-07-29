@@ -10,6 +10,7 @@ import {
   createOrReusePendingPromptRun,
   insertApplication,
   listApplications,
+  listEmails,
   updateApplicationJdParsed,
   updateApplicationStatusRow,
   updatePromptRunText,
@@ -156,6 +157,23 @@ export async function maybeAdvanceApplicationStatus(
   }
 
   return lastAdvanced;
+}
+
+/** Advance to applied → email_sent when cold Gmail drafts exist. */
+export async function syncApplicationStatusAfterColdDrafts(
+  applicationId: string,
+): Promise<StatusAdvanceOutcome> {
+  const emails = await listEmails(applicationId);
+  const hasColdDraft = emails.some(
+    (e) =>
+      e.kind === "cold" &&
+      e.draft_status === "created" &&
+      Boolean(e.gmail_draft_id),
+  );
+  if (!hasColdDraft) {
+    return { outcome: "skipped" };
+  }
+  return maybeAdvanceApplicationStatus(applicationId, "gmail_draft_created");
 }
 
 export async function updateApplicationStatus(

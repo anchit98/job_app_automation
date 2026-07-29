@@ -66,7 +66,7 @@ export function SetupGuide({ status }: { status: SetupGuideStatus }) {
   const [openStep, setOpenStep] = useState<StepId | null>(firstIncomplete);
 
   function persistMinimized(next: boolean) {
-    // Optimistic UI — persist in the background so Minimize feels instant.
+    // Optimistic UI - persist in the background so Minimize feels instant.
     setMinimized(next);
     if (next) setPanelOpen(false);
     void setSetupGuideCollapsed(next).catch(() => {

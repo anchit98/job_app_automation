@@ -1,5 +1,5 @@
 /**
- * Remove trailing sign-off blocks from ChatGPT output — app appends the profile signature in Gmail drafts.
+ * Remove trailing sign-off blocks from ChatGPT output - app appends the profile signature in Gmail drafts.
  */
 export function stripEmailSignature(
   bodyMd: string,

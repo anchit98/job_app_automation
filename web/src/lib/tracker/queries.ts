@@ -361,7 +361,7 @@ export async function findSimilarApplications(
   userId?: string,
 ): Promise<Application[]> {
   const uid = await currentUserId(userId);
-  // Avoid `? IS NULL` — Postgres cannot infer the type of a null parameter.
+  // Avoid `? IS NULL` - Postgres cannot infer the type of a null parameter.
   const rows = (
     excludeId
       ? await dbAll(
@@ -410,7 +410,7 @@ export async function deleteApplicationRow(
   userId?: string,
 ): Promise<boolean> {
   const uid = await currentUserId(userId);
-  // pipeline_runs / pending_extension_runs lack ON DELETE CASCADE — clear them first.
+  // pipeline_runs / pending_extension_runs lack ON DELETE CASCADE - clear them first.
   await dbRun(
     `DELETE FROM pending_extension_runs
        WHERE pipeline_run_id IN (

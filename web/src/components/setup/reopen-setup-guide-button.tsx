@@ -15,7 +15,7 @@ export function ReopenSetupGuideButton() {
         router.push("/dashboard");
       }}
     >
-      Expand setup guide on Home
+      Expand setup guide on Dashboard
     </button>
   );
 }

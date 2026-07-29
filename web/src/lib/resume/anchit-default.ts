@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-/** Canonical Anchit master resume — synced from masterresume/anchit-master-resume.json */
+/** Canonical Anchit master resume - synced from masterresume/anchit-master-resume.json */
 export function loadAnchitMasterResumeDefault(): Record<string, unknown> {
   const jsonPath = path.join(
     process.cwd(),

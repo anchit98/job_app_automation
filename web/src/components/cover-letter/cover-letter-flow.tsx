@@ -205,7 +205,7 @@ export function CoverLetterFlow({
       <Card>
         <CardTitle>Cover letter</CardTitle>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Generate a tailored resume first — the cover letter uses that version as
+          Generate a tailored resume first - the cover letter uses that version as
           evidence.
         </p>
       </Card>
@@ -218,7 +218,7 @@ export function CoverLetterFlow({
         <CardTitle>Company context (optional)</CardTitle>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Paste a company About-page blurb to strengthen the why-this-company
-          paragraph. No web scraping — paste only.
+          paragraph. No web scraping - paste only.
         </p>
         <textarea
           value={companyBlurb}
@@ -264,7 +264,7 @@ export function CoverLetterFlow({
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950">
             <p>
               The latest cover letter (v{latestVersion?.version}) was manually
-              edited. Regenerating will not overwrite it — a new version will be
+              edited. Regenerating will not overwrite it - a new version will be
               created. Continue?
             </p>
             <div className="mt-2 flex gap-2">

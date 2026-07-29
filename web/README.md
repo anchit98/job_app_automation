@@ -19,7 +19,7 @@ See [`docs/setup.md`](../docs/setup.md) for all required env vars (`DATABASE_URL
 
 | Route | Purpose |
 |---|---|
-| `/dashboard` | Home — metrics, follow-ups, setup guide |
+| `/dashboard` | Dashboard — metrics, follow-ups, setup guide |
 | `/apply` | Quick Apply (company + role + JD required) |
 | `/applications` | Jobs (desktop table / mobile cards) |
 | `/billing` | UPI + QR paywall |

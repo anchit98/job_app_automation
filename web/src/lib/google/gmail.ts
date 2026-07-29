@@ -15,7 +15,7 @@ export interface DraftDriveLink {
 }
 
 export class GmailScopeMissingError extends Error {
-  constructor(message = "Gmail compose scope missing — reconnect Google.") {
+  constructor(message = "Gmail compose scope missing - reconnect Google.") {
     super(message);
     this.name = "GmailScopeMissingError";
   }
@@ -52,13 +52,35 @@ export interface CreateDraftInput {
   bodyHtml: string;
   attachments?: DraftAttachment[];
   driveLinks?: DraftDriveLink[];
+  /** When set, draft is created as a reply in an existing Gmail thread. */
+  replyTo?: {
+    threadId: string;
+    rfcMessageId: string;
+  };
 }
 
 export interface CreateDraftResult {
   draftId: string;
   messageId: string | null;
+  threadId: string | null;
+  rfcMessageId: string | null;
   attachedFilenames: string[];
   driveLinkLabels: string[];
+}
+
+export interface DraftMessageMetadata {
+  threadId: string | null;
+  rfcMessageId: string | null;
+}
+
+function headerValue(
+  headers: { name?: string | null; value?: string | null }[] | undefined,
+  name: string,
+): string | null {
+  const found = headers?.find(
+    (h) => h.name?.toLowerCase() === name.toLowerCase(),
+  );
+  return found?.value?.trim() || null;
 }
 
 function buildRawMime(input: CreateDraftInput): string {
@@ -84,6 +106,11 @@ function buildRawMime(input: CreateDraftInput): string {
     `Subject: ${encodeQuotedPrintableHeader(input.subject)}`,
     "MIME-Version: 1.0",
   ];
+
+  if (input.replyTo?.rfcMessageId) {
+    const messageId = input.replyTo.rfcMessageId.trim();
+    lines.splice(2, 0, `In-Reply-To: ${messageId}`, `References: ${messageId}`);
+  }
 
   if (attachments.length === 0) {
     lines.push('Content-Type: text/html; charset="UTF-8"');
@@ -137,7 +164,14 @@ export class GmailClient {
     try {
       const res = await this.gmail().users.drafts.create({
         userId: "me",
-        requestBody: { message: { raw } },
+        requestBody: {
+          message: {
+            raw,
+            ...(input.replyTo?.threadId
+              ? { threadId: input.replyTo.threadId }
+              : {}),
+          },
+        },
       });
 
       const draftId = res.data.id;
@@ -145,15 +179,87 @@ export class GmailClient {
         throw new Error("Gmail drafts.create returned no draft id.");
       }
 
+      const metadata = await this.getDraftMessageMetadata(draftId);
+
       return {
         draftId,
         messageId: res.data.message?.id ?? null,
+        threadId: metadata.threadId ?? input.replyTo?.threadId ?? null,
+        rfcMessageId: metadata.rfcMessageId,
         attachedFilenames: attachments.map((a) => a.filename),
         driveLinkLabels: (input.driveLinks ?? []).map((l) => l.label),
       };
     } catch (error) {
       if (isMissingScopeError(error)) {
         throw new GmailScopeMissingError();
+      }
+      throw error;
+    }
+  }
+
+  async getDraftMessageMetadata(draftId: string): Promise<DraftMessageMetadata> {
+    try {
+      const draftRes = await this.gmail().users.drafts.get({
+        userId: "me",
+        id: draftId,
+        format: "minimal",
+      });
+      const messageId = draftRes.data.message?.id;
+      const threadId = draftRes.data.message?.threadId ?? null;
+      if (!messageId) {
+        return { threadId, rfcMessageId: null };
+      }
+
+      const msgRes = await this.gmail().users.messages.get({
+        userId: "me",
+        id: messageId,
+        format: "metadata",
+        metadataHeaders: ["Message-ID"],
+      });
+
+      return {
+        threadId: msgRes.data.threadId ?? threadId,
+        rfcMessageId: headerValue(msgRes.data.payload?.headers, "Message-ID"),
+      };
+    } catch (error) {
+      if (isMissingScopeError(error)) {
+        throw new GmailScopeMissingError();
+      }
+      throw error;
+    }
+  }
+
+  /** Find a sent message thread by recipient + subject (after draft was sent). */
+  async findSentThreadByRecipientAndSubject(
+    to: string,
+    subject: string,
+  ): Promise<DraftMessageMetadata | null> {
+    const normalized = subject.replace(/^(Re:\s*)+/i, "").trim();
+    const q = `to:${to} subject:"${normalized.replace(/"/g, "")}" in:sent`;
+
+    try {
+      const listRes = await this.gmail().users.messages.list({
+        userId: "me",
+        q,
+        maxResults: 5,
+      });
+      const hit = listRes.data.messages?.[0];
+      if (!hit?.id) return null;
+
+      const msgRes = await this.gmail().users.messages.get({
+        userId: "me",
+        id: hit.id,
+        format: "metadata",
+        metadataHeaders: ["Message-ID"],
+      });
+
+      return {
+        threadId: msgRes.data.threadId ?? null,
+        rfcMessageId: headerValue(msgRes.data.payload?.headers, "Message-ID"),
+      };
+    } catch (error) {
+      if (isMissingScopeError(error)) {
+        return null;
       }
       throw error;
     }
@@ -177,7 +283,7 @@ export class GmailClient {
     } catch (error) {
       if (isMissingScopeError(error)) {
         throw new GmailScopeMissingError(
-          "Gmail send scope missing — reconnect Google with gmail.send access.",
+          "Gmail send scope missing - reconnect Google with gmail.send access.",
         );
       }
       throw error;

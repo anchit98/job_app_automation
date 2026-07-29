@@ -346,7 +346,7 @@ export async function deleteAllUserSessions(userId: string) {
 
 /**
  * Permanently deletes a user and cascades related rows. Clears extension
- * pending rows first — their FKs do not cascade on prompt/pipeline delete.
+ * pending rows first - their FKs do not cascade on prompt/pipeline delete.
  */
 export async function deleteUserAccount(userId: string): Promise<void> {
   const sql = getSql();

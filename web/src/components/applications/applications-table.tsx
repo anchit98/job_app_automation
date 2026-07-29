@@ -152,12 +152,12 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
           <>
             <div className="hidden md:block w-full li-card overflow-hidden">
               <div className="grid grid-cols-12 gap-4 px-4 py-2.5 bg-canvas border-b border-border-muted text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
-                <div className="col-span-4">Company — Role</div>
+                <div className="col-span-3">Company - Role</div>
                 <div className="col-span-2">Status</div>
-                <div className="col-span-2 text-center">JD</div>
+                <div className="col-span-1 text-center">JD</div>
                 <div className="col-span-1 text-center">Resume</div>
                 <div className="col-span-1 text-right">Updated</div>
-                <div className="col-span-2 text-right">Apply</div>
+                <div className="col-span-4 text-right">Actions</div>
               </div>
               <div className="divide-y divide-border-muted">
                 {items.map((app, idx) => (
@@ -169,7 +169,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                   >
                     <Link
                       href={`/applications/${app.id}`}
-                      className="col-span-4 flex items-center gap-3 min-w-0 no-underline"
+                      className="col-span-3 flex items-center gap-3 min-w-0 no-underline"
                     >
                       <div className="w-12 h-12 rounded-[4px] bg-primary-container text-primary flex items-center justify-center font-semibold border border-border-hairline shrink-0 text-[16px]">
                         {(app.company || "U").charAt(0).toUpperCase()}
@@ -195,18 +195,18 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                         </span>
                       )}
                     </div>
-                    <div className="col-span-2 text-center text-[12px] text-on-surface-variant">
+                    <div className="col-span-1 text-center text-[12px] text-on-surface-variant">
                       {app.jd_parsed ? "Parsed" : "Raw"}
                     </div>
                     <div className="col-span-1 text-center text-[12px] text-on-surface">
                       {app.latest_resume_version != null
                         ? `v${app.latest_resume_version}`
-                        : "—"}
+                        : "-"}
                     </div>
                     <div className="col-span-1 text-right text-[12px] text-on-surface-variant">
                       {formatRelativeTime(app.updated_at)}
                     </div>
-                    <div className="col-span-2 flex justify-end items-center gap-1">
+                    <div className="col-span-4 flex justify-end items-center gap-1.5 flex-wrap">
                       {app.pipeline && (
                         <ApplicationPipelineActions
                           pipelineId={app.pipeline.pipeline_id}
@@ -224,7 +224,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                         onClick={() =>
                           handleDelete(
                             app.id,
-                            `${app.company || "Unknown"} — ${app.role || "role"}`,
+                            `${app.company || "Unknown"} - ${app.role || "role"}`,
                           )
                         }
                         className="p-1.5 rounded-md text-on-surface-variant hover:text-error hover:bg-error-container/40 disabled:opacity-50"
@@ -272,7 +272,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                       <p className="mt-0.5 text-on-surface font-medium">
                         {app.latest_resume_version != null
                           ? `v${app.latest_resume_version}`
-                          : "—"}
+                          : "-"}
                       </p>
                     </div>
                     <div className="text-right">
@@ -291,7 +291,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                     </p>
                   ) : null}
 
-                  <div className="flex items-center justify-end gap-1 border-t border-border-hairline pt-2">
+                  <div className="flex items-center justify-end gap-1.5 border-t border-border-hairline pt-2 flex-wrap">
                     {app.pipeline && (
                       <ApplicationPipelineActions
                         pipelineId={app.pipeline.pipeline_id}
@@ -309,7 +309,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                       onClick={() =>
                         handleDelete(
                           app.id,
-                          `${app.company || "Unknown"} — ${app.role || "role"}`,
+                          `${app.company || "Unknown"} - ${app.role || "role"}`,
                         )
                       }
                       className="inline-flex h-10 w-10 items-center justify-center rounded-md text-on-surface-variant hover:text-error hover:bg-error-container/40 disabled:opacity-50"

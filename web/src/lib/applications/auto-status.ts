@@ -61,7 +61,7 @@ export function planStatusAdvance(
         };
       }
       if (current === "ready") {
-        // Quick Apply: package is progressing — stay ready until outreach drafts exist.
+        // Quick Apply: package is progressing - stay ready until outreach drafts exist.
         return null;
       }
       return null;

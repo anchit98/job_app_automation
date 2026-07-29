@@ -238,7 +238,7 @@ export function OnboardingForms({
           <div>
             <h2 className="li-section-title">Master resume (JSON)</h2>
             <p className="li-meta mt-1">
-              Blank until you sync a Google Doc. Then it fills automatically —
+              Blank until you sync a Google Doc. Then it fills automatically -
               edit manually only if needed.
             </p>
           </div>
@@ -291,7 +291,7 @@ export function OnboardingForms({
             <p className="li-meta rounded-md border border-border-hairline bg-surface-container-low px-3 py-2">
               These links are <strong>view only</strong>. Make a copy in your own
               Google Drive before editing. Work in Google Docs only for best
-              sync results — paste your finished Doc URL below and sync.
+              sync results - paste your finished Doc URL below and sync.
             </p>
           </div>
 
@@ -390,7 +390,7 @@ export function OnboardingForms({
                     try {
                       const res = await syncCoverLetterFromGoogleDoc(rawId);
                       setMessage(
-                        `Cover letter template synced — ${res.body_slots} body slots mapped.`,
+                        `Cover letter template synced - ${res.body_slots} body slots mapped.`,
                       );
                     } catch (e) {
                       setError(e instanceof Error ? e.message : "Sync failed");

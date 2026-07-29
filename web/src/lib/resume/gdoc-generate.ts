@@ -118,7 +118,7 @@ export async function generateResumeFromDoc(
   const requests = buildReplaceRequests(edits);
   await docs.batchUpdate(copiedDocId, requests);
 
-  // replaceAllText inherits bold from "Category:" onto the whole skill line —
+  // replaceAllText inherits bold from "Category:" onto the whole skill line -
   // re-apply bold only on the header, plain text after the colon.
   const docAfterReplace = await docs.getDocument(copiedDocId);
   const skillStyleRequests = buildSkillCategoryBoldRequests(

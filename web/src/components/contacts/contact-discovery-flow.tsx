@@ -96,7 +96,7 @@ export function ContactDiscoveryFlow({
       const smtp = await getSmtpVerifyStatus();
       if (smtp.capability === "unavailable") {
         setSmtpBanner(
-          "SMTP verify is unavailable on this host — pattern guesses will be marked unverified.",
+          "SMTP verify is unavailable on this host - pattern guesses will be marked unverified.",
         );
       }
 
@@ -366,7 +366,7 @@ export function ContactDiscoveryFlow({
               disabled={pending}
               className="text-[14px] text-on-surface-variant px-4 py-2 rounded-full hover:bg-surface-container-high"
             >
-              Skip — no email available
+              Skip - no email available
             </button>
           </div>
         </div>

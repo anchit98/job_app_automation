@@ -74,7 +74,7 @@ async function publishSignal(
     /* ignore */
   }
 
-  // Wake only via bridge.wake() — do NOT also fire jobapp-pending (that double-starts
+  // Wake only via bridge.wake() - do NOT also fire jobapp-pending (that double-starts
   // openAndRun and aborts an in-flight paste with force reinject).
   const bridge = (
     window as unknown as {
@@ -90,7 +90,7 @@ async function publishSignal(
     }
   ).__JOBAPP_BRIDGE__;
 
-  // Manual retry only — periodic re-arms must not kill an in-flight ChatGPT tab.
+  // Manual retry only - periodic re-arms must not kill an in-flight ChatGPT tab.
   if (opts?.clearLock) {
     try {
       await bridge?.clearLock?.();
@@ -313,7 +313,7 @@ export function PipelineProgress({
 
     const interval = setInterval(async () => {
       if (cancelled || pending) return;
-      // Keep refreshing until every stage is terminal — pipeline.status alone
+      // Keep refreshing until every stage is terminal - pipeline.status alone
       // can briefly look "completed" while gmail_drafts is still running.
       const latest = await refresh();
       if (!latest.ok || cancelled) return;
@@ -382,14 +382,14 @@ export function PipelineProgress({
         });
         if (cancelled) return;
         if (!armed.ok) {
-          // Soft warn only — do not paint a hard error while the stage is still recoverable.
+          // Soft warn only - do not paint a hard error while the stage is still recoverable.
           console.warn("[pipeline] arm failed", armed.error);
           return;
         }
         if (already && !opts?.forceSignal) {
           return;
         }
-        // Retry briefly — race between arm commit and extension consume.
+        // Retry briefly - race between arm commit and extension consume.
         let woke: { ok: boolean; error?: string; reason?: string } = {
           ok: false,
         };
@@ -418,7 +418,7 @@ export function PipelineProgress({
           break;
         }
         if (!woke.ok) {
-          // Bridge missing on this tab is common after SPA nav — keep muted, allow manual open.
+          // Bridge missing on this tab is common after SPA nav - keep muted, allow manual open.
           if (
             /bridge|extension|not detected|__JOBAPP/i.test(woke.error || "") ||
             woke.reason === "no_bridge"
@@ -616,12 +616,12 @@ export function PipelineProgress({
           <h3 className="text-[16px] font-medium text-on-surface">Queued</h3>
           <p className="text-[13px] text-on-surface-variant">
             Another application is running first. This one starts automatically
-            when that finishes — you can navigate away.
+            when that finishes - you can navigate away.
           </p>
         </div>
       )}
 
-      {/* Compact bridge status — not an error banner. */}
+      {/* Compact bridge status - not an error banner. */}
       {pipeline.status === "awaiting_chatgpt" && (
         <p className="text-[12px] text-on-surface-variant px-1">
           JobApp Bridge on this tab:{" "}
@@ -629,7 +629,7 @@ export function PipelineProgress({
             ? "checking…"
             : bridgeDetected
               ? "connected"
-              : "not injected — hard-refresh this tab after reloading the extension"}
+              : "not injected - hard-refresh this tab after reloading the extension"}
           {bridgeConfigured ? " · token ready" : ""}
           {" · "}
           <Link href="/settings" className="text-primary hover:underline">
@@ -644,21 +644,21 @@ export function PipelineProgress({
             {isGoogleReconnectError(activeStage?.error || pipeline.error || error)
               ? "Google reconnect required"
               : "Waiting on JobApp Bridge"}
-            {activeStage ? ` — ${activeStage.label}` : ""}
+            {activeStage ? ` - ${activeStage.label}` : ""}
           </h3>
           {isGoogleReconnectError(activeStage?.error || pipeline.error || error) ? (
             <>
               <p className="text-[13px] text-on-surface-variant">
                 ChatGPT already produced this stage&apos;s content, but Drive export
                 failed because Google is disconnected or revoked. Reconnect Google,
-                then this page will retry the export and continue automatically —
+                then this page will retry the export and continue automatically -
                 no need to re-run ChatGPT.
               </p>
               <a href="/api/auth/google/start" className="li-btn-primary text-[12px] no-underline inline-flex">
                 Reconnect Google
               </a>
               <p className="text-[12px] text-on-surface-variant">
-                After reconnecting, keep this pipeline tab open — export recovery
+                After reconnecting, keep this pipeline tab open - export recovery
                 runs on the next refresh/advance tick.
               </p>
             </>
@@ -666,7 +666,7 @@ export function PipelineProgress({
             <>
               <p className="text-[13px] text-on-surface-variant">
                 ChatGPT runs this stage (including JD parsing). You can leave this
-                page — JobApp OS keeps the pipeline moving from any screen and
+                page - JobApp OS keeps the pipeline moving from any screen and
                 wakes JobApp Bridge automatically.
               </p>
               <button

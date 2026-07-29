@@ -13,6 +13,7 @@ import {
   exportColdEmailsPrompt,
   submitColdEmailsResponse,
 } from "@/app/actions/emails";
+import { submitFollowUpResponse } from "@/app/actions/follow-ups";
 import { submitPasteBack } from "@/app/actions/prompts";
 import {
   exportResumePrompt,
@@ -85,7 +86,7 @@ function skipContactEmailStages(stages: PipelineStage[]): PipelineStage[] {
   for (const id of ["save_contacts", "cold_email", "gmail_drafts"] as const) {
     next = patchStage(next, id, {
       status: "skipped",
-      detail: "Skipped — no contacts",
+      detail: "Skipped - no contacts",
     });
   }
   return next;
@@ -144,7 +145,7 @@ async function bootstrapAndAdvancePipeline(input: {
   let contactsAlreadySaved = Boolean(input.contacts_already_saved);
 
   // Persist contacts immediately at start so they appear on the application
-  // before JD parse / resume — not only after cover letter.
+  // before JD parse / resume - not only after cover letter.
   if (!contactsAlreadySaved && input.contacts.length > 0) {
     const saved = await savePipelineContactsNow(
       input.application_id,
@@ -166,7 +167,7 @@ async function bootstrapAndAdvancePipeline(input: {
   if (input.skip_jd_parse) {
     stages = patchStage(stages, "jd_parse", {
       status: "skipped",
-      detail: "Skipped — company/role already set",
+      detail: "Skipped - company/role already set",
     });
   }
 
@@ -452,7 +453,7 @@ async function advancePipelineInner(
     const stage = findStage(run, currentStage);
     if (stage?.prompt_run_id) {
       // Resume/cover letter may have valid ChatGPT JSON already saved as
-      // upload_failed while Google was disconnected — retry Drive export first.
+      // upload_failed while Google was disconnected - retry Drive export first.
       if (currentStage === "resume" || currentStage === "cover_letter") {
         const hasFailedArtifact =
           currentStage === "resume"
@@ -549,7 +550,7 @@ async function advancePipelineInner(
   // Never treat an in-flight stage as "nothing left to do".
   const runningStage = run.stages.find((s) => s.status === "running");
   if (runningStage) {
-    // Another isolate may have claimed a ChatGPT stage and still be exporting —
+    // Another isolate may have claimed a ChatGPT stage and still be exporting -
     // wait for awaiting_chatgpt so paste-back can chain the next tab.
     if (
       runningStage.id === "jd_parse" ||
@@ -559,7 +560,7 @@ async function advancePipelineInner(
     ) {
       return awaitExistingChatGptStage(pipelineId, runningStage.id, run);
     }
-    // Non-ChatGPT stage left mid-flight (serverless timeout / tab closed) — retry.
+    // Non-ChatGPT stage left mid-flight (serverless timeout / tab closed) - retry.
     const stages = patchStage(run.stages, runningStage.id, {
       status: "pending",
       error: null,
@@ -710,7 +711,7 @@ async function markAwaitingChatGpt(
 
 /**
  * When another isolate already claimed this stage, wait briefly for it to
- * finish exporting and reach awaiting_chatgpt — do not export a second prompt.
+ * finish exporting and reach awaiting_chatgpt - do not export a second prompt.
  */
 async function awaitExistingChatGptStage(
   pipelineId: string,
@@ -734,7 +735,7 @@ async function awaitExistingChatGptStage(
         };
       }
     }
-    // Stage already finished (winner raced ahead) — let caller re-advance.
+    // Stage already finished (winner raced ahead) - let caller re-advance.
     if (findStage(fresh, stageId)?.status === "completed") {
       return advancePipelineInner(pipelineId);
     }
@@ -831,7 +832,7 @@ async function runSaveContactsStage(
     current_stage: "cold_email",
     stages,
   });
-  // Must call Inner — advancePipeline would deadlock on the in-flight lock.
+  // Must call Inner - advancePipeline would deadlock on the in-flight lock.
   return advancePipelineInner(pipelineId, options);
 }
 
@@ -876,12 +877,12 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
       const stages = patchStage(
         patchStage(claimed.stages, "cold_email", {
           status: "skipped",
-          detail: "Skipped — no contacts",
+          detail: "Skipped - no contacts",
         }),
         "gmail_drafts",
         {
           status: "skipped",
-          detail: "Skipped — no contacts",
+          detail: "Skipped - no contacts",
         },
       );
       await updatePipelineRun(pipelineId, {
@@ -898,12 +899,12 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
     const stages = patchStage(
       patchStage(claimed.stages, "cold_email", {
         status: "skipped",
-        detail: "Skipped — no contacts",
+        detail: "Skipped - no contacts",
       }),
       "gmail_drafts",
       {
         status: "skipped",
-        detail: "Skipped — no contacts",
+        detail: "Skipped - no contacts",
       },
     );
     await updatePipelineRun(pipelineId, {
@@ -966,7 +967,7 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
     stages: stagesRunning,
   });
 
-  // Drive exports run in the background during ChatGPT stages — wait briefly
+  // Drive exports run in the background during ChatGPT stages - wait briefly
   // so Gmail attachments can attach when possible.
   await waitForDrivePdfsReady(run.application_id, 20_000);
 
@@ -1042,7 +1043,7 @@ async function onChatGptStageCompleted(
       current_stage: stageId,
       stages,
     });
-    // Must call Inner — advancePipeline would deadlock on the in-flight lock.
+    // Must call Inner - advancePipeline would deadlock on the in-flight lock.
     return advancePipelineInner(pipelineId, options);
   }
 
@@ -1084,7 +1085,7 @@ async function onChatGptStageCompleted(
     };
   }
 
-  // Must call Inner — advancePipeline would deadlock on the in-flight lock.
+  // Must call Inner - advancePipeline would deadlock on the in-flight lock.
   return advancePipelineInner(pipelineId, options);
 }
 
@@ -1152,6 +1153,17 @@ export async function routeChatGptSubmit(
       return submitCoverLetterResponse(promptRunId, rawResponse);
     case "cold_email":
       return submitColdEmailsResponse(promptRunId, rawResponse);
+    case "follow_up": {
+      const run = await getPromptRunById(promptRunId);
+      if (!run?.target_entity_id) {
+        return { ok: false, error: "Missing follow-up target for this prompt run." };
+      }
+      return submitFollowUpResponse(
+        promptRunId,
+        rawResponse,
+        run.target_entity_id,
+      );
+    }
     default: {
       const run = await getPromptRunById(promptRunId);
       if (!run) return { ok: false, error: "Prompt run not found." };
@@ -1162,6 +1174,16 @@ export async function routeChatGptSubmit(
       }
       if (run.kind === "cold_email") {
         return submitColdEmailsResponse(promptRunId, rawResponse);
+      }
+      if (run.kind === "follow_up") {
+        if (!run.target_entity_id) {
+          return { ok: false, error: "Missing follow-up target for this prompt run." };
+        }
+        return submitFollowUpResponse(
+          promptRunId,
+          rawResponse,
+          run.target_entity_id,
+        );
       }
       return submitPasteBack(promptRunId, rawResponse);
     }
@@ -1285,7 +1307,7 @@ export async function tickGlobalPipelines() {
     };
   }
 
-  // Cheap path first — avoid promote/advance when nothing is active or queued.
+  // Cheap path first - avoid promote/advance when nothing is active or queued.
   const busy = await listBusyPipelineRuns();
   const queued = busy.length === 0 ? await listQueuedPipelineRuns() : [];
 

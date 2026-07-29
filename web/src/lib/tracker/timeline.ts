@@ -49,9 +49,9 @@ export function labelForAuditAction(action: string): string {
 
 export function labelForPromptKind(kind: string, status: string): string {
   const base = PROMPT_KIND_LABELS[kind] ?? kind;
-  if (status === "pending") return `${base} — awaiting paste-back`;
-  if (status === "abandoned") return `${base} — abandoned`;
-  if (status === "completed") return `${base} — completed`;
+  if (status === "pending") return `${base} - awaiting paste-back`;
+  if (status === "abandoned") return `${base} - abandoned`;
+  if (status === "completed") return `${base} - completed`;
   return base;
 }
 

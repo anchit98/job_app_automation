@@ -68,14 +68,14 @@ export default async function SettingsPage() {
             <h2 className="li-section-title">Setup guide</h2>
             <p className="li-meta mt-1">
               Google Cloud Console, Connect Google, profile, and extension
-              install — all on Home.
+              install, all on Dashboard.
             </p>
             <div className="mt-3 flex flex-col gap-2">
               <Link
                 href="/dashboard"
                 className="inline-flex text-[13px] font-semibold text-primary hover:underline"
               >
-                Open Home →
+                Open Dashboard →
               </Link>
               <ReopenSetupGuideButton />
             </div>

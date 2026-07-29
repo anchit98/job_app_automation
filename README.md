@@ -10,7 +10,7 @@ Hosted multi-user app: **Next.js 16** + **Supabase Postgres** + **Google Drive/G
 
 1. **Sign up / sign in** — email + password; sessions scoped per user  
 2. **Manual UPI billing** — unpaid users land on `/billing` (UPI ID + QR); admins approve claims (Admin Center or phone review link)  
-3. **Home setup guide** — Google Cloud Console → Connect Google → Profile & master docs → Install JobApp Bridge (minimizable)  
+3. **Dashboard setup guide** — Google Cloud Console → Connect Google → Profile & master docs → Install JobApp Bridge (minimizable)  
 4. **Quick Apply** — paste a JD + **company** + **role** (contacts optional) → automated pipeline  
 5. **JobApp Bridge** — opens ChatGPT, pastes prompts, posts replies back (no manual copy/paste)  
 6. **Tracker (Jobs)** — applications, contacts, versions, notes; search on Jobs  
@@ -51,7 +51,7 @@ Emails are always **drafts** until you send them from Gmail.
 1. Follow **[docs/setup.md](docs/setup.md)** — Supabase schema + seed, Google OAuth, `AUTH_SECRET`, `.env.local`  
 2. `cd web && npm install && npm run dev`  
 3. Open [http://localhost:3000](http://localhost:3000) → **Sign up**  
-4. Complete the Home setup guide (Connect Google, profile, extension)
+4. Complete the Dashboard setup guide (Connect Google, profile, extension)
 
 ### Minimal env (`web/.env.local`)
 
@@ -75,7 +75,7 @@ Emails are always **drafts** until you send them from Gmail.
 |---|---|
 | `/login`, `/signup` | Auth |
 | `/forgot-password`, `/reset-password` | Password recovery via email link |
-| `/dashboard` | Home — metrics, follow-ups, setup guide |
+| `/dashboard` | Dashboard — metrics, follow-ups, setup guide |
 | `/apply` | Quick Apply (JD + company + role required) |
 | `/applications` | Jobs tracker |
 | `/pipeline/[id]` | Live pipeline progress |
@@ -89,7 +89,7 @@ Emails are always **drafts** until you send them from Gmail.
 | `/health` | Ops / Google / DB status |
 | `/api/health` | Public readiness JSON |
 
-**Desktop nav:** Home · Apply · Jobs (+ Admin) + Me menu.  
+**Desktop nav:** Dashboard · Apply · Jobs (+ Admin) + Me menu.  
 **Mobile:** bottom tab bar + Me menu; Jobs use card layout; metrics aligned for small screens.
 
 ---

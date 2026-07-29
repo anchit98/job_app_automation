@@ -12,7 +12,7 @@ export function buildRepairPrompt(
   return `Your previous response failed validation with these errors:
 ${errorLines}
 
-Please regenerate returning ONLY valid JSON matching this schema — no markdown, no prose:
+Please regenerate returning ONLY valid JSON matching this schema - no markdown, no prose:
 ${schemaDescription}
 
 Previous response (for reference, do not repeat mistakes):
@@ -44,11 +44,11 @@ Failing items:
 ${lines.join("\n")}
 
 Rules:
-- Surgical edits only — do not rewrite bullets; swap/insert keywords or trim words if over the ceiling.
+- Surgical edits only - do not rewrite bullets; swap/insert keywords or trim words if over the ceiling.
 - Skills: keep "Category:" prefix exact; remove items after the colon until under the word ceiling.
 - Total across ALL experience bullets + project bullets + skills: at most 400 words (shorter OK).
 - Keep all master metrics; no fabrication.
-- Change ONLY listed items — leave everything else identical.
+- Change ONLY listed items - leave everything else identical.
 
 Return ONLY the full corrected JSON.
 
@@ -76,8 +76,8 @@ ${errorLines}
 
 Please regenerate returning ONLY valid JSON with these sections:
 - opening_hook, why_this_role, evidence_points (2-3 items), why_this_company, cta, body.
-- Do NOT put a greeting (Dear ...) or sign-off in opening_hook or any section — the app inserts those from the Google Doc template. opening_hook must start with your hook sentence.
-- evidence_points must each cite tailored resume bullets with quantified metrics (%, $, scale, years, user counts) copied exactly from the resume — at least two metrics total across evidence_points.
+- Do NOT put a greeting (Dear ...) or sign-off in opening_hook or any section - the app inserts those from the Google Doc template. opening_hook must start with your hook sentence.
+- evidence_points must each cite tailored resume bullets with quantified metrics (%, $, scale, years, user counts) copied exactly from the resume - at least two metrics total across evidence_points.
 - The body field may include greeting + sign-off for reference, but section fields must not duplicate them.
 - The body must mention the target company by name.
 - No placeholders like [COMPANY] or {{name}}.

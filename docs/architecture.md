@@ -41,7 +41,7 @@
 - **Prompt Library** — versioned templates in `prompt_templates` table
 
 ### Outbound
-- **Gmail API** — `gmail.compose` for drafts; `gmail.send` for password-reset emails from the admin Google account
+- **Gmail API** — `gmail.compose` for drafts; `gmail.readonly` for sent-mail thread lookup; `gmail.send` for password-reset emails from the admin Google account
 - **Google Drive + Docs API** — master resume/cover sync; generated artifact storage
 
 ### Extension
@@ -176,7 +176,7 @@ create_application → jd_parse → resume → cover_letter
 
 ---
 
-## 6. Home Setup Guide
+## 6. Dashboard Setup Guide
 
 After signup, the dashboard shows an interactive **4-step accordion** (minimizable to a floating pill):
 
@@ -187,7 +187,7 @@ After signup, the dashboard shows an interactive **4-step accordion** (minimizab
 
 Progress is tracked with a bar and per-step checkmarks. Minimize state is persisted to `profiles.setup_guide_collapsed`; **Privacy & Settings** can reopen it.
 
-### Home layout
+### Dashboard layout
 
 - Profile header with **Start Quick Apply** + **Update Profile**
 - Full-width **pipeline metrics** grid + **Enqueue due follow-ups**
@@ -202,8 +202,8 @@ Progress is tracked with a bar and per-step checkmarks. Minimize state is persis
 - **Light + dark + system** theme; cookie `applyforge_theme`; boot script avoids flash  
 - **Me dropdown** — avatar, View Profile, Privacy & Settings, Privacy Policy, Terms, theme, Sign out  
 - **Profile avatar** — upload on Profile page; stored in `profiles.avatar_data/avatar_mime`; served at `/api/profile/avatar`  
-- **Desktop nav**: Home · Apply · Jobs (+ Admin) + Me avatar  
-- **Mobile nav**: fixed bottom tabs (Home / Apply / Jobs / Admin or Billing) + compact top header  
+- **Desktop nav**: Dashboard · Apply · Jobs (+ Admin) + Me avatar  
+- **Mobile nav**: fixed bottom tabs (Dashboard / Apply / Jobs / Admin or Billing) + compact top header  
 - **Jobs** — desktop table; mobile cards with aligned meta rows  
 - **Dashboard metrics** — fixed label / value / hint bands so numbers align on mobile  
 - **Search applications** — on `/applications` (Jobs)  
@@ -229,7 +229,7 @@ Progress is tracked with a bar and per-step checkmarks. Minimize state is persis
 | `/login`, `/signup` | Auth |
 | `/forgot-password`, `/reset-password` | Email password recovery |
 | `/reset-password-required` | Forced password change after admin create / reset |
-| `/dashboard` | Home, metrics, follow-ups, setup guide |
+| `/dashboard` | Dashboard, metrics, follow-ups, setup guide |
 | `/apply` | Quick Apply form |
 | `/applications` | Jobs list + search |
 | `/applications/[id]` | Application workspace (contacts, versions, email, notes) |
@@ -277,7 +277,7 @@ Progress is tracked with a bar and per-step checkmarks. Minimize state is persis
 
 ### OAuth flow
 
-1. User clicks **Connect Google** on Home  
+1. User clicks **Connect Google** on Dashboard  
 2. App redirects to Google consent (Gmail + Drive + Docs scopes)  
 3. Google callback → app exchanges code → encrypts tokens → stores in `google_tokens` (per user)  
 4. Tokens refresh transparently; `invalid_grant` triggers a "Reconnect Google" banner  
@@ -324,10 +324,11 @@ Job Application Automation/
 
 ## 12. Change Log
 
+- **v1.4** — **Follow-up threading.** Follow-up Gmail drafts now reply in the original cold-email thread (`In-Reply-To` + `threadId`); PDF attachments skipped for follow-ups. Gmail `gmail.readonly` scope added for sent-message lookup when drafts are already sent. `emails.gmail_thread_id` + `gmail_rfc_message_id` columns. Auto-advance to `email_sent` on any cold-email draft creation. Follow-up UI temporarily hidden.
 - **v1.3** — **Mobile-ready UI** (bottom tabs, card Jobs list, aligned metrics). **Legal pages** + footer. Billing **QR** + **phone payment review** links. Admin user **⋮** actions menu. Production OAuth/env guidance tightened.
 - **v1.2** — **Manual UPI paywall.** Unpaid users gated to `/billing`; submit UTR for admin approval. Admins can approve/reject claims or mark paid / revoke access.
-- **v1.1** — **JobApp OS branding**, Admin Center, email password recovery, forced resets. Quick Apply requires company + role. Home simplified (metrics + follow-ups; Update Profile CTA). Header search only on Jobs. Privacy & Settings rename. Gmail `gmail.send` for reset emails.
-- **v1.0** — **Multi-user hosted deploy.** Email/password auth, `user_id` scoping, Supabase Postgres, Vercel-ready. Home setup guide with minimize/pill. Optional contacts in Quick Apply (cold email + Gmail skipped when empty). Theme (light/dark/system). Profile avatar upload. Me dropdown. Client router caching for instant revisits.
+- **v1.1** — **JobApp OS branding**, Admin Center, email password recovery, forced resets. Quick Apply requires company + role. Dashboard simplified (metrics + follow-ups; Update Profile CTA). Header search only on Jobs. Privacy & Settings rename. Gmail `gmail.send` for reset emails.
+- **v1.0** — **Multi-user hosted deploy.** Email/password auth, `user_id` scoping, Supabase Postgres, Vercel-ready. Dashboard setup guide with minimize/pill. Optional contacts in Quick Apply (cold email + Gmail skipped when empty). Theme (light/dark/system). Profile avatar upload. Me dropdown. Client router caching for instant revisits.
 - **v0.5** — **Local-first pivot.** Dropped Supabase + app login in favour of SQLite.
 - **v0.4** — Removed Upstash Redis.
 - **v0.3** — Google Drive replaces Cloudflare R2. Mailmeteor paste-back replaces discovery chains. Gmail API replaces SMTP.

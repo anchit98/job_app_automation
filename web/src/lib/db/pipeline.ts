@@ -120,7 +120,7 @@ export async function updatePipelineRun(
 /**
  * Atomically claim a pending pipeline stage before exporting a ChatGPT prompt.
  * Only one concurrent caller (UI poll vs paste-back on separate Vercel isolates)
- * wins — losers get null and should reuse the winner's awaiting state.
+ * wins - losers get null and should reuse the winner's awaiting state.
  */
 export async function claimPipelineStageStart(
   id: string,
@@ -200,7 +200,7 @@ export async function upsertPendingExtensionRun(input: {
 /** Short-lived arm so ChatGPT only opens after an explicit Quick Apply signal. */
 export async function armExtensionWake(promptRunId: string, seconds = 60): Promise<boolean> {
   const secs = Math.max(5, Math.floor(seconds));
-  // Use RETURNING — postgres.js `count` is unreliable for UPDATE without it.
+  // Use RETURNING - postgres.js `count` is unreliable for UPDATE without it.
   const row = await dbGet<{ prompt_run_id: string }>(
     `UPDATE pending_extension_runs
        SET wake_until = ((NOW() AT TIME ZONE 'utc') + make_interval(secs => ?::int))::text,
@@ -268,7 +268,7 @@ export function getLatestPendingExtensionRun(): {
   return null;
 }
 
-/** Health / UI only — does not arm or open ChatGPT. */
+/** Health / UI only - does not arm or open ChatGPT. */
 export async function peekQueuedExtensionRun(): Promise<{
   prompt_run_id: string;
   kind: string;

@@ -266,7 +266,7 @@ export async function syncMasterResumeFromDoc(
   for (const s of slots) {
     if (seen.has(s.original)) {
       throw new Error(
-        `Duplicate text detected in master doc — cannot uniquely identify slot "${s.key}". Make each bullet/skill line unique before syncing.`,
+        `Duplicate text detected in master doc - cannot uniquely identify slot "${s.key}". Make each bullet/skill line unique before syncing.`,
       );
     }
     seen.add(s.original);

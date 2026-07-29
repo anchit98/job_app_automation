@@ -7,7 +7,7 @@ export function isContactUuid(value: string): boolean {
 
 /**
  * Read contact IDs embedded in a cold-email prompt run.
- * Avoids false positives from the template's example schema ("string — must match…").
+ * Avoids false positives from the template's example schema ("string - must match…").
  */
 export function extractExpectedContactIdsFromPrompt(
   promptText: string,

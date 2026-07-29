@@ -16,14 +16,14 @@ export function buildResumeStructuralGuide(
   const lines: string[] = [
     "EDIT MODE (SUBHEADER + WORK EXPERIENCE → SKILLS):",
     "- Copy each MASTER line below as the starting text",
-    "- Replace words/phrases with JD keywords only where the fact already exists — do NOT rewrite or append",
-    "- Subheader (headline): same rule — swap words inside the master line; do not add new titles or keyword stacks",
+    "- Replace words/phrases with JD keywords only where the fact already exists - do NOT rewrite or append",
+    "- Subheader (headline): same rule - swap words inside the master line; do not add new titles or keyword stacks",
     "- If no clean keyword fit, return the master line unchanged",
     `- Maximum ${TAILORABLE_WORD_CEILING} words total across bullets + skills (shorter is fine)`,
     "",
     "ATS STRATEGY:",
     "- Prefer minimal synonym/phrase swaps over new sentences",
-    "- Keep every metric and outcome from MASTER — never invent numbers",
+    "- Keep every metric and outcome from MASTER - never invent numbers",
     "- Skills: keep each Category: prefix; reorder/swap items after the colon for JD terms",
     "",
     "JSON OUTPUT:",
@@ -31,7 +31,7 @@ export function buildResumeStructuralGuide(
     "- experience/projects: ONLY bullets arrays",
     "- Complete full JSON in one reply",
     "",
-    `MASTER LINES (reference ~${budget.work_through_skills_total} words — ceiling ${TAILORABLE_WORD_CEILING}):`,
+    `MASTER LINES (reference ~${budget.work_through_skills_total} words - ceiling ${TAILORABLE_WORD_CEILING}):`,
   ];
 
   if (content.headline?.trim()) {
@@ -59,7 +59,7 @@ export function buildResumeStructuralGuide(
 
   lines.push(
     "",
-    `Education: ${content.education.length} entries — omit from JSON`,
+    `Education: ${content.education.length} entries - omit from JSON`,
   );
 
   return lines.join("\n");

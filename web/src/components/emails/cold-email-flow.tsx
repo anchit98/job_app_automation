@@ -26,7 +26,7 @@ interface ColdEmailFlowProps {
 
 const ELIGIBILITY_LABEL: Record<ContactEligibility, string> = {
   eligible: "Ready",
-  risky: "Risky — opt in",
+  risky: "Risky - opt in",
   no_email: "No email",
   already_has_cold_email: "Already drafted",
 };
@@ -154,7 +154,7 @@ export function ColdEmailFlow({
           setPromptText(next.prompt_text);
           setLengthWarning(next.length_warning);
           setError(
-            `Batch accepted. ${rest.length + 1} batch(es) remaining — run the next prompt.`,
+            `Batch accepted. ${rest.length + 1} batch(es) remaining - run the next prompt.`,
           );
         }, 100);
       } else {
@@ -333,7 +333,7 @@ export function ColdEmailFlow({
                         </span>
                       </div>
                       <p className="text-[12px] text-on-surface-variant truncate">
-                        {c.role || "—"} · {c.email || "no email"}
+                        {c.role || "-"} · {c.email || "no email"}
                       </p>
                     </div>
                   </label>
@@ -492,7 +492,7 @@ export function ColdEmailFlow({
         <UnifiedPasteModal
           title={
             pendingBatches.length > 0
-              ? `Cold emails (batch — ${pendingBatches.length} more after this)`
+              ? `Cold emails (batch - ${pendingBatches.length} more after this)`
               : "Cold emails"
           }
           promptRunId={promptRunId}

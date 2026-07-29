@@ -76,21 +76,21 @@ export function buildJdKeywordBrief(application: Application): string {
     return [
       "No structured JD keywords parsed yet.",
       "Read the raw job description in jd_content and extract role-specific keywords.",
-      "Swap JD terms into the master subheader/headline, bullets, and skills (replace words — do not append new titles/keywords to the subheader).",
+      "Swap JD terms into the master subheader/headline, bullets, and skills (replace words - do not append new titles/keywords to the subheader).",
       "Prioritize: role title, core responsibilities, required tools, and domain terms.",
     ].join("\n");
   }
 
   const lines = [
-    "JD KEYWORD TARGETS — swap into master subheader, bullets, and skills where already true (do not append to the subheader):",
+    "JD KEYWORD TARGETS - swap into master subheader, bullets, and skills where already true (do not append to the subheader):",
     "",
-    `Must-have (${keywords.must_have.length}) — include at least 70% somewhere in the tailored resume:`,
+    `Must-have (${keywords.must_have.length}) - include at least 70% somewhere in the tailored resume:`,
     ...keywords.must_have.map((keyword) => `- ${keyword}`),
     "",
-    `Nice-to-have (${keywords.nice_to_have.length}) — include where naturally grounded:`,
+    `Nice-to-have (${keywords.nice_to_have.length}) - include where naturally grounded:`,
     ...keywords.nice_to_have.map((keyword) => `- ${keyword}`),
     "",
-    `Tech stack (${keywords.tech_stack.length}) — reflect in relevant bullets/projects/skills:`,
+    `Tech stack (${keywords.tech_stack.length}) - reflect in relevant bullets/projects/skills:`,
     ...keywords.tech_stack.map((tool) => `- ${tool}`),
   ];
 
@@ -117,7 +117,7 @@ export function buildJdKeywordBrief(application: Application): string {
   return lines.join("\n");
 }
 
-/** Minimum share of must-have JD keywords — advisory only; does not block export. */
+/** Minimum share of must-have JD keywords - advisory only; does not block export. */
 export const MUST_HAVE_KEYWORD_COVERAGE_MIN = 0.5;
 
 export function checkJdKeywordCoverage(
@@ -141,7 +141,7 @@ export function checkJdKeywordCoverage(
       path: "jd_keywords",
       bullet: "",
       reason: "missing_jd_keyword",
-      message: `ATS coverage low: ${missing.length} must-have JD keyword(s) not found — ${missing.slice(0, 8).join(", ")}${missing.length > 8 ? "…" : ""}. Prefer surgical keyword swaps (subheader: replace words only, do not append).`,
+      message: `ATS coverage low: ${missing.length} must-have JD keyword(s) not found - ${missing.slice(0, 8).join(", ")}${missing.length > 8 ? "…" : ""}. Prefer surgical keyword swaps (subheader: replace words only, do not append).`,
     },
   ];
 }

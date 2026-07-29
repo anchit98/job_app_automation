@@ -16,7 +16,7 @@ const BUSY_INTERVAL_MS = 5000;
 const IDLE_INTERVAL_MS = 20000;
 
 /**
- * Keeps Quick Apply pipelines moving on every app page — not only /pipeline/[id].
+ * Keeps Quick Apply pipelines moving on every app page - not only /pipeline/[id].
  * Backs off when idle / tab hidden so UI clicks stay snappy.
  */
 export function PipelineKeeper() {

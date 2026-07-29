@@ -18,7 +18,7 @@ export function ResumeArtifacts({
   if (versions.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No resume yet — it will appear here after Quick Apply finishes.
+        No resume yet - it will appear here after Quick Apply finishes.
       </p>
     );
   }
@@ -69,7 +69,7 @@ export function CoverLetterArtifacts({
   if (versions.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No cover letter yet — created automatically by Quick Apply.
+        No cover letter yet - created automatically by Quick Apply.
       </p>
     );
   }
@@ -114,7 +114,7 @@ export function ContactArtifacts({ contacts }: { contacts: Contact[] }) {
   if (contacts.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No contacts — add them on the Quick Apply form when you start.
+        No contacts - add them on the Quick Apply form when you start.
       </p>
     );
   }
@@ -127,7 +127,7 @@ export function ContactArtifacts({ contacts }: { contacts: Contact[] }) {
         >
           <div className="text-[14px] font-medium text-on-surface">{c.name}</div>
           <div className="text-[12px] text-on-surface-variant">
-            {c.role || "—"} · {c.email}
+            {c.role || "-"} · {c.email}
           </div>
           {c.linkedin_url && (
             <a
@@ -150,7 +150,7 @@ export function EmailArtifacts({ emails }: { emails: EmailRecord[] }) {
   if (cold.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No cold emails yet — drafted automatically by Quick Apply.
+        No cold emails yet - drafted automatically by Quick Apply.
       </p>
     );
   }

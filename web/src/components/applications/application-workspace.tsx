@@ -14,7 +14,6 @@ import {
   EmailArtifacts,
   ResumeArtifacts,
 } from "@/components/applications/application-artifacts";
-import { FollowUpFlow } from "@/components/follow-ups/follow-up-flow";
 import { ApplicationPipelineActions } from "@/components/applications/application-pipeline-actions";
 import type {
   Application,
@@ -35,7 +34,7 @@ interface ApplicationWorkspaceProps {
   coverLetterTemplateReady: boolean;
   contacts: Contact[];
   emails: EmailRecord[];
-  followUps: FollowUp[];
+  followUps?: FollowUp[];
   googleConnected: boolean;
   timelineEvents: TimelineEvent[];
   pipeline?: {
@@ -68,7 +67,7 @@ export function ApplicationWorkspace({
 
   const title =
     application.company && application.role
-      ? `${application.company} — ${application.role}`
+      ? `${application.company} - ${application.role}`
       : application.company || application.role || "Application";
 
   function handleDelete() {
@@ -129,7 +128,7 @@ export function ApplicationWorkspace({
         </div>
       </header>
 
-      {/* Workspace Tabs — fewer tabs, panels side by side inside each */}
+      {/* Workspace Tabs - fewer tabs, panels side by side inside each */}
       <div className="px-margin-mobile md:px-margin-desktop border-b border-border-hairline bg-surface shrink-0 flex gap-1 overflow-x-auto">
         {([
           { id: "overview", label: "Overview" },
@@ -353,13 +352,6 @@ export function ApplicationWorkspace({
                   <h2 className="li-section-title">Cold emails</h2>
                   <EmailArtifacts emails={emails} />
                 </div>
-                <FollowUpFlow
-                  applicationId={application.id}
-                  followUps={followUps}
-                  emails={emails}
-                  contacts={contacts}
-                  applicationStatus={application.status}
-                />
               </div>
             </div>
           </div>
@@ -373,11 +365,11 @@ export function ApplicationWorkspace({
                 <div className="li-card p-4 text-[13px] grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <p>
                     <span className="text-on-surface-variant">Company:</span>{" "}
-                    {application.company || application.jd_parsed?.company || "—"}
+                    {application.company || application.jd_parsed?.company || "-"}
                   </p>
                   <p>
                     <span className="text-on-surface-variant">Role:</span>{" "}
-                    {application.role || application.jd_parsed?.role || "—"}
+                    {application.role || application.jd_parsed?.role || "-"}
                   </p>
                 </div>
               )}

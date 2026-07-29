@@ -73,6 +73,10 @@ export function ForgotPasswordForm() {
         <Link href="/login" className="text-primary font-semibold">
           Back to sign in
         </Link>
+        <span className="mx-2 text-on-surface-variant">·</span>
+        <Link href="/" className="text-primary font-semibold">
+          Home
+        </Link>
       </p>
     </div>
   );
@@ -168,6 +172,10 @@ export function ResetPasswordForm({
         <p className="text-center text-[14px] text-on-surface-variant">
           <Link href="/login" className="text-primary font-semibold">
             Back to sign in
+          </Link>
+          <span className="mx-2 text-on-surface-variant">·</span>
+          <Link href="/" className="text-primary font-semibold">
+            Home
           </Link>
         </p>
       ) : null}

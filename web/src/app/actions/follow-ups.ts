@@ -13,8 +13,11 @@ import {
 } from "@/lib/db/queries";
 import {
   activateSecondFollowUp,
+  claimFollowUpForBatch,
   getFollowUpById,
   listFollowUpsForApplication,
+  listRunnableFollowUpsForApplication,
+  markFollowUpEnqueued,
   updateFollowUpStatus,
 } from "@/lib/follow-ups/queries";
 import {
@@ -26,6 +29,7 @@ import {
   addBusinessDays,
   toUtcIso,
 } from "@/lib/follow-ups/business-days";
+import { applyFollowUpGreeting } from "@/lib/follow-ups/greeting";
 import {
   buildFollowUpRepairPrompt,
   followUpEmailSchema,
@@ -46,6 +50,7 @@ import { gmailDraftWebUrl } from "@/lib/emails/gmail-url";
 
 function revalidateFollowUpPaths(applicationId: string) {
   revalidatePath(`/applications/${applicationId}`);
+  revalidatePath("/applications");
   revalidatePath("/prompts");
   revalidatePath("/dashboard");
 }
@@ -57,6 +62,7 @@ export async function getFollowUpsForApplication(applicationId: string) {
 export async function runEnqueueDueFollowUps() {
   const result = await enqueueDueFollowUpPrompts();
   revalidatePath("/prompts");
+  revalidatePath("/applications");
   revalidatePath("/dashboard");
   return result;
 }
@@ -70,11 +76,84 @@ export async function runFollowUpNow(
     return { ok: false as const, error: "Follow-up not found." };
   }
 
+  const siblings = await listRunnableFollowUpsForApplication(
+    followUp.application_id,
+    followUp.sequence,
+  );
+  const batchIds = siblings.map((s) => s.id);
+  if (!batchIds.includes(followUpId)) {
+    batchIds.unshift(followUpId);
+  }
+
+  // Claim every contact in the batch so cron cannot enqueue them separately.
+  for (const id of batchIds) {
+    await claimFollowUpForBatch(id);
+  }
+
   const result = await enqueueFollowUpPrompt(followUpId, options);
-  if (!result.ok) return result;
+  if (!result.ok) {
+    return result;
+  }
+
+  for (const id of batchIds) {
+    await markFollowUpEnqueued(id, result.prompt_run_id);
+  }
 
   revalidateFollowUpPaths(followUp.application_id);
-  return result;
+  return {
+    ...result,
+    follow_up_ids: batchIds,
+    contact_count: batchIds.length,
+  };
+}
+
+/** Poll progress while Jobs-page follow-up stays in place. */
+export async function getFollowUpDraftStatus(followUpId: string) {
+  const followUp = await getFollowUpById(followUpId);
+  if (!followUp) {
+    return { ok: false as const, error: "Follow-up not found." };
+  }
+
+  const allSameSeq = (
+    await listFollowUpsForApplication(followUp.application_id)
+  ).filter(
+    (f) =>
+      f.sequence === followUp.sequence &&
+      !["skipped", "waiting"].includes(f.status),
+  );
+
+  const active = allSameSeq.filter((f) => f.status !== "sent");
+  const targets = active.length > 0 ? active : allSameSeq;
+  const withDraft = targets.filter((f) => f.draft_email_id);
+  let gmailReady = 0;
+  for (const f of withDraft) {
+    if (!f.draft_email_id) continue;
+    const email = await getEmailById(f.draft_email_id);
+    if (email?.gmail_draft_id && email.draft_status === "created") {
+      gmailReady += 1;
+    }
+  }
+
+  let promptStatus: string | null = null;
+  if (followUp.prompt_run_id) {
+    const run = await getPromptRunById(followUp.prompt_run_id);
+    promptStatus = run?.status ?? null;
+  }
+
+  const expected = Math.max(targets.length, 1);
+
+  return {
+    ok: true as const,
+    status: followUp.status,
+    draft_email_id: followUp.draft_email_id,
+    prompt_run_id: followUp.prompt_run_id,
+    prompt_status: promptStatus,
+    contact_count: expected,
+    drafts_ready: withDraft.length,
+    gmail_ready: gmailReady,
+    all_drafts_ready: withDraft.length >= expected && withDraft.length > 0,
+    all_gmail_ready: gmailReady >= expected && gmailReady > 0,
+  };
 }
 
 export async function snoozeFollowUp(followUpId: string, businessDays: number) {
@@ -122,6 +201,44 @@ export async function skipFollowUp(followUpId: string) {
   return { ok: true as const };
 }
 
+async function createFollowUpDraftEmail(input: {
+  followUpId: string;
+  applicationId: string;
+  contactId: string;
+  contactName: string | null;
+  contactRole: string | null;
+  subject: string;
+  bodyTemplate: string;
+  promptRunId: string;
+}): Promise<string> {
+  const bodyMd = applyFollowUpGreeting(input.bodyTemplate, input.contactName);
+
+  const draftEmailId = await insertEmail({
+    application_id: input.applicationId,
+    contact_id: input.contactId,
+    kind: "follow_up",
+    subject: input.subject,
+    body_md: bodyMd,
+    body_html: markdownToEmailHtml(bodyMd),
+    role_template: input.contactRole
+      ? inferRoleTemplate(input.contactRole)
+      : null,
+    prompt_run_id: input.promptRunId,
+    draft_status: "pending",
+  });
+
+  await updateFollowUpStatus(input.followUpId, "enqueued", {
+    draft_email_id: draftEmailId,
+  });
+
+  await writeAuditLog("follow_up.generated", "follow_ups", input.followUpId, {
+    application_id: input.applicationId,
+    draft_email_id: draftEmailId,
+  });
+
+  return draftEmailId;
+}
+
 export async function submitFollowUpResponse(
   promptRunId: string,
   rawResponse: string,
@@ -154,7 +271,11 @@ export async function submitFollowUpResponse(
     jsonText = extractJsonFromText(rawResponse);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Invalid JSON";
-    await updatePromptRunValidationErrors(promptRunId, [{ path: "root", message }], rawResponse);
+    await updatePromptRunValidationErrors(
+      promptRunId,
+      [{ path: "root", message }],
+      rawResponse,
+    );
     return { ok: false as const, error: message };
   }
 
@@ -179,7 +300,11 @@ export async function submitFollowUpResponse(
 
   const contentCheck = validateFollowUpContent(schemaResult.data);
   if (!contentCheck.ok) {
-    await updatePromptRunValidationErrors(promptRunId, contentCheck.issues, rawResponse);
+    await updatePromptRunValidationErrors(
+      promptRunId,
+      contentCheck.issues,
+      rawResponse,
+    );
     return {
       ok: false as const,
       error: "Follow-up content validation failed.",
@@ -188,49 +313,76 @@ export async function submitFollowUpResponse(
     };
   }
 
-  const originalEmail = await getEmailById(followUp.email_id);
-  if (!originalEmail) {
-    return { ok: false as const, error: "Original email not found." };
-  }
-
-  const contact = await getContactById(originalEmail.contact_id);
   const profile = await getProfileRow();
-  const bodyMd = stripEmailSignature(
+  const bodyTemplate = stripEmailSignature(
     schemaResult.data.body_md,
     profile?.full_name,
   );
+  const subject = schemaResult.data.subject;
 
-  const draftEmailId = await insertEmail({
-    application_id: followUp.application_id,
-    contact_id: originalEmail.contact_id,
-    kind: "follow_up",
-    subject: schemaResult.data.subject,
-    body_md: bodyMd,
-    body_html: markdownToEmailHtml(bodyMd),
-    role_template: contact ? inferRoleTemplate(contact.role) : null,
-    prompt_run_id: promptRunId,
-    draft_status: "pending",
-  });
+  const batch = await listRunnableFollowUpsForApplication(
+    followUp.application_id,
+    followUp.sequence,
+  );
+  const targets = batch.length > 0 ? batch : [followUp];
+  const linked = targets.filter(
+    (f) =>
+      !f.prompt_run_id ||
+      f.prompt_run_id === promptRunId ||
+      f.id === followUpId,
+  );
+  const toDraft = (linked.length > 0 ? linked : targets).filter(
+    (f) => !f.draft_email_id,
+  );
 
-  const completed = await completePromptRun(promptRunId, rawResponse, schemaResult.data);
+  if (toDraft.length === 0 && followUp.draft_email_id) {
+    return {
+      ok: true as const,
+      draft_email_id: followUp.draft_email_id,
+      follow_up_id: followUpId,
+      draft_count: 1,
+    };
+  }
+
+  const draftIds: string[] = [];
+  for (const target of toDraft) {
+    const originalEmail = await getEmailById(target.email_id);
+    if (!originalEmail) continue;
+    const contact = await getContactById(originalEmail.contact_id);
+    if (!contact?.email?.trim()) continue;
+
+    const draftEmailId = await createFollowUpDraftEmail({
+      followUpId: target.id,
+      applicationId: target.application_id,
+      contactId: contact.id,
+      contactName: contact.name,
+      contactRole: contact.role,
+      subject,
+      bodyTemplate,
+      promptRunId,
+    });
+    draftIds.push(draftEmailId);
+  }
+
+  if (draftIds.length === 0) {
+    return { ok: false as const, error: "No contacts available to draft." };
+  }
+
+  const completed = await completePromptRun(
+    promptRunId,
+    rawResponse,
+    schemaResult.data,
+  );
   if (!completed) {
     return { ok: false as const, error: "Prompt run was already completed." };
   }
 
-  await updateFollowUpStatus(followUpId, "enqueued", {
-    draft_email_id: draftEmailId,
-  });
-
-  await writeAuditLog("follow_up.generated", "follow_ups", followUpId, {
-    application_id: followUp.application_id,
-    draft_email_id: draftEmailId,
-  });
-
   revalidateFollowUpPaths(followUp.application_id);
   return {
     ok: true as const,
-    draft_email_id: draftEmailId,
+    draft_email_id: draftIds[0],
     follow_up_id: followUpId,
+    draft_count: draftIds.length,
   };
 }
 
@@ -240,53 +392,72 @@ export async function manualSendFollowUp(followUpId: string) {
     return { ok: false as const, error: "Follow-up not found." };
   }
 
-  const draftEmailId = followUp.draft_email_id;
-  if (!draftEmailId) {
+  const related = (
+    await listFollowUpsForApplication(followUp.application_id)
+  ).filter(
+    (f) =>
+      f.sequence === followUp.sequence &&
+      f.draft_email_id &&
+      f.status !== "sent" &&
+      f.status !== "skipped",
+  );
+
+  const targets =
+    related.length > 0
+      ? related
+      : followUp.draft_email_id
+        ? [followUp]
+        : [];
+  if (targets.length === 0) {
     return {
       ok: false as const,
       error: "Generate the follow-up email first (run the prompt).",
     };
   }
 
-  const email = await getEmailById(draftEmailId);
-  if (!email) {
-    return { ok: false as const, error: "Follow-up email record missing." };
+  const draftEmailIds = targets
+    .map((f) => f.draft_email_id)
+    .filter((id): id is string => Boolean(id));
+
+  const draftResult = await createGmailDrafts(draftEmailIds);
+  if (!draftResult.ok) {
+    return { ok: false as const, error: draftResult.error };
+  }
+  const failed = draftResult.results?.find((r) => !r.ok);
+  if (failed) {
+    return {
+      ok: false as const,
+      error: failed.error ?? "Failed to create Gmail draft.",
+    };
   }
 
-  if (email.draft_status !== "created" || !email.gmail_draft_id) {
-    const draftResult = await createGmailDrafts([draftEmailId]);
-    if (!draftResult.ok) {
-      return { ok: false as const, error: draftResult.error };
-    }
-    const row = draftResult.results?.find((r) => r.email_id === draftEmailId);
-    if (row && !row.ok) {
-      return {
-        ok: false as const,
-        error: row.error ?? "Failed to create Gmail draft.",
-      };
-    }
-  }
-
-  const refreshed = await getEmailById(draftEmailId);
+  const profile = await getProfileRow();
+  const timezone = profile?.timezone ?? "UTC";
   const sentAt = new Date().toISOString();
-  await updateFollowUpStatus(followUpId, "sent", { sent_at: sentAt });
+  let firstGmailUrl: string | null = null;
 
-  if (followUp.sequence === 1) {
-    const profile = await getProfileRow();
-    await activateSecondFollowUp(followUp.email_id, profile?.timezone ?? "UTC");
+  for (const target of targets) {
+    if (!target.draft_email_id) continue;
+    const refreshed = await getEmailById(target.draft_email_id);
+    await updateFollowUpStatus(target.id, "sent", { sent_at: sentAt });
+    if (target.sequence === 1) {
+      await activateSecondFollowUp(target.email_id, timezone);
+    }
+    await writeAuditLog("follow_up.sent", "follow_ups", target.id, {
+      draft_email_id: target.draft_email_id,
+    });
+    if (!firstGmailUrl && refreshed?.gmail_draft_id) {
+      firstGmailUrl = gmailDraftWebUrl(refreshed.gmail_draft_id);
+    }
   }
-
-  await writeAuditLog("follow_up.sent", "follow_ups", followUpId, {
-    draft_email_id: draftEmailId,
-  });
 
   revalidateFollowUpPaths(followUp.application_id);
 
-  const gmailUrl = refreshed?.gmail_draft_id
-    ? gmailDraftWebUrl(refreshed.gmail_draft_id)
-    : null;
-
-  return { ok: true as const, gmail_url: gmailUrl };
+  return {
+    ok: true as const,
+    gmail_url: firstGmailUrl,
+    draft_count: targets.length,
+  };
 }
 
 export async function ensureFollowUpsScheduled(applicationId: string) {

@@ -18,7 +18,7 @@ export async function uploadDriveTestFile() {
   const drive = new DriveClient(auth);
   const rootId = await drive.ensureRootFolder();
 
-  const content = `Job Application Automation — Phase 0 test file\nCreated: ${new Date().toISOString()}\n`;
+  const content = `Job Application Automation - Phase 0 test file\nCreated: ${new Date().toISOString()}\n`;
   const fileId = await drive.uploadFile(
     Buffer.from(content, "utf8"),
     `phase0-test-${Date.now()}.txt`,

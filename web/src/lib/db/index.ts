@@ -8,7 +8,7 @@ export function getSql() {
   if (!sql) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("Missing DATABASE_URL (Supabase Postgres connection string)");
-    // Prefer the Supabase pooler URL (:6543) in .env — direct :5432 adds latency per query.
+    // Prefer the Supabase pooler URL (:6543) in .env - direct :5432 adds latency per query.
     sql = postgres(url, {
       prepare: false,
       max: 10,

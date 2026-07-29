@@ -10,7 +10,7 @@ import {
 import { planManualStatusChange } from "@/lib/applications/auto-status";
 import { Label } from "@/components/ui/label";
 
-/** Statuses the system cannot infer — user sets these manually. */
+/** Statuses the system cannot infer - user sets these manually. */
 const MANUAL_STATUSES: ApplicationStatus[] = [
   "hr_replied",
   "interview_scheduled",

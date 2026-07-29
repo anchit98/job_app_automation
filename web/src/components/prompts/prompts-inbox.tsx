@@ -62,7 +62,7 @@ export function PromptsInbox({ items }: PromptsInboxProps) {
       {items.map((item) => {
         const appLabel =
           item.application_company || item.application_role
-            ? `${item.application_company ?? "Company"} — ${item.application_role ?? "Role"}`
+            ? `${item.application_company ?? "Company"} - ${item.application_role ?? "Role"}`
             : null;
         const href = item.application_id
           ? `/applications/${item.application_id}?tab=emails`

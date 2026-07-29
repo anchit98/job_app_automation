@@ -137,7 +137,7 @@ export function ExtensionBridgeControls({
       {!showInstallGuide && (
         <ol className="list-decimal pl-5 text-[13px] text-on-surface-variant space-y-1">
           <li>
-            Download from Home setup (or use the repo{" "}
+            Download from Dashboard setup (or use the repo{" "}
             <code className="text-[12px]">extension/</code> folder) → Load
             unpacked in Chrome.
           </li>
@@ -148,7 +148,7 @@ export function ExtensionBridgeControls({
       {newToken && (
         <div className="rounded-lg border border-primary/30 bg-info-container p-3 space-y-2">
           <p className="text-[12px] font-semibold text-on-surface">
-            Copy this token into the extension Options — it won&apos;t be shown
+            Copy this token into the extension Options - it won&apos;t be shown
             again.
           </p>
           <code className="block text-[11px] break-all bg-surface border border-border-hairline p-2 rounded-lg">
@@ -175,7 +175,7 @@ export function ExtensionBridgeControls({
               const result = await rotateExtensionToken();
               setNewToken(result.token);
               setMessage(
-                "Token rotated — update it in the extension Options.",
+                "Token rotated - update it in the extension Options.",
               );
               setStatus(await getExtensionTokenStatus());
             })

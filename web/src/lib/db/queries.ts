@@ -1049,6 +1049,8 @@ function mapEmail(row: Record<string, unknown>): EmailRecord {
     role_template: (row.role_template as ColdEmailRoleTemplate | null) ?? null,
     gmail_draft_id: (row.gmail_draft_id as string | null) ?? null,
     gmail_message_id: (row.gmail_message_id as string | null) ?? null,
+    gmail_thread_id: (row.gmail_thread_id as string | null) ?? null,
+    gmail_rfc_message_id: (row.gmail_rfc_message_id as string | null) ?? null,
     draft_status: row.draft_status as DraftStatus,
     draft_error: (row.draft_error as string | null) ?? null,
     sent_at: (row.sent_at as string | null) ?? null,
@@ -1092,7 +1094,7 @@ export async function insertEmail(input: {
   draft_status?: DraftStatus;
 }): Promise<string> {
   const kind = input.kind ?? "cold";
-  // One cold email per contact per application — never create duplicates.
+  // One cold email per contact per application - never create duplicates.
   if (kind === "cold") {
     const existing = await dbGet<{ id: string }>(
       `SELECT id FROM emails
@@ -1126,7 +1128,7 @@ export async function insertEmail(input: {
 
 /** Claim a pending/failed email for draft creation. Returns false if already claimed. */
 export async function claimEmailForDraftCreation(id: string): Promise<boolean> {
-  // Use RETURNING — postgres.js count can be unreliable for UPDATE without it.
+  // Use RETURNING - postgres.js count can be unreliable for UPDATE without it.
   const row = await dbGet<{ id: string }>(
     `UPDATE emails
        SET draft_status = 'creating', draft_error = NULL
@@ -1141,20 +1143,45 @@ export async function markEmailDraftCreated(
   id: string,
   gmailDraftId: string,
   gmailMessageId?: string | null,
+  threadMeta?: {
+    gmail_thread_id?: string | null;
+    gmail_rfc_message_id?: string | null;
+  },
 ): Promise<boolean> {
   const row = await dbGet<{ id: string }>(
     `UPDATE emails
        SET draft_status = 'created',
            gmail_draft_id = ?,
            gmail_message_id = ?,
+           gmail_thread_id = COALESCE(?, gmail_thread_id),
+           gmail_rfc_message_id = COALESCE(?, gmail_rfc_message_id),
            draft_error = NULL
        WHERE id = ? AND draft_status = 'creating'
        RETURNING id`,
     gmailDraftId,
     gmailMessageId ?? null,
+    threadMeta?.gmail_thread_id ?? null,
+    threadMeta?.gmail_rfc_message_id ?? null,
     id,
   );
   return Boolean(row?.id);
+}
+
+export async function updateEmailThreadMetadata(
+  id: string,
+  gmailThreadId: string,
+  gmailRfcMessageId: string,
+): Promise<boolean> {
+  const result = await dbRun(
+    `UPDATE emails
+       SET gmail_thread_id = ?,
+           gmail_rfc_message_id = ?
+       WHERE id = ?`,
+    gmailThreadId,
+    gmailRfcMessageId,
+    id,
+  );
+  return result.changes > 0;
 }
 
 export async function markEmailDraftFailed(id: string, error: string): Promise<boolean> {

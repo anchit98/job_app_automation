@@ -51,7 +51,7 @@ export async function ensureExtensionToken() {
   };
 }
 
-/** Generate a new token. Plaintext is shown once — store it in the extension. */
+/** Generate a new token. Plaintext is shown once - store it in the extension. */
 export async function rotateExtensionToken() {
   const generated = generateExtensionToken();
   await upsertExtensionToken({
@@ -90,16 +90,12 @@ export async function armExtensionForPromptRun(
   const id = promptRunId.trim();
 
   let armed = await armExtensionWake(id, 300);
-  // Pending row may be missing/completed after a prior stage — re-queue from stage payload.
-  if (
-    !armed &&
-    payload?.pipeline_run_id &&
-    payload.kind &&
-    payload.prompt_text
-  ) {
+  // Pending row may be missing/completed after a prior stage - re-queue from stage payload.
+  // pipeline_run_id is optional (e.g. standalone follow-up prompts on Jobs).
+  if (!armed && payload?.kind && payload.prompt_text) {
     await upsertPendingExtensionRun({
       prompt_run_id: id,
-      pipeline_run_id: payload.pipeline_run_id,
+      pipeline_run_id: payload.pipeline_run_id ?? null,
       kind: payload.kind,
       prompt_text: payload.prompt_text,
       chatgpt_url: payload.chatgpt_url || "https://chatgpt.com/",

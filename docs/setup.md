@@ -86,7 +86,7 @@ The app sends real email via the **admin’s connected Google account** using `g
 **In JobApp OS:**
 
 1. Sign in as an **admin**.
-2. Complete **Connect Google** (Home setup guide) with the Gmail inbox you want alerts to come *from*.
+2. Complete **Connect Google** (Dashboard setup guide) with the Gmail inbox you want alerts to come *from*.
 3. Optional env: `ADMIN_NOTIFY_EMAIL=you@gmail.com` (comma-separated). If unset, all admin account emails are notified when someone submits a UPI payment claim.
 
 Payment claims still succeed even if email fails (check server logs / audit log).
@@ -138,7 +138,7 @@ QR asset for billing: `web/public/billing/upi-qr.png` (Show QR on `/billing`).
 
 ## 4. First-run checklist (in the app)
 
-After signup, Home shows an interactive **Setup guide**:
+After signup, Dashboard shows an interactive **Setup guide**:
 
 1. **Google Cloud Console** — one-time OAuth client / env (self-host / first deploy)  
 2. **Connect Google** — link *your* Google account in the app  
@@ -147,7 +147,7 @@ After signup, Home shows an interactive **Setup guide**:
 
 The guide can be **minimized** to a bottom-right pill; reopen from **Privacy & Settings** if needed.
 
-Home itself focuses on **pipeline metrics** + **follow-ups**, with **Start Quick Apply** and **Update Profile** in the header card (no shortcut tile grid).
+Dashboard itself focuses on **pipeline metrics** + **follow-ups**, with **Start Quick Apply** and **Update Profile** in the header card (no shortcut tile grid).
 
 ### Master resume Google Doc
 
@@ -158,7 +158,7 @@ Must contain uppercase headers: `WORK EXPERIENCE`, `PROJECTS` (optional), `SKILL
 ## 5. Chrome extension (JobApp Bridge)
 
 **Option A — from the Setup guide**  
-Download `jobapp-bridge.zip` from Home / the guide (built into `web/public/downloads/` on `npm run build` / `prebuild`).
+Download `jobapp-bridge.zip` from Dashboard / the guide (built into `web/public/downloads/` on `npm run build` / `prebuild`).
 
 **Option B — load unpacked**
 

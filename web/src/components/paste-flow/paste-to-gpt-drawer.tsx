@@ -52,7 +52,7 @@ export function PasteToGptDrawer({
       />
       <div className="flex flex-wrap gap-2">
         <Button type="button" onClick={copyAndOpen}>
-          {copied ? "Copied — Open ChatGPT" : "Copy & Open ChatGPT"}
+          {copied ? "Copied - Open ChatGPT" : "Copy & Open ChatGPT"}
         </Button>
         <Button type="button" variant="secondary" onClick={onOpenPasteBack}>
           Paste response back

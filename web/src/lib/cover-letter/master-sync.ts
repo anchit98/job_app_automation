@@ -40,7 +40,7 @@ export async function syncMasterCoverLetterFromDoc(
   for (const text of [greeting, ...bodyParagraphs, signoff]) {
     if (originals.has(text)) {
       throw new Error(
-        "Duplicate paragraph text in cover letter template — each slot must be unique for replaceAllText.",
+        "Duplicate paragraph text in cover letter template - each slot must be unique for replaceAllText.",
       );
     }
     originals.add(text);

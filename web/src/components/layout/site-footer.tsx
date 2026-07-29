@@ -25,6 +25,9 @@ function isAppShellPath(pathname: string) {
 export function SiteFooter() {
   const pathname = usePathname();
   const year = new Date().getFullYear();
+  if (pathname === "/") {
+    return null;
+  }
   const hideOnMobile = isAppShellPath(pathname);
 
   return (

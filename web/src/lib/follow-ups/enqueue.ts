@@ -170,7 +170,7 @@ export async function enqueueFollowUpPrompt(
     return {
       ok: false,
       error:
-        "Application already has a response — confirm before enqueuing this follow-up.",
+        "Application already has a response - confirm before enqueuing this follow-up.",
       needs_confirmation: true,
     };
   }

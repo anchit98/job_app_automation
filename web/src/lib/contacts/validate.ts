@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Practical RFC 5322 subset — trims whitespace before validation. */
+/** Practical RFC 5322 subset - trims whitespace before validation. */
 export const emailAddressSchema = z
   .string()
   .trim()

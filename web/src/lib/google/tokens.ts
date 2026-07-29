@@ -19,7 +19,7 @@ export class GoogleNotConnectedError extends Error {
 
 export class GoogleTokenRevokedError extends Error {
   constructor() {
-    super("Google token revoked — please reconnect");
+    super("Google token revoked - please reconnect");
     this.name = "GoogleTokenRevokedError";
   }
 }

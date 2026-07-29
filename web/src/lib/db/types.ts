@@ -254,6 +254,8 @@ export interface EmailRecord {
   role_template: ColdEmailRoleTemplate | null;
   gmail_draft_id: string | null;
   gmail_message_id: string | null;
+  gmail_thread_id: string | null;
+  gmail_rfc_message_id: string | null;
   draft_status: DraftStatus;
   draft_error: string | null;
   sent_at: string | null;

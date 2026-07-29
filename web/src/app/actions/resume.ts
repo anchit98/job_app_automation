@@ -400,7 +400,7 @@ export async function submitResumeResponse(
     };
   }
 
-  // Fabrication / JD-keyword flags are advisory only — auto-approved (no checkbox gate).
+  // Fabrication / JD-keyword flags are advisory only - auto-approved (no checkbox gate).
   const fabrication = checkResumeFabrication(
     masterParsed.data,
     schemaResult.data,
@@ -434,7 +434,7 @@ export async function submitResumeResponse(
     };
   }
 
-  // Content already accepted — do not block ChatGPT chain on Drive.
+  // Content already accepted - do not block ChatGPT chain on Drive.
   {
     const versions = await listResumeVersions(existing.target_entity_id);
     const linked = versions.find((v) => v.prompt_run_id === promptRunId);
@@ -618,7 +618,7 @@ export async function retryResumeUpload(resumeVersionId: string) {
 
 /**
  * If ChatGPT already produced resume JSON but Drive export failed, retry export
- * and complete the prompt — used by advancePipeline so reconnecting Google unblocks.
+ * and complete the prompt - used by advancePipeline so reconnecting Google unblocks.
  */
 export async function recoverResumeExportForPromptRun(
   applicationId: string,

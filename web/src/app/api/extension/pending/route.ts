@@ -63,7 +63,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           ok: false,
           armed: false,
-          error: "No active wake — open ChatGPT only from Quick Apply.",
+          error: "No active wake - open ChatGPT only from Quick Apply.",
         });
       }
       const run = await getPromptRunById(body.prompt_run_id);

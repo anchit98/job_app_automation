@@ -25,7 +25,7 @@ export function extractJsonFromText(raw: string): string {
   const balanced = takeBalancedJson(slice);
   if (balanced.length < slice.length - 2) {
     throw new Error(
-      "JSON appears truncated — response was cut off before the end. In ChatGPT, ask it to output the COMPLETE JSON in one message, then paste again.",
+      "JSON appears truncated - response was cut off before the end. In ChatGPT, ask it to output the COMPLETE JSON in one message, then paste again.",
     );
   }
   return balanced;
@@ -97,7 +97,7 @@ export function sanitizeInvalidJsonEscapes(json: string): string {
         continue;
       }
     }
-    // Invalid escape (e.g. \[ or \]) — drop the backslash
+    // Invalid escape (e.g. \[ or \]) - drop the backslash
     result += next;
     i++;
   }

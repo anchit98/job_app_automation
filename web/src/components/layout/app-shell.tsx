@@ -8,7 +8,7 @@ import { PipelineKeeper } from "@/components/pipeline/pipeline-keeper";
 import { ProfileMenu } from "@/components/layout/profile-menu";
 
 const paidLinks = [
-  { href: "/dashboard", icon: "home", label: "Home" },
+  { href: "/dashboard", icon: "dashboard", label: "Dashboard" },
   { href: "/apply", icon: "rocket_launch", label: "Apply" },
   { href: "/applications", icon: "work", label: "Jobs" },
 ];
@@ -50,7 +50,7 @@ export function AppShell({
 
   const activePath = optimisticPath ?? pathname;
   const showApplicationSearch = isPaid && activePath === "/applications";
-  const homeHref = isPaid ? "/dashboard" : "/billing";
+  const dashboardHref = isPaid ? "/dashboard" : "/billing";
 
   const navLinks = isPaid
     ? [
@@ -71,9 +71,9 @@ export function AppShell({
         <div className="mx-auto h-nav-height max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-2 md:gap-4">
           <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
             <Link
-              href={homeHref}
+              href={dashboardHref}
               prefetch
-              onClick={() => setOptimisticPath(homeHref)}
+              onClick={() => setOptimisticPath(dashboardHref)}
               className="flex items-center gap-2 shrink-0 no-underline"
             >
               <Image

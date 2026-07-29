@@ -28,7 +28,7 @@ export default async function PipelinePage({
           <h1 className="li-page-title mt-1">Pipeline</h1>
           {application?.company || application?.role ? (
             <p className="text-[14px] text-on-surface-variant mt-1">
-              {[application.company, application.role].filter(Boolean).join(" — ")}
+              {[application.company, application.role].filter(Boolean).join(" - ")}
             </p>
           ) : null}
         </div>

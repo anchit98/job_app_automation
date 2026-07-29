@@ -73,7 +73,7 @@ export function mapDashboardMetrics(row: DashboardMetricsRow): DashboardMetrics 
 }
 
 export function formatRate(rate: number | null): string {
-  if (rate == null) return "—";
+  if (rate == null) return "-";
   return `${Math.round(rate * 100)}%`;
 }
 

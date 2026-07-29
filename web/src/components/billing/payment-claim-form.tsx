@@ -19,7 +19,7 @@ export function PaymentClaimForm({
     return (
       <div className="rounded-lg border border-status-waiting/30 bg-status-waiting-container px-4 py-3">
         <p className="text-[14px] font-semibold text-on-surface">
-          Payment submitted — awaiting admin approval
+          Payment submitted - awaiting admin approval
         </p>
         <p className="li-meta mt-1">
           We&apos;ll unlock your account after verifying the UPI transfer. You can
@@ -86,7 +86,7 @@ export function PaymentClaimForm({
         disabled={pending}
         className="li-btn-primary w-full justify-center disabled:opacity-50"
       >
-        {pending ? "Submitting…" : "I've paid — submit for approval"}
+        {pending ? "Submitting…" : "I've paid - submit for approval"}
       </button>
     </form>
   );

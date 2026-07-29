@@ -121,7 +121,7 @@ export function DemoPromptFlow() {
               className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800"
             >
               <span>
-                {run.kind} — <span className="font-mono text-xs">{run.status}</span>
+                {run.kind} - <span className="font-mono text-xs">{run.status}</span>
               </span>
               <span className="text-xs text-zinc-500">
                 {new Date(run.exported_at).toLocaleString()}

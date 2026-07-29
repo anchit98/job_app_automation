@@ -20,7 +20,7 @@ export interface BulletLayoutSpec {
 //   - Servetel b0 (known 3-line) = width ~246
 // => per-line capacity is ~100-122 width units. To GUARANTEE 2 lines (never 3) for any
 //    glyph mix, the 2-line ceiling must stay at/below the worst-case (~199). We cap at 196.
-export const BULLET_MAX_WIDTH = 196; // hard ceiling — above this risks a 3rd line
+export const BULLET_MAX_WIDTH = 196; // hard ceiling - above this risks a 3rd line
 export const BULLET_TARGET_WIDTH = 178; // sweet spot (matches master WPP b0 at ~183)
 
 // Word-count guidance for the LLM prompt (a bullet at target width is ~28-30 words).
@@ -30,7 +30,7 @@ export const TWO_LINE_TARGET_WORDS = 29;
 
 export const BULLET_LAYOUT_VERSION = 5;
 
-/** Whitespace-delimited token count — matches each bullet line in the master Google Doc. */
+/** Whitespace-delimited token count - matches each bullet line in the master Google Doc. */
 export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
@@ -56,7 +56,7 @@ export const ANCHIT_BULLET_LAYOUT: BulletLayoutSpec = {
   ],
 };
 
-/** Split on sentence boundaries (. ! ?) — same logic as countSentences. */
+/** Split on sentence boundaries (. ! ?) - same logic as countSentences. */
 export function splitSentences(text: string): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
@@ -238,7 +238,7 @@ export function sentenceTargetsForSection(rule: SectionLayoutRule): number[] {
   return Array.from({ length: rule.bullets }, () => rule.sentences_per_bullet);
 }
 
-/** Sentence count target per slot — follows the master bullet's actual shape. */
+/** Sentence count target per slot - follows the master bullet's actual shape. */
 export function sentenceTargetForMasterBullet(
   masterBullet: string,
   sectionRule?: SectionLayoutRule,
@@ -325,8 +325,8 @@ export function formatBulletLayoutRules(layout: BulletLayoutSpec): string {
     `Layout version: ${BULLET_LAYOUT_VERSION}`,
     "",
     "Each bullet = ONE JSON string with EXACTLY the word count shown for that slot (from master Google Doc).",
-    "One or two sentences inside the string is fine — only total word count must match.",
-    "Complete every bullet — never truncate mid-phrase.",
+    "One or two sentences inside the string is fine - only total word count must match.",
+    "Complete every bullet - never truncate mid-phrase.",
   ];
   for (const rule of layout.experience) {
     lines.push(`- ${rule.label}: exactly ${rule.bullets} bullet(s)`);

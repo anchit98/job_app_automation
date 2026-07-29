@@ -62,7 +62,7 @@ export function QuickApplyExistingButton({
       const result = await startQuickApplyForApplication({
         applicationId,
         email_instructions: emailInstructions.trim() || undefined,
-        // Omit contacts when using saved ones — server loads from DB.
+        // Omit contacts when using saved ones - server loads from DB.
         // Pass [] explicitly when the modal submits with no rows (skip emails).
         contacts: withContacts === undefined ? undefined : cleaned,
       });

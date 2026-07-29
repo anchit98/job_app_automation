@@ -26,6 +26,15 @@ export interface ApplicationListItem {
   resume_version_count: number;
   latest_resume_version: number | null;
   is_incomplete: boolean;
+  /** True when the application has at least one contact with an email. */
+  has_contact?: boolean;
+  /** Earliest due follow-up for this application, if any. */
+  due_follow_up?: {
+    id: string;
+    sequence: 1 | 2;
+    due_at: string;
+    contact_name: string | null;
+  } | null;
   pipeline?: {
     pipeline_id: string;
     status: string;

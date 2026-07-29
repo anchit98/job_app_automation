@@ -112,7 +112,7 @@ export function validateColdEmailBatch(
     if (!expected.has(item.contact_id)) {
       issues.push({
         path: `${path}.contact_id`,
-        message: `Unknown contact_id "${item.contact_id}" — must match an input contact.`,
+        message: `Unknown contact_id "${item.contact_id}" - must match an input contact.`,
       });
       continue;
     }
@@ -213,7 +213,7 @@ Rules to fix:
 - First sentence of each body must differ meaningfully (unique personal opener).
 - No placeholders like [COMPANY], {{name}}, or YOUR_NAME.
 - Keep structure: personalized opening → relevant experience → why company → CTA.
-- No sign-off or signature (name, phone, email) — the app appends your profile signature in Gmail drafts.
+- No sign-off or signature (name, phone, email) - the app appends your profile signature in Gmail drafts.
 
 Previous response (reference):
 ${previousResponseSnippet.slice(0, 1200)}`;

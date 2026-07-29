@@ -204,7 +204,7 @@ The theme can be cycled from the **Me dropdown** (header profile menu).
 
 ---
 
-## Home
+## Dashboard
 
 - Compact profile header with **Start Quick Apply** (primary) and **Update Profile** (split card / secondary CTA)
 - Full-width **pipeline metrics** + follow-ups bar — no Apply / Jobs / Profile / Settings shortcut tiles
@@ -215,13 +215,13 @@ The theme can be cycled from the **Me dropdown** (header profile menu).
 ## Header search
 
 - **Search applications** appears in the sticky header **only on the Jobs page** (`/applications`)
-- Hidden on Home, Quick Apply, workspaces, and other routes
+- Hidden on Dashboard, Quick Apply, workspaces, and other routes
 
 ---
 
 ## Setup Guide Pill
 
-When the Home setup guide is **minimized**, it collapses to a **floating bottom-right pill**:
+When the Dashboard setup guide is **minimized**, it collapses to a **floating bottom-right pill**:
 
 - Height: 36px, `rounded-full`, hairline border, semi-transparent backdrop
 - Content: logo icon + "Setup Guide" label + expand chevron

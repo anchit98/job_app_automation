@@ -1,5 +1,9 @@
 import { searchApplicationsFromParams } from "@/app/actions/tracker";
 import { getApplicationPipelineSummaries } from "@/app/actions/pipeline";
+import {
+  getApplicationsWithContacts,
+  getDueFollowUpsByApplicationIds,
+} from "@/lib/follow-ups/queries";
 import { ApplicationsTable } from "@/components/applications/applications-table";
 
 export default async function ApplicationsPage({
@@ -9,12 +13,17 @@ export default async function ApplicationsPage({
 }) {
   const params = await searchParams;
   const result = await searchApplicationsFromParams(params);
-  const summaries = await getApplicationPipelineSummaries(
-    result.items.map((i) => i.id),
-  );
+  const ids = result.items.map((i) => i.id);
+  const [summaries, withContacts, dueByApp] = await Promise.all([
+    getApplicationPipelineSummaries(ids),
+    getApplicationsWithContacts(ids),
+    getDueFollowUpsByApplicationIds(ids),
+  ]);
   const items = result.items.map((item) => ({
     ...item,
     pipeline: summaries[item.id] ?? null,
+    has_contact: withContacts.has(item.id),
+    due_follow_up: dueByApp[item.id] ?? null,
   }));
 
   return (
@@ -23,7 +32,8 @@ export default async function ApplicationsPage({
         <div>
           <h1 className="li-page-title">Jobs</h1>
           <p className="text-[14px] text-on-surface-variant mt-1">
-            Search, filter, and track every role in your pipeline.
+            Search, filter, and track every role in your pipeline. Follow up on
+            rows that have a contact when a follow-up is due.
           </p>
         </div>
       </div>

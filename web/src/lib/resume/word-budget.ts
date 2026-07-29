@@ -24,7 +24,7 @@ export function countTailorableWords(content: ResumeContent): number {
 }
 
 export interface ResumeWordBudget {
-  /** Master doc reference — words in WORK EXPERIENCE → SKILLS body. */
+  /** Master doc reference - words in WORK EXPERIENCE → SKILLS body. */
   work_through_skills_total: number;
   fixed_line_words: number;
   /** Hard ceiling for tailored JSON (bullets + skills). */
