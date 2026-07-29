@@ -46,13 +46,13 @@ async function waitForBridge(timeoutMs = 3000): Promise<BridgeApi | null> {
       clearTimeout(timer);
       resolve(api);
     };
-    const onReady = () => finish(getBridge());
+    const onReady = () => finish(getBridge() ?? null);
     window.addEventListener("jobapp-bridge-ready", onReady);
     const poll = setInterval(() => {
       const api = getBridge();
       if (api?.wake) finish(api);
     }, 200);
-    const timer = setTimeout(() => finish(getBridge()), timeoutMs);
+    const timer = setTimeout(() => finish(getBridge() ?? null), timeoutMs);
   });
 }
 
