@@ -400,7 +400,7 @@ export async function submitColdEmailsResponse(
   if (!rawResponse.trim()) {
     return {
       ok: false as const,
-      error: "Response is empty. Paste the ChatGPT output and try again.",
+      error: "Response is empty. Paste the AI output and try again.",
     };
   }
 
@@ -479,7 +479,7 @@ export async function submitColdEmailsResponse(
     const detail = e instanceof Error ? e.message : "Response is not valid JSON.";
     const hint =
       /\\[^"\\/bfnrtu]/i.test(jsonText) || /\\\[/i.test(jsonText)
-        ? " ChatGPT may have used invalid escapes like \\[ in markdown - try pasting again or remove backslashes before [ and ]."
+        ? " AI may have used invalid escapes like \\[ in markdown - try pasting again or remove backslashes before [ and ]."
         : "";
     await updatePromptRunValidationErrors(
       promptRunId,

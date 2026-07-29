@@ -234,7 +234,7 @@ export function CoverLetterFlow({
       <Card>
         <CardTitle>Cover letter generation</CardTitle>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Uses your tailored resume + JD via ChatGPT. Each generation creates a
+          Uses your tailored resume + JD via AI. Each generation creates a
           new versioned PDF and DOCX in Drive.
         </p>
         <div className="mt-4 flex flex-wrap items-end gap-4">

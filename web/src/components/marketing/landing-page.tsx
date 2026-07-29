@@ -17,7 +17,7 @@ const navLinks = [
 
 const heroChips = [
   { icon: "verified", label: "Fully customizable" },
-  { icon: "smart_toy", label: "ChatGPT in the loop" },
+  { icon: "smart_toy", label: "AI in the loop" },
   { icon: "drafts", label: "Draft-only outreach" },
 ];
 
@@ -30,7 +30,7 @@ const features = [
   {
     icon: "extension",
     title: "JobApp Bridge",
-    body: "The Chrome extension opens ChatGPT, pastes each prompt, and posts structured replies back so you can skip the copy-paste grind.",
+    body: "The Chrome extension opens your AI chat, pastes each prompt, and posts structured replies back so you can skip the copy-paste grind.",
   },
   {
     icon: "work",
@@ -58,7 +58,7 @@ const benefits = [
   {
     icon: "hub",
     title: "Stop juggling ten tools",
-    body: "LinkedIn, ChatGPT, Docs, Gmail, trackers, and reminders collapse into one personal application OS.",
+    body: "LinkedIn, AI chat, Docs, Gmail, trackers, and reminders collapse into one personal application OS.",
   },
   {
     icon: "auto_fix_high",
@@ -80,13 +80,13 @@ const benefits = [
 const aiPoints = [
   {
     icon: "psychology",
-    title: "ChatGPT in the loop",
-    body: "JobApp OS composes structured prompts from your profile and the job description, then validates ChatGPT responses before they enter your pipeline.",
+    title: "AI in the loop",
+    body: "JobApp OS composes structured prompts from your profile and the job description, then validates AI responses before they enter your pipeline.",
   },
   {
     icon: "sync_alt",
     title: "Bridge automation",
-    body: "JobApp Bridge moves prompts and replies between the app and ChatGPT so the agent can run stages end to end.",
+    body: "JobApp Bridge moves prompts and replies between the app and AI so the agent can run stages end to end.",
   },
   {
     icon: "build",
@@ -96,7 +96,7 @@ const aiPoints = [
   {
     icon: "key_off",
     title: "No API key required",
-    body: "You bring your ChatGPT access. The agent orchestrates the workflow around the tools you already use.",
+    body: "You bring your AI access. The agent orchestrates the workflow around the tools you already use.",
   },
 ];
 
@@ -131,19 +131,20 @@ function Reveal({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (typeof IntersectionObserver === "undefined") {
-      el.classList.add("is-in");
+      setInView(true);
       return;
     }
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            el.classList.add("is-in");
+            setInView(true);
             observer.disconnect();
           }
         }
@@ -157,7 +158,7 @@ function Reveal({
   return (
     <div
       ref={ref}
-      className={`mk-reveal ${className}`}
+      className={`mk-reveal ${inView ? "is-in" : ""} ${className}`}
       style={delay ? { transitionDelay: `${delay}ms` } : undefined}
     >
       {children}
@@ -178,11 +179,15 @@ function SectionHeading({
 }) {
   return (
     <Reveal
-      className={align === "center" ? "mx-auto max-w-3xl text-center" : "max-w-3xl"}
+      className={
+        align === "center"
+          ? "mx-auto max-w-3xl text-center"
+          : "mx-auto max-w-3xl text-center sm:mx-0 sm:text-left"
+      }
     >
       <p
         className={`mk-eyebrow inline-flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.16em] text-[var(--primary)] ${
-          align === "center" ? "justify-center" : ""
+          align === "center" ? "justify-center" : "justify-center sm:justify-start"
         }`}
       >
         <span className="mk-eyebrow-line" aria-hidden />
@@ -203,13 +208,22 @@ function SectionHeading({
 export function LandingPage() {
   const year = new Date().getFullYear();
   const [scrolled, setScrolled] = useState(false);
+  const [showTop, setShowTop] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12);
+    const onScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 12);
+      setShowTop(y > 420);
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   return (
     <div className="marketing-page bg-[var(--canvas)] text-[var(--on-surface)]">
@@ -220,7 +234,7 @@ export function LandingPage() {
             : "bg-transparent"
         }`}
       >
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-center gap-4 px-4 sm:justify-between sm:px-6 lg:px-8">
           <a href="#top" className="flex items-center gap-2.5 no-underline">
             <Image
               src="/brand/jobapp-os-logo.png"
@@ -242,7 +256,7 @@ export function LandingPage() {
               </a>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 sm:flex">
             <Link
               href="/login"
               className="rounded-lg px-3.5 py-2 text-[13px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]"
@@ -265,7 +279,7 @@ export function LandingPage() {
           <span className="marketing-aurora marketing-aurora-a" aria-hidden />
           <span className="marketing-aurora marketing-aurora-b" aria-hidden />
           <div className="relative mx-auto grid max-w-6xl gap-12 px-4 pb-20 pt-14 sm:px-6 sm:pt-16 lg:grid-cols-12 lg:items-center lg:gap-10 lg:px-8 lg:pb-28 lg:pt-24">
-            <div className="lg:col-span-6">
+            <div className="text-center sm:text-left lg:col-span-6">
               <Reveal>
                 <p className="mk-hero-badge">
                   <span className="marketing-pulse-dot" aria-hidden />
@@ -281,13 +295,13 @@ export function LandingPage() {
                 </h1>
               </Reveal>
               <Reveal delay={180}>
-                <p className="mt-5 max-w-xl text-[16px] leading-7 text-[var(--on-surface-variant)] sm:text-[18px] sm:leading-8">
+                <p className="mx-auto mt-5 max-w-xl text-[16px] leading-7 text-[var(--on-surface-variant)] sm:mx-0 sm:text-[18px] sm:leading-8">
                   Tailor resumes, cover letters, and outreach for every role,
                   then track the full pipeline in one place.
                 </p>
               </Reveal>
               <Reveal delay={260}>
-                <div className="mt-8 flex flex-wrap items-center gap-3">
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
                   <Link
                     href="/signup"
                     className="mk-btn mk-btn-primary min-h-13 px-7 text-[15px]"
@@ -306,7 +320,7 @@ export function LandingPage() {
                 </div>
               </Reveal>
               <Reveal delay={340}>
-                <div className="mt-7 flex flex-wrap items-center gap-2.5">
+                <div className="mt-7 flex flex-wrap items-center justify-center gap-2.5 sm:justify-start">
                   {heroChips.map((chip) => (
                     <span key={chip.label} className="mk-chip">
                       <span className="material-symbols-outlined text-[15px]">
@@ -320,7 +334,7 @@ export function LandingPage() {
               <Reveal delay={420}>
                 <p className="mt-6 text-[13px] font-medium text-[var(--on-surface-variant)]">
                   Limited time: lifetime access from{" "}
-                  <span className="font-bold text-[var(--primary)]">₹299</span>{" "}
+                  <span className="price-display font-bold text-[var(--primary)]">₹299</span>{" "}
                   after activation.
                 </p>
               </Reveal>
@@ -339,12 +353,12 @@ export function LandingPage() {
             <SectionHeading
               eyebrow="About"
               title="A career operations agent you can shape"
-              lead="Job hunting usually means bouncing between ChatGPT, documents, Gmail, and spreadsheets for every role. JobApp OS is built as a fully customizable assistant that turns a pasted job description into a tracked application package: tailored materials, draft outreach, and follow-ups that stay under your control."
+              lead="Job hunting usually means bouncing between AI, documents, Gmail, and spreadsheets for every role. JobApp OS is built as a fully customizable assistant that turns a pasted job description into a tracked application package: tailored materials, draft outreach, and follow-ups that stay under your control."
             />
             <div className="mt-12 grid gap-5 sm:grid-cols-3">
               {aboutSteps.map((item, index) => (
                 <Reveal key={item.step} delay={index * 110}>
-                  <article className="marketing-panel mk-step-card h-full rounded-2xl p-6">
+                  <article className="marketing-panel mk-step-card h-full rounded-2xl p-6 text-center sm:text-left">
                     <div className="flex items-center justify-between">
                       <span className="mk-icon-tile">
                         <span className="material-symbols-outlined text-[22px]">
@@ -376,7 +390,7 @@ export function LandingPage() {
             <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {features.map((feature, index) => (
                 <Reveal key={feature.title} delay={(index % 3) * 110}>
-                  <article className="marketing-panel h-full rounded-2xl p-6">
+                  <article className="marketing-panel h-full rounded-2xl p-6 text-center sm:text-left">
                     <span className="mk-icon-tile">
                       <span className="material-symbols-outlined text-[22px]">
                         {feature.icon}
@@ -406,7 +420,7 @@ export function LandingPage() {
             <div className="mt-12 grid gap-5 lg:grid-cols-2">
               {benefits.map((benefit, index) => (
                 <Reveal key={benefit.title} delay={(index % 2) * 110}>
-                  <article className="marketing-panel flex h-full gap-5 rounded-2xl p-6">
+                  <article className="marketing-panel flex h-full flex-col items-center gap-5 rounded-2xl p-6 text-center sm:flex-row sm:items-stretch sm:text-left">
                     <span className="mk-icon-tile shrink-0">
                       <span className="material-symbols-outlined text-[22px]">
                         {benefit.icon}
@@ -432,13 +446,13 @@ export function LandingPage() {
                 <SectionHeading
                   eyebrow="How AI is leveraged"
                   title="AI that prepares. You that decide."
-                  lead="JobApp OS treats ChatGPT as the reasoning engine inside a structured agent workflow. Prompts are composed from your materials, responses are validated, and outbound mail stays draft-only until you send it from Gmail."
+                  lead="JobApp OS treats AI as the reasoning engine inside a structured agent workflow. Prompts are composed from your materials, responses are validated, and outbound mail stays draft-only until you send it from Gmail."
                 />
               </div>
               <div className="grid gap-5 sm:grid-cols-2 lg:col-span-7">
                 {aiPoints.map((point, index) => (
                   <Reveal key={point.title} delay={(index % 2) * 110}>
-                    <article className="marketing-panel h-full rounded-2xl p-6">
+                    <article className="marketing-panel h-full rounded-2xl p-6 text-center sm:text-left">
                       <span className="mk-icon-tile">
                         <span className="material-symbols-outlined text-[22px]">
                           {point.icon}
@@ -478,10 +492,10 @@ export function LandingPage() {
         <section id="pricing" className="marketing-section">
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <Reveal>
-              <div className="marketing-pricing relative overflow-hidden rounded-[28px] px-6 py-12 sm:px-10 sm:py-14">
+              <div className="marketing-pricing relative overflow-hidden rounded-[24px] px-5 py-10 sm:rounded-[28px] sm:px-10 sm:py-14">
                 <div className="marketing-pricing-glow" aria-hidden />
                 <div className="relative grid gap-10 lg:grid-cols-12 lg:items-center">
-                  <div className="lg:col-span-7">
+                  <div className="text-center sm:text-left lg:col-span-7">
                     <p className="mk-offer-badge">
                       <span className="material-symbols-outlined text-[15px]">
                         bolt
@@ -491,7 +505,7 @@ export function LandingPage() {
                     <h2 className="marketing-display mt-5 text-[30px] font-bold leading-[1.12] tracking-tight sm:text-[38px]">
                       Lifetime access for serious applicants
                     </h2>
-                    <p className="mt-4 max-w-xl text-[16px] leading-7 text-[var(--on-surface-variant)]">
+                    <p className="mx-auto mt-4 max-w-xl text-[16px] leading-7 text-[var(--on-surface-variant)] sm:mx-0">
                       Activate JobApp OS with a one-time payment. Includes
                       lifetime access and one-time setup support so you can
                       connect Google, load your master docs, and get the Bridge
@@ -506,7 +520,7 @@ export function LandingPage() {
                       ].map((item) => (
                         <li
                           key={item}
-                          className="flex items-center gap-2.5 text-[14px] font-semibold"
+                          className="flex items-center justify-center gap-2.5 text-[14px] font-semibold sm:justify-start"
                         >
                           <span className="material-symbols-outlined text-[18px] text-[var(--success)]">
                             check_circle
@@ -517,15 +531,15 @@ export function LandingPage() {
                     </ul>
                   </div>
                   <div className="lg:col-span-5">
-                    <div className="mk-price-card rounded-2xl p-7 text-center">
+                    <div className="mk-price-card rounded-2xl p-6 text-center sm:p-7">
                       <p className="text-[13px] font-bold uppercase tracking-[0.14em] text-[var(--on-surface-variant)]">
                         Lifetime access
                       </p>
-                      <div className="mt-4 flex items-end justify-center gap-3">
-                        <span className="text-[26px] font-semibold text-[var(--on-surface-variant)] line-through decoration-[var(--error)]/60 decoration-2">
+                      <div className="mt-4 flex items-center justify-center gap-3">
+                        <span className="text-[26px] font-semibold text-[var(--on-surface-variant)] line-through decoration-[var(--error)]/60 decoration-2 price-display">
                           ₹699
                         </span>
-                        <span className="marketing-display marketing-gradient-text text-[58px] font-extrabold leading-none">
+                        <span className="price-display marketing-gradient-text text-[52px] font-bold leading-none sm:text-[58px]">
                           ₹299
                         </span>
                       </div>
@@ -559,8 +573,8 @@ export function LandingPage() {
 
       <footer className="border-t border-[var(--border-hairline)] bg-[var(--surface)]">
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-12 lg:px-8">
-          <div className="max-w-sm lg:col-span-5">
-            <div className="flex items-center gap-2.5">
+          <div className="mx-auto max-w-sm text-center sm:mx-0 sm:text-left lg:col-span-5">
+            <div className="flex items-center justify-center gap-2.5 sm:justify-start">
               <Image
                 src="/brand/jobapp-os-logo.png"
                 alt=""
@@ -578,7 +592,7 @@ export function LandingPage() {
               agent you can fully customize.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:col-span-7">
+          <div className="grid grid-cols-2 gap-8 text-center sm:grid-cols-3 sm:text-left lg:col-span-7">
             <div>
               <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[var(--on-surface-variant)]">
                 Product
@@ -638,12 +652,24 @@ export function LandingPage() {
           </div>
         </div>
         <div className="border-t border-[var(--border-hairline)]">
-          <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-5 text-[13px] text-[var(--on-surface-variant)] sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-5 text-center text-[13px] text-[var(--on-surface-variant)] sm:flex-row sm:items-center sm:justify-between sm:text-left sm:px-6 lg:px-8">
             <p>© {year} JobApp OS. All rights reserved.</p>
             <p>Applications customized for you.</p>
           </div>
         </div>
       </footer>
+
+      <button
+        type="button"
+        className={`mk-back-top ${showTop ? "is-visible" : ""}`}
+        onClick={scrollToTop}
+        aria-label="Back to top"
+        tabIndex={showTop ? 0 : -1}
+      >
+        <span className="material-symbols-outlined text-[22px]" aria-hidden>
+          arrow_upward
+        </span>
+      </button>
     </div>
   );
 }

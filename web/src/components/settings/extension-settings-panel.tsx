@@ -8,7 +8,7 @@ export function ExtensionSettingsPanel() {
       <div>
         <h2 className="li-section-title">JobApp Bridge (Chrome extension)</h2>
         <p className="li-meta mt-1">
-          Required for auto-apply. Without it, pipelines stop at ChatGPT steps.
+          Required for auto-apply. Without it, pipelines stop at AI steps.
         </p>
       </div>
       <ExtensionBridgeControls />

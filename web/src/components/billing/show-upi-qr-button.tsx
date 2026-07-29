@@ -1,17 +1,34 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import QRCode from "qrcode";
 
-const QR_SRC = "/billing/upi-qr.png";
+/** BHIM UPI intent — scannable by GPay, PhonePe, Paytm, and other UPI apps. */
+export function buildUpiPayUri(input: {
+  upiId: string;
+  amountInr: string;
+  planLabel: string;
+  payeeName?: string;
+}): string {
+  const pa = encodeURIComponent(input.upiId.trim());
+  const pn = encodeURIComponent(input.payeeName ?? "JobApp OS");
+  const am = encodeURIComponent(input.amountInr.trim());
+  const tn = encodeURIComponent(input.planLabel.trim());
+  return `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=INR&tn=${tn}`;
+}
 
 export function ShowUpiQrButton({
+  upiId,
   amountInr,
   planLabel,
 }: {
+  upiId: string;
   amountInr: string;
   planLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
   const titleId = useId();
 
   useEffect(() => {
@@ -28,6 +45,41 @@ export function ShowUpiQrButton({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !upiId.trim()) {
+      setQrDataUrl(null);
+      setQrError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setQrError(null);
+
+    const uri = buildUpiPayUri({ upiId, amountInr, planLabel });
+    QRCode.toDataURL(uri, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 480,
+      color: {
+        dark: "#000000",
+        light: "#FFFFFF",
+      },
+    })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQrDataUrl(null);
+          setQrError("Could not generate QR. Use Copy UPI ID or Open UPI app instead.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, upiId, amountInr, planLabel]);
+
   return (
     <>
       <button
@@ -35,6 +87,9 @@ export function ShowUpiQrButton({
         className="li-btn-secondary text-[13px] justify-center w-full md:w-auto"
         onClick={() => setOpen(true)}
       >
+        <span className="material-symbols-outlined text-[18px]" aria-hidden>
+          qr_code_2
+        </span>
         Show QR
       </button>
 
@@ -88,30 +143,48 @@ export function ShowUpiQrButton({
               </div>
             </div>
 
-            <div className="flex flex-col items-center gap-5 px-6 py-6">
+            <div className="flex flex-col items-center gap-4 px-6 pb-6 pt-5">
               <div className="text-center">
                 <p className="text-[12px] font-medium text-on-surface-variant">
                   {planLabel}
                 </p>
-                <p className="mt-1 text-[34px] font-semibold tracking-tight text-on-surface leading-none">
+                <p className="price-display mt-1 text-[34px] font-bold tracking-tight text-on-surface leading-none">
                   ₹{amountInr}
+                </p>
+                <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-success-container/60 px-2.5 py-1 text-[11px] font-semibold text-success">
+                  <span className="material-symbols-outlined text-[13px]" aria-hidden>
+                    lock
+                  </span>
+                  Secure UPI payment
                 </p>
               </div>
 
-              <div className="rounded-2xl bg-white p-4 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)] dark:bg-white">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={QR_SRC}
-                  alt="UPI payment QR code"
-                  width={240}
-                  height={240}
-                  className="h-auto w-[min(68vw,240px)] select-none"
-                  draggable={false}
-                />
+              <div className="bp-qr-frame">
+                {qrDataUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={qrDataUrl}
+                    alt="UPI payment QR code"
+                    width={240}
+                    height={240}
+                    className="h-auto w-[min(68vw,240px)] select-none"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="flex h-[min(68vw,240px)] w-[min(68vw,240px)] items-center justify-center">
+                    <p className="px-3 text-center text-[13px] text-on-surface-variant">
+                      {qrError ?? "Generating QR…"}
+                    </p>
+                  </div>
+                )}
               </div>
 
+              <p className="max-w-[260px] break-all text-center text-[12px] font-semibold text-primary">
+                {upiId}
+              </p>
+
               <p className="text-center text-[13px] leading-snug text-on-surface-variant">
-                Scan with PhonePe, GPay, Paytm, or any UPI app
+                Scan with GPay, PhonePe, Paytm, or any UPI app
               </p>
             </div>
 

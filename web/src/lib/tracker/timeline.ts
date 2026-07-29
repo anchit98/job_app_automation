@@ -18,7 +18,7 @@ const ACTION_LABELS: Record<string, string> = {
   "application.notes_updated": "Notes updated",
   "application.deleted": "Application deleted",
   "prompt.exported": "Prompt exported",
-  "prompt.completed": "ChatGPT response accepted",
+  "prompt.completed": "AI response accepted",
   "resume.generated": "Resume generated",
   "cover_letter.generated": "Cover letter generated",
   "cold_emails.accepted": "Cold emails saved",

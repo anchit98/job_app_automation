@@ -38,7 +38,7 @@ export function PasteToGptDrawer({
     <Card className="space-y-4">
       <CardTitle>Paste-to-GPT</CardTitle>
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Copy the prompt, run it in ChatGPT, then paste the response back.
+        Copy the prompt, run it in AI, then paste the response back.
       </p>
       {lengthWarning && (
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
@@ -52,7 +52,7 @@ export function PasteToGptDrawer({
       />
       <div className="flex flex-wrap gap-2">
         <Button type="button" onClick={copyAndOpen}>
-          {copied ? "Copied - Open ChatGPT" : "Copy & Open ChatGPT"}
+          {copied ? "Copied - Open AI chat" : "Copy & Open AI chat"}
         </Button>
         <Button type="button" variant="secondary" onClick={onOpenPasteBack}>
           Paste response back
@@ -72,7 +72,7 @@ export function PasteToGptDrawer({
             rel="noreferrer"
             className="underline"
           >
-            Open ChatGPT manually
+            Open AI chat manually
           </a>
           , then paste the prompt from the box above.
         </p>

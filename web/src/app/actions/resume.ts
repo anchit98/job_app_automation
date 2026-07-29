@@ -100,7 +100,7 @@ function formatResumeExportError(error: unknown): string {
     return (
       "Resume JSON was accepted, but Google Drive export failed. " +
       "Reconnect Google on the dashboard, then the pipeline will retry the export automatically " +
-      "(no need to re-run ChatGPT)."
+      "(no need to re-run AI)."
     );
   }
   if (/file not found|404|not found/i.test(message)) {
@@ -266,7 +266,7 @@ async function persistResumeArtifacts(
   };
 
   if (options?.deferDrive) {
-    // ChatGPT chain continues; Drive runs after the HTTP response.
+    // AI chain continues; Drive runs after the HTTP response.
     after(() => {
       void finishDrive().catch((err) => {
         console.error("[resume] deferred Drive export failed", err);
@@ -291,7 +291,7 @@ export async function submitResumeResponse(
   if (!rawResponse.trim()) {
     return {
       ok: false as const,
-      error: "Response is empty. Paste the ChatGPT output and try again.",
+      error: "Response is empty. Paste the AI output and try again.",
     };
   }
 
@@ -434,7 +434,7 @@ export async function submitResumeResponse(
     };
   }
 
-  // Content already accepted - do not block ChatGPT chain on Drive.
+  // Content already accepted - do not block AI chain on Drive.
   {
     const versions = await listResumeVersions(existing.target_entity_id);
     const linked = versions.find((v) => v.prompt_run_id === promptRunId);
@@ -495,7 +495,7 @@ export async function submitResumeResponse(
 }
 
 /**
- * ChatGPT only returns tailored bullets/skills/headline. Merge with master
+ * AI only returns tailored bullets/skills/headline. Merge with master
  * structural fields (company, title, dates, project names, education, etc.)
  * so the ResumeContent object we validate + fabrication-check is complete.
  */
@@ -582,7 +582,7 @@ export async function retryResumeUpload(resumeVersionId: string) {
       result.drive_doc_id,
     );
 
-    // Finish the ChatGPT prompt once Drive export succeeds so the pipeline can leave resume.
+    // Finish the AI prompt once Drive export succeeds so the pipeline can leave resume.
     if (versionRow.prompt_run_id) {
       const prompt = await getPromptRunById(versionRow.prompt_run_id);
       if (prompt?.status === "pending") {
@@ -617,7 +617,7 @@ export async function retryResumeUpload(resumeVersionId: string) {
 }
 
 /**
- * If ChatGPT already produced resume JSON but Drive export failed, retry export
+ * If AI already produced resume JSON but Drive export failed, retry export
  * and complete the prompt - used by advancePipeline so reconnecting Google unblocks.
  */
 export async function recoverResumeExportForPromptRun(

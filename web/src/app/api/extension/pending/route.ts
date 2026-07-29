@@ -28,7 +28,7 @@ async function promptOwnedByUser(
 
 /**
  * Legacy poll endpoint. Always returns null so older extension builds that
- * poll on refresh / tab focus cannot open ChatGPT.
+ * poll on refresh / tab focus cannot open AI.
  */
 export async function GET(request: Request) {
   if (!(await verifyExtensionBearer(request.headers.get("authorization")))) {
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           ok: false,
           armed: false,
-          error: "No active wake - open ChatGPT only from Quick Apply.",
+          error: "No active wake - open AI only from Quick Apply.",
         });
       }
       const run = await getPromptRunById(body.prompt_run_id);

@@ -62,7 +62,7 @@ export function DemoPromptFlow() {
       <Card>
         <CardTitle>hello_world demo</CardTitle>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Tests the full paste-to-GPT round trip. ChatGPT should return JSON with{" "}
+          Tests the full paste-to-GPT round trip. AI should return JSON with{" "}
           <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">greeting</code> and{" "}
           <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">echo</code>.
         </p>

@@ -27,13 +27,13 @@ const slides = [
     id: "pipeline",
     label: "Pipeline",
     icon: "account_tree",
-    caption: "Watch each ChatGPT stage complete in sequence",
+    caption: "Watch each AI stage complete in sequence",
   },
   {
     id: "bridge",
     label: "Bridge",
     icon: "extension",
-    caption: "JobApp Bridge keeps ChatGPT connected to your agent",
+    caption: "JobApp Bridge keeps AI connected to your agent",
   },
 ] as const;
 
@@ -189,7 +189,7 @@ function PipelinePreview() {
     <Frame title="JobApp OS · Pipeline">
       <p className="text-[16px] font-bold">Live pipeline progress</p>
       <p className="mt-1 text-[12px] text-[var(--on-surface-variant)]">
-        Bridge is handling ChatGPT stages automatically
+        Bridge is handling AI stages automatically
       </p>
       <div className="mt-4 space-y-2.5">
         {stages.map(([name, state], index) => (
@@ -228,7 +228,7 @@ function BridgePreview() {
             body: "Composed from your master resume and the target JD",
           },
           {
-            tag: "ChatGPT",
+            tag: "AI",
             title: "Reply captured",
             body: "Validated and written back into the pipeline",
           },

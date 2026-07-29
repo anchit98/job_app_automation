@@ -1,5 +1,5 @@
 /**
- * Extract the first JSON object or array from a ChatGPT response.
+ * Extract the first JSON object or array from a AI response.
  * Handles markdown code fences and leading/trailing prose.
  */
 export function extractJsonFromText(raw: string): string {
@@ -25,7 +25,7 @@ export function extractJsonFromText(raw: string): string {
   const balanced = takeBalancedJson(slice);
   if (balanced.length < slice.length - 2) {
     throw new Error(
-      "JSON appears truncated - response was cut off before the end. In ChatGPT, ask it to output the COMPLETE JSON in one message, then paste again.",
+      "JSON appears truncated - response was cut off before the end. In your AI chat, ask it to output the COMPLETE JSON in one message, then paste again.",
     );
   }
   return balanced;
@@ -63,7 +63,7 @@ function takeBalancedJson(text: string): string {
 }
 
 /**
- * ChatGPT often escapes markdown as \[link\] inside JSON strings.
+ * AI often escapes markdown as \[link\] inside JSON strings.
  * Only \", \\, \/, \b, \f, \n, \r, \t, and \uXXXX are valid JSON escapes.
  */
 export function sanitizeInvalidJsonEscapes(json: string): string {

@@ -152,7 +152,7 @@ export default async function DashboardPage({
       {metrics.pendingPrompts > 0 && (
         <div className="li-card-flat p-3 border-l-4 border-l-status-waiting bg-status-waiting-container shrink-0">
           <p className="text-[14px] font-semibold text-on-surface">
-            {metrics.pendingPrompts} ChatGPT step
+            {metrics.pendingPrompts} AI step
             {metrics.pendingPrompts === 1 ? "" : "s"} pending
           </p>
           <p className="li-meta mt-1">

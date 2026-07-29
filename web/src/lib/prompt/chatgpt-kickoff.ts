@@ -1,7 +1,7 @@
 import type { PromptRunKind } from "@/lib/db/types";
 
 export const CHATGPT_PASTE_HINT =
-  "Paste into the ChatGPT message box as plain text. Do not upload as a file - ChatGPT will treat a file as reference material and ask what you want instead of running the task.";
+  "Paste into the AI message box as plain text. Do not upload as a file - AI will treat a file as reference material and ask what you want instead of running the task.";
 
 const KICKOFF_KINDS: PromptRunKind[] = [
   "resume",

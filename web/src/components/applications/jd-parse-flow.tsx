@@ -51,7 +51,7 @@ export function JdParseFlow({ applicationId, hasParsed }: JdParseFlowProps) {
       <div className="bg-surface-container border border-outline-variant rounded-xl p-6">
         <h2 className="text-[16px] font-medium text-on-surface">Parse job description (optional)</h2>
         <p className="mt-2 text-[14px] text-on-surface-variant">
-          Extract structured fields via ChatGPT - company, keywords, tech stack, and more.
+          Extract structured fields via AI - company, keywords, tech stack, and more.
           {hasParsed && " Re-parsing will overwrite the cached fields (history stays in prompt runs)."}
         </p>
         <button

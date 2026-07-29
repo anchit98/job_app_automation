@@ -182,7 +182,7 @@ export function UnifiedPasteModal({
           {step === 2 && (
             <>
               <p className="text-[16px] leading-[24px] text-on-surface-variant">
-                Copy the prompt below and paste it into the ChatGPT message box as plain text.
+                Copy the prompt below and paste it into the AI message box as plain text.
               </p>
 
               <div className="rounded-lg border border-primary/30 bg-primary-container/10 px-4 py-3 text-[13px] text-on-surface-variant leading-relaxed">
@@ -230,12 +230,12 @@ export function UnifiedPasteModal({
                     className="flex-1 bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-colors py-3 px-6 rounded-full flex items-center justify-center gap-3 shadow-sm group"
                   >
                     <span className="material-symbols-outlined group-hover:scale-110 transition-transform">content_copy</span>
-                    <span className="text-[14px] font-bold">Copy & open ChatGPT</span>
+                    <span className="text-[14px] font-bold">Copy & open AI chat</span>
                     <span className="material-symbols-outlined text-[18px] opacity-70">open_in_new</span>
                   </button>
                 </div>
                 <p className="text-[12px] text-on-surface-variant text-center max-w-[90%]">
-                  After ChatGPT returns JSON, come back here and paste the full response on the next step.
+                  After AI returns JSON, come back here and paste the full response on the next step.
                 </p>
                 <button 
                   onClick={() => setStep(3)}
@@ -250,7 +250,7 @@ export function UnifiedPasteModal({
           {step === 3 && (
             <>
               <p className="text-[14px] text-on-surface-variant">
-                Paste the full JSON response from ChatGPT below.
+                Paste the full JSON response from AI below.
               </p>
               <textarea
                 value={raw}

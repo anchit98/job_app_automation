@@ -324,7 +324,7 @@ export async function submitCoverLetterResponse(
   if (!rawResponse.trim()) {
     return {
       ok: false as const,
-      error: "Response is empty. Paste the ChatGPT output and try again.",
+      error: "Response is empty. Paste the AI output and try again.",
     };
   }
 
@@ -486,7 +486,7 @@ export async function submitCoverLetterResponse(
     };
   }
 
-  // Content already accepted - do not block ChatGPT chain on Drive.
+  // Content already accepted - do not block AI chain on Drive.
   {
     const versions = await listCoverLetterVersions(existing.target_entity_id);
     const linked = versions.find((v) => v.prompt_run_id === promptRunId);

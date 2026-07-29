@@ -19,6 +19,9 @@ export function CopyUpiButton({ upiId }: { upiId: string }) {
         }
       }}
     >
+      <span className="material-symbols-outlined text-[18px]" aria-hidden>
+        {copied ? "check" : "content_copy"}
+      </span>
       {copied ? "Copied" : "Copy UPI ID"}
     </button>
   );

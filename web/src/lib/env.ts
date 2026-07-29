@@ -32,7 +32,7 @@ export const env = {
   /** Displayed on the billing paywall for manual UPI transfer */
   upiId: () => optional("NEXT_PUBLIC_UPI_ID", optional("UPI_ID")),
   paymentAmountInr: () =>
-    optional("NEXT_PUBLIC_PAYMENT_AMOUNT_INR", optional("PAYMENT_AMOUNT_INR", "499")),
+    optional("NEXT_PUBLIC_PAYMENT_AMOUNT_INR", optional("PAYMENT_AMOUNT_INR", "299")),
   paymentPlanLabel: () =>
     optional(
       "NEXT_PUBLIC_PAYMENT_PLAN_LABEL",

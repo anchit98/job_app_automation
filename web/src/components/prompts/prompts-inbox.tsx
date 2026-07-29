@@ -118,7 +118,7 @@ export function PromptsInbox({ items }: PromptsInboxProps) {
                 rel="noreferrer"
                 className="px-4 py-2 rounded-full border border-outline-variant text-[13px] font-medium hover:bg-surface-container-high"
               >
-                Open ChatGPT
+                Open AI chat
               </a>
               <button
                 type="button"

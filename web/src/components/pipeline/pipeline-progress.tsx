@@ -65,7 +65,7 @@ async function publishSignal(
   const payload = {
     ...signal,
     ts: Date.now(),
-    // Manual "Open ChatGPT" must be allowed to take over a stuck tab.
+    // Manual "Open AI" must be allowed to take over a stuck tab.
     force: Boolean(opts?.clearLock),
   };
   try {
@@ -90,7 +90,7 @@ async function publishSignal(
     }
   ).__JOBAPP_BRIDGE__;
 
-  // Manual retry only - periodic re-arms must not kill an in-flight ChatGPT tab.
+  // Manual retry only - periodic re-arms must not kill an in-flight AI tab.
   if (opts?.clearLock) {
     try {
       await bridge?.clearLock?.();
@@ -115,7 +115,7 @@ async function publishSignal(
       const detail =
         res?.error ||
         res?.reason ||
-        "Extension did not open ChatGPT.";
+        "Extension did not open AI.";
       return {
         ok: false,
         error:
@@ -337,7 +337,7 @@ export function PipelineProgress({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid restarting on every stages_json patch
   }, [pipeline.status, pending, refresh, tick]);
 
-  // Keep waking ChatGPT while this stage is waiting (JD parse, resume, etc.).
+  // Keep waking AI while this stage is waiting (JD parse, resume, etc.).
   // First signal can be missed if the extension wasn't ready; re-arm periodically.
   // Skip auto-wake when Drive export is blocked on Google reconnect.
   useEffect(() => {
@@ -373,7 +373,7 @@ export function PipelineProgress({
       try {
         const already = wasAlreadySignaled(promptRunId);
         // Re-arm wake window so a dead tab can still open later; only re-signal
-        // ChatGPT on first arm or manual force (interval must not abort paste).
+        // AI on first arm or manual force (interval must not abort paste).
         const armed = await armExtensionForPromptRun(promptRunId, {
           pipeline_run_id: pipeline.id,
           kind: activeStage!.id,
@@ -437,7 +437,7 @@ export function PipelineProgress({
     }
 
     void wakeExtension({ forceSignal: true });
-    // Keep wake_until fresh; do not re-open/reinject ChatGPT every tick.
+    // Keep wake_until fresh; do not re-open/reinject AI every tick.
     const interval = setInterval(() => {
       void wakeExtension({ forceSignal: false });
     }, 20000);
@@ -581,7 +581,7 @@ export function PipelineProgress({
       {bridgeToken && (
         <div className="li-card-flat border-l-4 border-l-primary bg-info-container p-4 space-y-3">
           <h3 className="li-section-title">
-            Connect JobApp Bridge (required for ChatGPT)
+            Connect JobApp Bridge (required for AI)
           </h3>
           <ol className="list-decimal pl-5 text-[13px] text-on-surface-variant space-y-1">
             <li>
@@ -649,10 +649,10 @@ export function PipelineProgress({
           {isGoogleReconnectError(activeStage?.error || pipeline.error || error) ? (
             <>
               <p className="text-[13px] text-on-surface-variant">
-                ChatGPT already produced this stage&apos;s content, but Drive export
+                AI already produced this stage&apos;s content, but Drive export
                 failed because Google is disconnected or revoked. Reconnect Google,
                 then this page will retry the export and continue automatically -
-                no need to re-run ChatGPT.
+                no need to re-run AI.
               </p>
               <a href="/api/auth/google/start" className="li-btn-primary text-[12px] no-underline inline-flex">
                 Reconnect Google
@@ -665,7 +665,7 @@ export function PipelineProgress({
           ) : (
             <>
               <p className="text-[13px] text-on-surface-variant">
-                ChatGPT runs this stage (including JD parsing). You can leave this
+                AI runs this stage (including JD parsing). You can leave this
                 page - JobApp OS keeps the pipeline moving from any screen and
                 wakes JobApp Bridge automatically.
               </p>
@@ -674,11 +674,11 @@ export function PipelineProgress({
                 onClick={() => wakeExtensionForCurrentStage()}
                 className="li-btn-primary text-[12px]"
               >
-                Open ChatGPT for this stage
+                Open AI chat for this stage
               </button>
               {bridgeDetected === false && (
                 <p className="text-[12px] text-on-surface-variant">
-                  If ChatGPT did not open: reload JobApp Bridge in{" "}
+                  If AI did not open: reload JobApp Bridge in{" "}
                   <code className="text-[11px]">chrome://extensions</code>, then
                   hard-refresh this tab (Ctrl+Shift+R) and click the button again.
                 </p>

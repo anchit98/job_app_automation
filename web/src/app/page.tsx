@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "JobApp OS | Applications customized for you",
   description:
-    "JobApp OS is your personalized job application AI agent. Tailored resumes, cover letters, Gmail drafts, and follow-ups with ChatGPT in the loop.",
+    "JobApp OS is your personalized job application AI agent. Tailored resumes, cover letters, Gmail drafts, and follow-ups with AI in the loop.",
 };
 
 export default async function HomePage() {

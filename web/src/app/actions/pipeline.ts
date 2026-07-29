@@ -113,7 +113,7 @@ async function registerChatGptPending(
     prompt_text: promptText,
     chatgpt_url: chatgptUrl,
   });
-  // Arm immediately so JobApp Bridge can open ChatGPT for this stage
+  // Arm immediately so JobApp Bridge can open AI for this stage
   // (including JD parse) without waiting on a separate client-only step.
   await armExtensionWake(promptRunId, 300);
 }
@@ -377,7 +377,7 @@ type AdvanceResult =
     };
 
 /**
- * Drive the pipeline forward. For ChatGPT stages, exports a prompt and pauses
+ * Drive the pipeline forward. For AI stages, exports a prompt and pauses
  * in awaiting_chatgpt until submitPipelineResponse / extension paste-back.
  *
  * Concurrent callers (UI poll + paste-back) share one in-flight promise so
@@ -447,12 +447,12 @@ async function advancePipelineInner(
     return { ok: false as const, error: run.error ?? "Pipeline failed.", pipeline: run };
   }
 
-  // If waiting on ChatGPT, check whether the prompt run completed (extension path).
+  // If waiting on AI, check whether the prompt run completed (extension path).
   if (run.status === "awaiting_chatgpt" && run.current_stage) {
     const currentStage = run.current_stage;
     const stage = findStage(run, currentStage);
     if (stage?.prompt_run_id) {
-      // Resume/cover letter may have valid ChatGPT JSON already saved as
+      // Resume/cover letter may have valid AI JSON already saved as
       // upload_failed while Google was disconnected - retry Drive export first.
       if (currentStage === "resume" || currentStage === "cover_letter") {
         const hasFailedArtifact =
@@ -510,7 +510,7 @@ async function advancePipelineInner(
 
       const promptRun = await getPromptRunById(stage.prompt_run_id);
       if (promptRun?.status === "completed") {
-        // Advance once ChatGPT content is accepted. Drive PDFs finish in the background.
+        // Advance once AI content is accepted. Drive PDFs finish in the background.
         if (
           !(await chatgptStageArtifactsReady(
             currentStage,
@@ -550,7 +550,7 @@ async function advancePipelineInner(
   // Never treat an in-flight stage as "nothing left to do".
   const runningStage = run.stages.find((s) => s.status === "running");
   if (runningStage) {
-    // Another isolate may have claimed a ChatGPT stage and still be exporting -
+    // Another isolate may have claimed a AI stage and still be exporting -
     // wait for awaiting_chatgpt so paste-back can chain the next tab.
     if (
       runningStage.id === "jd_parse" ||
@@ -560,7 +560,7 @@ async function advancePipelineInner(
     ) {
       return awaitExistingChatGptStage(pipelineId, runningStage.id, run);
     }
-    // Non-ChatGPT stage left mid-flight (serverless timeout / tab closed) - retry.
+    // Non-AI stage left mid-flight (serverless timeout / tab closed) - retry.
     const stages = patchStage(run.stages, runningStage.id, {
       status: "pending",
       error: null,
@@ -636,7 +636,7 @@ function nextPendingStage(run: PipelineRunRecord): PipelineStage | null {
   );
 }
 
-/** True when ChatGPT stage content is accepted (Drive may still be uploading). */
+/** True when AI stage content is accepted (Drive may still be uploading). */
 async function chatgptStageArtifactsReady(
   stageId: PipelineStageId,
   applicationId: string,
@@ -967,7 +967,7 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
     stages: stagesRunning,
   });
 
-  // Drive exports run in the background during ChatGPT stages - wait briefly
+  // Drive exports run in the background during AI stages - wait briefly
   // so Gmail attachments can attach when possible.
   await waitForDrivePdfsReady(run.application_id, 20_000);
 
@@ -1049,7 +1049,7 @@ async function onChatGptStageCompleted(
 
   const stages = patchStage(run.stages, stageId, {
     status: "completed",
-    detail: "ChatGPT response accepted",
+    detail: "AI response accepted",
     prompt_text: null,
     repair_prompt: null,
   });
@@ -1075,7 +1075,7 @@ async function onChatGptStageCompleted(
     error: null,
   });
 
-  // Let the extension delete/close ChatGPT before slow Gmail API work.
+  // Let the extension delete/close AI before slow Gmail API work.
   if (options.deferGmailDrafts && nextId === "gmail_drafts") {
     const refreshed = await getPipelineRunById(pipelineId);
     return {
@@ -1291,7 +1291,7 @@ export async function resumePipelineForApplication(applicationId: string) {
 
 /**
  * Background tick used from any app page (and cron): advance busy pipelines,
- * promote the queue, and return a ChatGPT wake signal when needed.
+ * promote the queue, and return a AI wake signal when needed.
  * Scoped to the current session user (browser). Cron without a session is a no-op.
  */
 export async function tickGlobalPipelines() {

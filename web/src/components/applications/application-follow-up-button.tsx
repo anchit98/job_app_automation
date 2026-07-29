@@ -57,7 +57,7 @@ async function waitForBridge(timeoutMs = 3000): Promise<BridgeApi | null> {
 }
 
 /**
- * Open ChatGPT exactly once for this prompt run.
+ * Open AI exactly once for this prompt run.
  * Never force-retry: force re-opens tabs. Fall back to a single CustomEvent.
  */
 async function wakeBridgeOnce(signal: {
@@ -81,7 +81,7 @@ async function wakeBridgeOnce(signal: {
       if (res?.ok === false || res?.opened === false) {
         return {
           ok: false,
-          error: res?.error || res?.reason || "Extension did not open ChatGPT.",
+          error: res?.error || res?.reason || "Extension did not open AI.",
         };
       }
       return { ok: true };
@@ -144,7 +144,7 @@ export function ApplicationFollowUpButton({
     }, 4000);
   }
 
-  /** Poll only - never wake ChatGPT again. One GPT reply fans out to all contacts. */
+  /** Poll only - never wake AI again. One GPT reply fans out to all contacts. */
   async function waitForGeneratedDrafts(followUpId: string) {
     setPhase("waiting_chatgpt");
     const deadline = Date.now() + 4 * 60 * 1000;
@@ -193,7 +193,7 @@ export function ApplicationFollowUpButton({
       }
 
       if (status.prompt_status === "completed" && status.drafts_ready === 0) {
-        setError("ChatGPT finished but no drafts were created. Try again.");
+        setError("AI finished but no drafts were created. Try again.");
         setPhase("idle");
         runningRef.current = false;
         return;
@@ -202,7 +202,7 @@ export function ApplicationFollowUpButton({
       await sleep(1200);
     }
 
-    setError("Timed out waiting for ChatGPT. Try again.");
+    setError("Timed out waiting for AI. Try again.");
     setPhase("idle");
     runningRef.current = false;
   }
@@ -243,7 +243,7 @@ export function ApplicationFollowUpButton({
         return;
       }
 
-      // Arm once, then open ChatGPT once. Reply is reused for every contact.
+      // Arm once, then open AI once. Reply is reused for every contact.
       const armed = await armExtensionForPromptRun(result.prompt_run_id, {
         kind: "follow_up",
         prompt_text: result.prompt_text,
@@ -263,7 +263,7 @@ export function ApplicationFollowUpButton({
         chatgpt_url: "https://chatgpt.com/",
       });
       if (!woke.ok) {
-        setError(woke.error ?? "Could not open ChatGPT via JobApp Bridge.");
+        setError(woke.error ?? "Could not open AI via JobApp Bridge.");
         setPhase("idle");
         runningRef.current = false;
         return;
@@ -282,8 +282,8 @@ export function ApplicationFollowUpButton({
       ? "Preparing…"
       : phase === "waiting_chatgpt"
         ? contactCount > 1
-          ? `ChatGPT → ${contactCount} drafts…`
-          : "Waiting for ChatGPT…"
+          ? `AI → ${contactCount} drafts…`
+          : "Waiting for AI…"
         : phase === "creating_draft"
           ? contactCount > 1
             ? `Saving ${contactCount} drafts…`
@@ -297,7 +297,7 @@ export function ApplicationFollowUpButton({
                 : "Follow up";
 
   const title = due
-    ? "One ChatGPT run; same body for all contacts (greeting only changes)"
+    ? "One AI run; same body for all contacts (greeting only changes)"
     : "No follow-up is due yet";
 
   return (

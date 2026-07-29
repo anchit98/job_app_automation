@@ -115,7 +115,7 @@ export function ResumeGenerationFlow({
       <div className="bg-surface-container border border-outline-variant rounded-xl p-6">
         <h2 className="text-[16px] font-medium text-on-surface">Resume generation</h2>
         <p className="mt-2 text-[14px] text-on-surface-variant">
-          Tailor your master resume to this JD via ChatGPT. Each generation creates a
+          Tailor your master resume to this JD via AI. Each generation creates a
           new versioned PDF + DOCX in Drive.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">

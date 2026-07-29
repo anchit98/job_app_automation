@@ -36,8 +36,8 @@ export function SiteFooter() {
         hideOnMobile ? "hidden md:block" : "block"
       }`}
     >
-      <div className="mx-auto flex max-w-content-max flex-col gap-3 px-margin-mobile py-4 text-[13px] text-on-surface-variant md:flex-row md:items-center md:justify-between md:px-margin-desktop">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="mx-auto flex max-w-content-max flex-col items-center gap-3 px-margin-mobile py-4 text-center text-[13px] text-on-surface-variant md:flex-row md:items-center md:justify-between md:text-left md:px-margin-desktop">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-start">
           <Link
             href="/privacy-policy"
             className="font-semibold text-on-surface-variant no-underline hover:text-on-surface hover:underline"

@@ -8,7 +8,7 @@ import { resumePipeline } from "@/app/actions/pipeline";
 function pipelineLabel(status: string, stage: string | null) {
   if (status === "queued") return "Queued";
   if (status === "failed" || status === "needs_manual") return "Failed";
-  if (status === "awaiting_chatgpt") return `Waiting · ${stage ?? "ChatGPT"}`;
+  if (status === "awaiting_chatgpt") return `Waiting · ${stage ?? "AI"}`;
   if (status === "running") return `Running · ${stage ?? "…"}`;
   if (status === "completed") return "Done";
   return status;

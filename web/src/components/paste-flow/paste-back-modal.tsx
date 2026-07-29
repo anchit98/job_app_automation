@@ -54,7 +54,7 @@ export function PasteBackModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
-        <CardTitle>Paste ChatGPT response</CardTitle>
+        <CardTitle>Paste AI response</CardTitle>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Paste the full response (JSON with or without code fences).
         </p>
@@ -80,7 +80,7 @@ export function PasteBackModal({
         )}
         {repairPrompt && (
           <div className="mt-4 space-y-2">
-            <p className="text-sm font-medium">Repair prompt (run in same ChatGPT thread):</p>
+            <p className="text-sm font-medium">Repair prompt (run in same AI thread):</p>
             <textarea
               readOnly
               value={repairPrompt}

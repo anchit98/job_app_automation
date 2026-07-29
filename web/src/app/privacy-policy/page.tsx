@@ -133,9 +133,9 @@ export default function PrivacyPolicyPage() {
             </p>
             <p>
               JobApp OS may also help you prepare prompts and process responses
-              for external AI tools such as ChatGPT through the browser or the
-              JobApp Bridge workflow. Your use of those external services
-              remains subject to their own privacy terms and policies.
+              for external AI tools through the browser or the JobApp Bridge
+              workflow. Your use of those external services remains subject to
+              their own privacy terms and policies.
             </p>
             <p>
               JobApp OS does not sell your personal information. We use Google

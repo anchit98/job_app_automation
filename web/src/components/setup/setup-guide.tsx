@@ -460,7 +460,7 @@ export function SetupGuide({ status }: { status: SetupGuideStatus }) {
         {openStep === "extension" && (
           <StepBody>
             <p className="text-[13px] text-on-surface-variant mb-3">
-              The Chrome extension opens ChatGPT, pastes prompts, and posts
+              The Chrome extension opens your AI chat, pastes prompts, and posts
               replies back. Download it for your machine, load unpacked, then
               paste the token.
             </p>

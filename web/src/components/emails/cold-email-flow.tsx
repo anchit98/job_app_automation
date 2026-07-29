@@ -232,7 +232,7 @@ export function ColdEmailFlow({
           <span className="material-symbols-outlined text-[18px] shrink-0">info</span>
           <p>
             Connect Google on the dashboard (Gmail compose) before creating drafts.
-            You can still generate email copy via ChatGPT first.
+            You can still generate email copy via AI first.
           </p>
         </div>
       )}
@@ -243,7 +243,7 @@ export function ColdEmailFlow({
             Generate cold emails
           </h2>
           <p className="mt-1 text-[14px] text-on-surface-variant">
-            One ChatGPT round-trip writes personalized emails for up to 5 contacts.
+            One AI round-trip writes personalized emails for up to 5 contacts.
             Risky contacts are excluded unless you opt in.
           </p>
         </div>
@@ -259,7 +259,7 @@ export function ColdEmailFlow({
             className="w-full h-24 bg-surface-container-low border border-outline-variant rounded-lg p-3 text-[14px] text-on-surface resize-none"
           />
           <p className="li-meta mt-1">
-            Included in the ChatGPT cold-email prompt for openings and content guidance.
+            Included in the AI cold-email prompt for openings and content guidance.
           </p>
         </div>
 
@@ -349,7 +349,7 @@ export function ColdEmailFlow({
           disabled={pending || eligibleContacts.length === 0}
           className="bg-primary text-on-primary text-[14px] font-medium px-6 py-2 rounded-full hover:opacity-90 disabled:opacity-50"
         >
-          {pending ? "Preparing…" : "Generate cold emails (ChatGPT)"}
+          {pending ? "Preparing…" : "Generate cold emails (AI)"}
         </button>
 
         {error && (
@@ -365,7 +365,7 @@ export function ColdEmailFlow({
         {missingContactIds.length > 0 && (
           <div className="rounded-lg border border-outline-variant p-3 space-y-2">
             <p className="text-[13px] text-on-surface">
-              ChatGPT omitted {missingContactIds.length} contact(s). Retry just those.
+              AI omitted {missingContactIds.length} contact(s). Retry just those.
             </p>
             <button
               type="button"

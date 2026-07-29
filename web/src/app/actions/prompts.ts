@@ -56,7 +56,7 @@ export async function submitPasteBack(promptRunId: string, rawResponse: string) 
   if (!rawResponse.trim()) {
     return {
       ok: false as const,
-      error: "Response is empty. Paste the ChatGPT output and try again.",
+      error: "Response is empty. Paste the AI output and try again.",
     };
   }
 

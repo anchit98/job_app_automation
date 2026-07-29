@@ -22,7 +22,7 @@ export function FabricationReview({
       <CardTitle>Review flagged bullets</CardTitle>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
         Review flagged items before export. Accept rewordings you are comfortable with,
-        or run a repair prompt in ChatGPT.
+        or run a repair prompt in AI.
       </p>
       <ul className="mt-4 space-y-3">
         {flags.map((flag) => (

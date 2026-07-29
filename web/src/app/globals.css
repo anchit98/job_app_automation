@@ -490,6 +490,127 @@ html {
 .af-upi-qr-card {
   animation: af-fade-up 0.28s ease-out both;
 }
+
+/* Billing / paywall */
+.bp-hero {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border-hairline));
+  background:
+    radial-gradient(
+      ellipse 130% 100% at 50% -30%,
+      color-mix(in srgb, var(--primary) 15%, transparent),
+      transparent 62%
+    ),
+    var(--surface);
+  box-shadow: 0 22px 48px -30px color-mix(in srgb, var(--primary) 55%, rgba(0, 0, 0, 0.35));
+}
+
+.bp-hero-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--primary) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary) 9%, transparent) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 0%, black 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 0%, black 20%, transparent 75%);
+}
+
+.bp-price {
+  font-family: "DM Sans", "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  font-optical-sizing: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  background: linear-gradient(
+    115deg,
+    var(--primary) 10%,
+    color-mix(in srgb, var(--primary) 55%, #4b9dff) 45%,
+    #2f8dff 65%,
+    var(--primary) 90%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border-hairline));
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  color: var(--on-surface);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.bp-chip .material-symbols-outlined {
+  font-size: 15px;
+  color: var(--success);
+}
+
+.bp-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bp-upi-code {
+  display: block;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 40%, var(--border-hairline));
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+  padding: 12px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--primary);
+  letter-spacing: 0.01em;
+  word-break: break-all;
+}
+
+.bp-qr-frame {
+  position: relative;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 16px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.bp-qr-frame::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 13px;
+  padding: 2px;
+  background: linear-gradient(
+    135deg,
+    var(--primary) 0%,
+    transparent 22%,
+    transparent 78%,
+    var(--primary) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.85;
+}
 .af-loader-bar {
   background: linear-gradient(
     90deg,
@@ -505,6 +626,14 @@ html {
 /* Marketing landing */
 .marketing-display {
   font-family: "Syne", "Source Sans 3", "Segoe UI", sans-serif;
+}
+
+/* Price figures — clearer numerals than condensed display faces */
+.price-display {
+  font-family: "DM Sans", "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  font-optical-sizing: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 html:has(.marketing-page) {
@@ -991,6 +1120,54 @@ html:has(.marketing-page) {
   box-shadow: 0 24px 55px -30px color-mix(in srgb, var(--primary) 45%, rgba(0, 0, 0, 0.3));
 }
 
+/* Back to top */
+.mk-back-top {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 14px;
+  background: var(--primary);
+  color: var(--on-primary);
+  cursor: pointer;
+  box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--primary) 80%, rgba(0, 0, 0, 0.4));
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px) scale(0.92);
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.mk-back-top.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.mk-back-top:hover {
+  background: var(--primary-hover);
+  box-shadow: 0 16px 32px -12px color-mix(in srgb, var(--primary) 85%, rgba(0, 0, 0, 0.35));
+  transform: translateY(-2px);
+}
+
+.mk-back-top:active {
+  transform: translateY(0);
+}
+
+.mk-back-top:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
 /* Gallery */
 .mk-gallery-tab {
   border: 1px solid var(--border-hairline);
@@ -1313,7 +1490,12 @@ html:has(.marketing-page) {
   .mk-btn-primary:hover,
   .mk-btn-outline:hover,
   .mk-gallery-tab:hover,
-  .mk-chip:hover {
+  .mk-chip:hover,
+  .mk-back-top:hover {
     transform: none;
+  }
+
+  .mk-back-top {
+    transition: opacity 0.2s ease;
   }
 }
