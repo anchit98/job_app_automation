@@ -1043,6 +1043,169 @@ html:has(.marketing-page) {
   text-underline-offset: 3px;
 }
 
+/* Auth pages — animated background (Command Precision aurora language) */
+.auth-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.auth-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--primary) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary) 14%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 95% 85% at 50% 40%, black 35%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 95% 85% at 50% 40%, black 35%, transparent 80%);
+}
+
+.auth-aurora {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(48px);
+  opacity: 0.9;
+  will-change: transform;
+}
+
+.auth-aurora-a {
+  width: min(640px, 80vw);
+  height: min(640px, 80vw);
+  top: -18%;
+  right: -12%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--primary) 55%, transparent), transparent 66%);
+  animation: auth-drift-a 10s ease-in-out infinite;
+}
+
+.auth-aurora-b {
+  width: min(520px, 65vw);
+  height: min(520px, 65vw);
+  bottom: -20%;
+  left: -10%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--tertiary-container) 80%, transparent), transparent 68%);
+  animation: auth-drift-b 13s ease-in-out infinite;
+}
+
+.auth-aurora-c {
+  width: min(380px, 50vw);
+  height: min(380px, 50vw);
+  top: 34%;
+  left: 8%;
+  opacity: 0.6;
+  background: radial-gradient(circle, color-mix(in srgb, var(--primary) 40%, transparent), transparent 68%);
+  animation: auth-drift-b 16s ease-in-out 1s infinite reverse;
+}
+
+.auth-ring {
+  position: absolute;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--primary) 38%, transparent);
+  will-change: transform;
+}
+
+.auth-ring-a {
+  width: 220px;
+  height: 220px;
+  top: 14%;
+  left: 7%;
+  animation: auth-float-a 8s ease-in-out infinite;
+}
+
+.auth-ring-b {
+  width: 130px;
+  height: 130px;
+  bottom: 16%;
+  right: 10%;
+  border-style: dashed;
+  animation: auth-float-b 9s ease-in-out infinite;
+}
+
+.auth-dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 75%, transparent);
+  box-shadow: 0 0 14px 3px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.auth-dot-a {
+  top: 24%;
+  right: 18%;
+  animation: auth-float-b 7s ease-in-out infinite;
+}
+
+.auth-dot-b {
+  bottom: 28%;
+  left: 22%;
+  width: 9px;
+  height: 9px;
+  animation: auth-float-a 9s ease-in-out 1s infinite;
+}
+
+.auth-dot-c {
+  top: 56%;
+  right: 9%;
+  width: 8px;
+  height: 8px;
+  animation: auth-float-a 8s ease-in-out 2s infinite;
+}
+
+.auth-card-in {
+  animation: mk-frame-in 0.55s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+@keyframes auth-drift-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-90px, 70px) scale(1.12);
+  }
+}
+
+@keyframes auth-drift-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(80px, -60px) scale(0.92);
+  }
+}
+
+@keyframes auth-float-a {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-30px) rotate(12deg);
+  }
+}
+
+@keyframes auth-float-b {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-aurora,
+  .auth-ring,
+  .auth-dot,
+  .auth-card-in {
+    animation: none !important;
+  }
+}
+
 /* Keyframes */
 @keyframes mk-rise {
   from {

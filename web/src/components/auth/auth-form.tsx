@@ -52,21 +52,21 @@ export function AuthForm({
   }
 
   return (
-    <div className="w-full max-w-md space-y-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-[24px] font-semibold text-on-surface">
+    <div className="w-full max-w-md space-y-4">
+      <div className="text-center space-y-1">
+        <h1 className="text-[22px] font-semibold text-on-surface">
           {mode === "signup" ? "Create your account" : "Sign in"}
         </h1>
-        <p className="text-[14px] text-on-surface-variant">
+        <p className="text-[13px] text-on-surface-variant">
           {mode === "signup"
             ? "Start automating tailored applications."
             : "Welcome back. Continue your job pipeline."}
         </p>
       </div>
 
-      <form onSubmit={submit} className="li-card p-6 space-y-4">
+      <form onSubmit={submit} className="li-card space-y-3 p-5">
         {mode === "signup" && (
-          <label className="block space-y-1.5">
+          <label className="block space-y-1">
             <span className="text-[13px] font-semibold text-on-surface">Full name</span>
             <input
               className="w-full rounded-md border border-border-hairline bg-surface px-3 py-2 text-[14px]"
@@ -77,7 +77,7 @@ export function AuthForm({
             />
           </label>
         )}
-        <label className="block space-y-1.5">
+        <label className="block space-y-1">
           <span className="text-[13px] font-semibold text-on-surface">Email</span>
           <input
             type="email"
@@ -88,7 +88,7 @@ export function AuthForm({
             autoComplete="email"
           />
         </label>
-        <label className="block space-y-1.5">
+        <label className="block space-y-1">
           <span className="text-[13px] font-semibold text-on-surface">Password</span>
           <input
             type="password"
@@ -125,7 +125,7 @@ export function AuthForm({
         </button>
       </form>
 
-      <p className="text-center text-[14px] text-on-surface-variant">
+      <p className="text-center text-[13px] text-on-surface-variant">
         {mode === "signup" ? (
           <>
             Already have an account?{" "}

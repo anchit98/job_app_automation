@@ -32,7 +32,7 @@ export function SiteFooter() {
 
   return (
     <footer
-      className={`border-t border-border-hairline bg-surface ${
+      className={`shrink-0 border-t border-border-hairline bg-surface ${
         hideOnMobile ? "hidden md:block" : "block"
       }`}
     >

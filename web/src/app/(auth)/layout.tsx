@@ -8,9 +8,20 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative min-h-[100dvh] bg-canvas flex flex-col">
-      <header className="sticky top-0 z-20 shrink-0 border-b border-border-hairline bg-surface/95 backdrop-blur-md pt-[env(safe-area-inset-top,0px)]">
-        <div className="mx-auto flex h-14 max-w-content-max items-center justify-between gap-3 px-margin-mobile md:px-margin-desktop">
+    <div className="relative flex min-h-0 flex-1 flex-col bg-canvas">
+      <div className="auth-bg" aria-hidden>
+        <div className="auth-grid" />
+        <div className="auth-aurora auth-aurora-a" />
+        <div className="auth-aurora auth-aurora-b" />
+        <div className="auth-aurora auth-aurora-c" />
+        <div className="auth-ring auth-ring-a" />
+        <div className="auth-ring auth-ring-b" />
+        <div className="auth-dot auth-dot-a" />
+        <div className="auth-dot auth-dot-b" />
+        <div className="auth-dot auth-dot-c" />
+      </div>
+      <header className="relative z-20 shrink-0 border-b border-border-hairline bg-surface/95 backdrop-blur-md pt-[env(safe-area-inset-top,0px)]">
+        <div className="mx-auto flex h-12 max-w-content-max items-center justify-between gap-3 px-margin-mobile md:h-14 md:px-margin-desktop">
           <Link
             href="/"
             className="inline-flex items-center gap-2 no-underline"
@@ -43,8 +54,8 @@ export default function AuthLayout({
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col items-center justify-center px-margin-mobile py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
-        <div className="w-full max-w-md">{children}</div>
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-margin-mobile py-4 pb-4">
+        <div className="auth-card-in w-full max-w-md">{children}</div>
       </div>
     </div>
   );
