@@ -2,6 +2,8 @@ import type { ResumeContent } from "@/lib/resume/fabrication";
 import {
   countWords,
   healTruncatedBullet,
+  isIncompleteBullet,
+  splitSentences,
 } from "@/lib/resume/bullet-layout";
 import type { ResumeWordBudget } from "@/lib/resume/word-budget";
 import {
@@ -73,21 +75,102 @@ function getMasterLineText(master: ResumeContent, ref: MutableLineRef): string {
   return master.skills[ref.skillIndex] ?? "";
 }
 
-function popLastWord(text: string): string {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (words.length <= 1) return words[0] ?? "";
-  words.pop();
-  let result = words.join(" ");
-  if (result && !/[.!?]$/.test(result)) result = `${result}.`;
-  return result;
+function refKey(ref: MutableLineRef): string {
+  if (ref.kind === "experience") {
+    return `experience:${ref.expIndex}:${ref.bulletIndex}`;
+  }
+  if (ref.kind === "project") {
+    return `project:${ref.projIndex}:${ref.bulletIndex}`;
+  }
+  return `skill:${ref.skillIndex}`;
 }
 
-function healAllLines(content: ResumeContent, master: ResumeContent): void {
+function ensureTerminalPunctuation(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/**
+ * Shorten a line without leaving mid-sentence fragments.
+ * Prefers dropping a trailing sentence, then master (if shorter), then a
+ * trailing comma clause — never blind word chops with a fake period.
+ */
+function shortenLineKeepingComplete(
+  text: string,
+  master: string,
+  kind: MutableLineRef["kind"],
+): string | null {
+  const current = text.trim();
+  const masterText = master.trim();
+  if (!current) return null;
+  const currentWords = countWords(current);
+
+  if (kind === "skill") {
+    const colon = current.indexOf(":");
+    if (colon >= 0) {
+      const prefix = current.slice(0, colon + 1).trimEnd();
+      const items = current
+        .slice(colon + 1)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (items.length > 1) {
+        items.pop();
+        const next = items.length
+          ? `${prefix} ${items.join(", ")}`
+          : `${prefix}`;
+        if (countWords(next) < currentWords) return next;
+      }
+    }
+  }
+
+  const sentences = splitSentences(current);
+  if (sentences.length > 1) {
+    const next = ensureTerminalPunctuation(
+      sentences.slice(0, -1).join(" ").trim(),
+    );
+    if (
+      countWords(next) < currentWords &&
+      next &&
+      !isIncompleteBullet(next)
+    ) {
+      return next;
+    }
+  }
+
+  if (masterText && countWords(masterText) < currentWords) {
+    return masterText;
+  }
+
+  const lastComma = current.lastIndexOf(",");
+  if (lastComma > 24) {
+    let candidate = ensureTerminalPunctuation(current.slice(0, lastComma).trim());
+    if (
+      countWords(candidate) < currentWords &&
+      !isIncompleteBullet(candidate)
+    ) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function healAllLines(
+  content: ResumeContent,
+  master: ResumeContent,
+  options?: { restorePrefixCuts?: boolean },
+): void {
   for (const ref of collectLineRefs(content)) {
     const masterLine = getMasterLineText(master, ref);
     const current = getLineText(content, ref);
     if (!masterLine) continue;
-    setLineText(content, ref, healTruncatedBullet(current, masterLine));
+    let healed = healTruncatedBullet(current, masterLine, options);
+    if (isIncompleteBullet(healed)) {
+      healed = masterLine;
+    }
+    setLineText(content, ref, healed);
   }
 }
 
@@ -123,27 +206,58 @@ export function fitResumeToWordBudget(
     skills: [...generated.skills],
   };
 
-  healAllLines(fitted, master);
+  // Restore LLM mid-phrase cuts first (including silent prefix chops).
+  healAllLines(fitted, master, { restorePrefixCuts: true });
 
   const target = budget.tailorable_words ?? TAILORABLE_WORD_CEILING;
-  let guard = 0;
-  while (countTailorableWords(fitted) > target && guard < 5000) {
-    guard++;
-    const refs = collectLineRefs(fitted);
-    let longest: { ref: MutableLineRef; words: number } | null = null;
-    for (const ref of refs) {
-      const words = countWords(getLineText(fitted, ref));
-      if (!longest || words > longest.words) {
-        longest = { ref, words };
+  const shrinkPass = () => {
+    const unsinkable = new Set<string>();
+    let guard = 0;
+    while (countTailorableWords(fitted) > target && guard < 5000) {
+      guard++;
+      const refs = collectLineRefs(fitted).filter(
+        (ref) => !unsinkable.has(refKey(ref)),
+      );
+      // Prefer trimming skills before narrative bullets when tied.
+      let longest: { ref: MutableLineRef; words: number; rank: number } | null =
+        null;
+      for (const ref of refs) {
+        const words = countWords(getLineText(fitted, ref));
+        const rank = ref.kind === "skill" ? words + 8 : words;
+        if (
+          !longest ||
+          rank > longest.rank ||
+          (rank === longest.rank && words > longest.words)
+        ) {
+          longest = { ref, words, rank };
+        }
       }
+      if (!longest || longest.words <= 3) break;
+
+      const current = getLineText(fitted, longest.ref);
+      const masterLine = getMasterLineText(master, longest.ref);
+      const shortened = shortenLineKeepingComplete(
+        current,
+        masterLine,
+        longest.ref.kind,
+      );
+      if (
+        !shortened ||
+        countWords(shortened) >= countWords(current) ||
+        isIncompleteBullet(shortened)
+      ) {
+        unsinkable.add(refKey(longest.ref));
+        continue;
+      }
+      setLineText(fitted, longest.ref, shortened);
     }
-    if (!longest || longest.words <= 3) break;
-    setLineText(
-      fitted,
-      longest.ref,
-      popLastWord(getLineText(fitted, longest.ref)),
-    );
-  }
+  };
+
+  shrinkPass();
+  // After budget trims, only fix hanging endings — do not undo safe shortenings.
+  healAllLines(fitted, master, { restorePrefixCuts: false });
+  shrinkPass();
+  healAllLines(fitted, master, { restorePrefixCuts: false });
 
   fitted.skills = master.skills.map((masterLine, i) => {
     const genLine = fitted.skills[i] ?? masterLine;

@@ -423,7 +423,7 @@ async function getChatGptAccessToken() {
   }
 }
 
-/** Soft-delete via ChatGPT backend (hides conversation from history). */
+/** Soft-delete via AI chat backend (hides conversation from history). */
 async function deleteConversationViaApi(conversationId) {
   const token = await getChatGptAccessToken();
   if (!token) return false;
@@ -548,7 +548,7 @@ async function deleteConversationViaDom() {
 }
 
 async function cleanupChatGptSession() {
-  showBanner("JobApp Bridge: deleting ChatGPT session…", "#333");
+  showBanner("JobApp Bridge: deleting AI session…", "#333");
   let deleted = false;
   let lastId = conversationIdFromUrl();
 
@@ -704,7 +704,7 @@ async function runPrompt(payload, { force = false } = {}) {
     }
     if (!composer) {
       throw new Error(
-        "Could not find ChatGPT input box — log in and wait for the composer.",
+        "Could not find AI input box — log in and wait for the composer.",
       );
     }
 
@@ -719,7 +719,7 @@ async function runPrompt(payload, { force = false } = {}) {
       if (myGen !== runGeneration) return;
       if (!filled) {
         throw new Error(
-          "ChatGPT did not accept the paste (Send stayed disabled). Click the composer and try Open ChatGPT again.",
+          "AI did not accept the paste (Send stayed disabled). Click the composer and try Open AI chat again.",
         );
       }
       composer = findComposer() || composer;
@@ -735,7 +735,7 @@ async function runPrompt(payload, { force = false } = {}) {
     if (myGen !== runGeneration) return;
     if (!sent && !isStreaming()) {
       throw new Error(
-        "Send did not go through — press Enter in ChatGPT or retry Open ChatGPT.",
+        "Send did not go through — press Enter in AI chat or retry Open AI chat.",
       );
     }
 
@@ -748,7 +748,7 @@ async function runPrompt(payload, { force = false } = {}) {
     const { text, partial } = await waitForResponseComplete(startedAt, baseline);
     if (myGen !== runGeneration) return;
     if (!text || text.length < 20) {
-      throw new Error("Empty or too-short ChatGPT response");
+      throw new Error("Empty or too-short AI response");
     }
 
     runPhase = "done";
@@ -816,7 +816,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
-// New ChatGPT tab: pick up claimed prompt if SW inject hasn't started yet.
+// New AI chat tab: pick up claimed prompt if SW inject hasn't started yet.
 // Never force — SW inject may arrive around the same time.
 chrome.runtime.sendMessage({ type: "JOBAPP_GET_ACTIVE" }).then((active) => {
   if (active?.prompt_text) {

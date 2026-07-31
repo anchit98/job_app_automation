@@ -258,24 +258,78 @@ export function sentenceTargetsForMasterBullets(
 }
 
 const INCOMPLETE_BULLET_ENDING =
-  /\b(and|or|while|by|to|the|a|an|for|with|in|across|through|via|&|,)$/i;
+  /\b(and|or|while|by|to|the|a|an|for|with|in|on|of|from|into|onto|upon|about|over|under|between|within|without|toward|towards|against|among|during|before|after|above|below|per|vs|via|than|as|at|up|out|off|down|across|through|that|which|who|whom|whose|what|when|where|how|why|if|unless|until|although|though|because|since|whether|their|its|this|these|those|such|so|not|no|nor|also|just|only|both|either|neither|each|every|all|any|some|few|many|much|other|another|prioritizing|prioritising|achieving|generating|enabling|delivering|resulting|including|using|monitoring|improving|reducing|building|implementing|navigating|contributing|recommending|analyzing|aggregating|automating|retrieving|addressing|eliminating|owning|managing|spearheading|supervising|tracking|conducting|informing|boosting|introducing|suggesting|directing|integrating|reporting|leading|&|,|;|:|-|–|—)$/i;
 
 function normalizeBulletWord(word: string): string {
   return word.toLowerCase().replace(/[^\w%+₹$]/g, "");
 }
 
+/** Strip trailing sentence punctuation so hanging-word checks still work. */
+function bulletCore(text: string): string {
+  return text.trim().replace(/[.!?]+$/u, "").trim();
+}
+
+/** True when generated is a chopped prefix of the master line (not a deliberate shorter rewrite). */
+function looksTruncatedVsMaster(generated: string, master: string): boolean {
+  const genWords = bulletCore(generated).split(/\s+/).filter(Boolean);
+  const masterWords = bulletCore(master).split(/\s+/).filter(Boolean);
+  if (genWords.length === 0) return true;
+  if (genWords.length > masterWords.length - 3) return false;
+
+  for (let i = 0; i < genWords.length; i++) {
+    if (
+      normalizeBulletWord(genWords[i] ?? "") !==
+      normalizeBulletWord(masterWords[i] ?? "")
+    ) {
+      return false;
+    }
+  }
+
+  const lastGen = normalizeBulletWord(genWords[genWords.length - 1] ?? "");
+  const lastMaster = normalizeBulletWord(
+    masterWords[masterWords.length - 1] ?? "",
+  );
+  return lastGen !== lastMaster;
+}
+
 /**
- * When ChatGPT hits output limits, later bullets often end mid-phrase.
+ * When the AI hits output limits, later bullets often end mid-phrase.
  * Complete from the master bullet tail when we can anchor on shared words.
  */
-export function healTruncatedBullet(generated: string, master: string): string {
+export function healTruncatedBullet(
+  generated: string,
+  master: string,
+  options?: { restorePrefixCuts?: boolean },
+): string {
   let text = generated.trim();
   const masterText = master.trim();
   if (!text || !masterText) return text;
-  if (!isIncompleteBullet(text)) return text;
+  const restorePrefixCuts = options?.restorePrefixCuts !== false;
+  const needsHeal =
+    isIncompleteBullet(text) ||
+    (restorePrefixCuts && looksTruncatedVsMaster(text, masterText));
+  if (!needsHeal) return text;
 
-  const genWords = text.split(/\s+/).filter(Boolean);
+  const genWords = bulletCore(text).split(/\s+/).filter(Boolean);
   const masterWords = masterText.split(/\s+/).filter(Boolean);
+
+  // Pure prefix chops: restore the full master line so sentence punctuation
+  // (e.g. "ambiguity. The") is never lost by re-joining stripped tokens.
+  let prefixMatches = genWords.length > 0 && genWords.length <= masterWords.length;
+  if (prefixMatches) {
+    for (let i = 0; i < genWords.length; i++) {
+      if (
+        normalizeBulletWord(genWords[i] ?? "") !==
+        normalizeBulletWord(masterWords[i] ?? "")
+      ) {
+        prefixMatches = false;
+        break;
+      }
+    }
+  }
+  if (prefixMatches && genWords.length < masterWords.length) {
+    return masterText;
+  }
 
   if (genWords.length < masterWords.length) {
     const sliceHealed = [...genWords, ...masterWords.slice(genWords.length)].join(
@@ -283,7 +337,12 @@ export function healTruncatedBullet(generated: string, master: string): string {
     );
     let candidate = sliceHealed.trim();
     if (!/[.!?]$/.test(candidate)) candidate = `${candidate}.`;
-    if (!isIncompleteBullet(candidate)) return candidate;
+    if (
+      !isIncompleteBullet(candidate) &&
+      !(restorePrefixCuts && looksTruncatedVsMaster(candidate, masterText))
+    ) {
+      return candidate;
+    }
   }
 
   const lastGenWord = normalizeBulletWord(genWords[genWords.length - 1] ?? "");
@@ -294,15 +353,20 @@ export function healTruncatedBullet(generated: string, master: string): string {
       if (tail.length === 0) continue;
       let candidate = [...genWords, ...tail].join(" ").trim();
       if (!/[.!?]$/.test(candidate)) candidate = `${candidate}.`;
-      if (!isIncompleteBullet(candidate)) return candidate;
+      if (
+        !isIncompleteBullet(candidate) &&
+        !(restorePrefixCuts && looksTruncatedVsMaster(candidate, masterText))
+      ) {
+        return candidate;
+      }
     }
   }
 
-  if (genWords.length < masterWords.length * 0.65) {
+  if (genWords.length < masterWords.length * 0.85) {
     return masterText;
   }
 
-  if (!/[.!?]$/.test(text) && !INCOMPLETE_BULLET_ENDING.test(text)) {
+  if (!/[.!?]$/.test(text) && !INCOMPLETE_BULLET_ENDING.test(bulletCore(text))) {
     text = `${text}.`;
     if (!isIncompleteBullet(text)) return text;
   }
@@ -310,12 +374,14 @@ export function healTruncatedBullet(generated: string, master: string): string {
   return masterText;
 }
 
-/** Detect bullets cut off mid-phrase (common when ChatGPT truncates JSON). */
+/** Detect bullets cut off mid-phrase (LLM truncation or word-budget chops). */
 export function isIncompleteBullet(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return true;
   if (!/[.!?]$/.test(trimmed)) return true;
-  if (INCOMPLETE_BULLET_ENDING.test(trimmed)) return true;
+  const core = bulletCore(trimmed);
+  if (!core) return true;
+  if (INCOMPLETE_BULLET_ENDING.test(core)) return true;
   return false;
 }
 
@@ -326,7 +392,8 @@ export function formatBulletLayoutRules(layout: BulletLayoutSpec): string {
     "",
     "Each bullet = ONE JSON string with EXACTLY the word count shown for that slot (from master Google Doc).",
     "One or two sentences inside the string is fine - only total word count must match.",
-    "Complete every bullet - never truncate mid-phrase.",
+    "Complete every bullet as finished sentence(s) ending in . ! or ? - never truncate mid-phrase or mid-clause.",
+    "If length forces a cut, keep a shorter complete sentence rather than an incomplete ending.",
   ];
   for (const rule of layout.experience) {
     lines.push(`- ${rule.label}: exactly ${rule.bullets} bullet(s)`);

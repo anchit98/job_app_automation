@@ -16,6 +16,9 @@ web/.env.local
 web/.env*.local
 *.pem
 
+# LLM bakeoff artifacts (local only)
+bakeoff-out/
+
 # Local SQLite / app data
 web/data/
 *.db

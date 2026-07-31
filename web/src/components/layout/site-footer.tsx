@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const APP_SHELL_PREFIXES = [
   "/dashboard",
+  "/apply-beta",
   "/apply",
   "/applications",
   "/billing",

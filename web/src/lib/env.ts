@@ -36,7 +36,7 @@ export const env = {
   paymentPlanLabel: () =>
     optional(
       "NEXT_PUBLIC_PAYMENT_PLAN_LABEL",
-      optional("PAYMENT_PLAN_LABEL", "JobApp OS access"),
+      optional("PAYMENT_PLAN_LABEL", "Launch offer · 60 apps · lifetime access"),
     ),
   /** Optional override for payment-claim alert recipients (comma-separated). */
   adminNotifyEmail: () => optional("ADMIN_NOTIFY_EMAIL"),

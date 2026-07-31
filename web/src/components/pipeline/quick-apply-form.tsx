@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { startQuickApplyPipeline } from "@/app/actions/pipeline";
+import type { PipelineLlmEngine } from "@/lib/pipeline/types";
 
 type ContactRow = {
   name: string;
@@ -18,17 +19,150 @@ const emptyContact = (): ContactRow => ({
   linkedin_url: "",
 });
 
-export function QuickApplyForm() {
+function ContactFinderGuide({ company }: { company: string }) {
+  const [open, setOpen] = useState(false);
+  const trimmed = company.trim();
+  const linkedinSearchUrl = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(
+    `${trimmed ? trimmed + " " : ""}recruiter OR talent acquisition`,
+  )}`;
+
+  return (
+    <div className="rounded-xl border border-primary/15 bg-primary/5 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+      >
+        <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-primary">
+          <span className="material-symbols-outlined text-[16px]">
+            travel_explore
+          </span>
+          No direct contact? Find one in ~2 min
+        </span>
+        <span className="material-symbols-outlined text-[18px] text-primary transition-transform duration-200" style={{ transform: open ? "rotate(180deg)" : undefined }}>
+          expand_more
+        </span>
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 space-y-2.5">
+          <ol className="space-y-2">
+            {[
+              {
+                icon: "person_search",
+                text: (
+                  <>
+                    Search LinkedIn for{" "}
+                    <a
+                      href={linkedinSearchUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-primary underline underline-offset-2"
+                    >
+                      recruiters / talent partners
+                    </a>{" "}
+                    at {trimmed || "the company"}.
+                  </>
+                ),
+              },
+              {
+                icon: "link",
+                text: (
+                  <>
+                    Copy their profile URL (looks like{" "}
+                    <code className="text-[11px] bg-surface px-1 py-0.5 rounded border border-border-hairline">
+                      linkedin.com/in/name
+                    </code>
+                    ).
+                  </>
+                ),
+              },
+              {
+                icon: "alternate_email",
+                text: (
+                  <>
+                    Paste it into{" "}
+                    <a
+                      href="https://mailmeteor.com/tools/linkedin-email-finder"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-primary underline underline-offset-2"
+                    >
+                      Mailmeteor&apos;s email finder
+                    </a>{" "}
+                    — free, no signup.
+                  </>
+                ),
+              },
+              {
+                icon: "playlist_add",
+                text: <>Add them as contacts above — drafts are written for you.</>,
+              },
+            ].map((step, i) => (
+              <li key={i} className="flex items-start gap-2 text-[12.5px] text-on-surface">
+                <span className="material-symbols-outlined text-[15px] text-primary mt-0.5 shrink-0">
+                  {step.icon}
+                </span>
+                <span>{step.text}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="rounded-lg bg-surface px-2.5 py-2 text-[12px] text-on-surface-variant border border-border-muted">
+            <span className="font-semibold text-on-surface">Why bother?</span>{" "}
+            A short cold email to someone who can decide or refer you
+            strengthens your application beyond just applying on the site.
+            Emailing <span className="font-semibold text-on-surface">2–3 people separately</span>{" "}
+            works best.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionHeading({
+  step,
+  title,
+  hint,
+}: {
+  step: number;
+  title: string;
+  hint?: string;
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[12px] font-bold text-primary mt-0.5">
+        {step}
+      </span>
+      <div>
+        <h2 className="li-section-title">{title}</h2>
+        {hint && <p className="li-meta mt-0.5">{hint}</p>}
+      </div>
+    </div>
+  );
+}
+
+export function QuickApplyForm({
+  llmEngine = "openai",
+}: {
+  llmEngine?: PipelineLlmEngine;
+}) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
   const [jd, setJd] = useState("");
   const [company, setCompany] = useState("");
   const [role, setRole] = useState("");
   const [jobUrl, setJobUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [emailInstructions, setEmailInstructions] = useState("");
+  const [includeCoverLetter, setIncludeCoverLetter] = useState(true);
   const [contacts, setContacts] = useState<ContactRow[]>([emptyContact()]);
   const [error, setError] = useState<string | null>(null);
+
+  const contactCount = useMemo(
+    () => contacts.filter((c) => c.name.trim() && c.email.trim()).length,
+    [contacts],
+  );
 
   const canSubmit = useMemo(
     () =>
@@ -44,131 +178,165 @@ export function QuickApplyForm() {
     );
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    if (pending) return;
     setError(null);
-    startTransition(async () => {
-      try {
-        const cleaned = contacts
-          .map((c) => ({
-            name: c.name.trim(),
-            email: c.email.trim(),
-            role: c.role.trim() || undefined,
-            linkedin_url: c.linkedin_url.trim() || undefined,
-          }))
-          .filter((c) => c.name && c.email);
+    setPending(true);
+    try {
+      const cleaned = contacts
+        .map((c) => ({
+          name: c.name.trim(),
+          email: c.email.trim(),
+          role: c.role.trim() || undefined,
+          linkedin_url: c.linkedin_url.trim() || undefined,
+        }))
+        .filter((c) => c.name && c.email);
 
-        const result = await startQuickApplyPipeline({
-          jd,
-          company: company.trim(),
-          role: role.trim(),
-          job_url: jobUrl.trim() || undefined,
-          notes: notes.trim() || undefined,
-          email_instructions: emailInstructions.trim() || undefined,
-          contacts: cleaned,
-        });
+      const result = await startQuickApplyPipeline({
+        jd,
+        company: company.trim(),
+        role: role.trim(),
+        job_url: jobUrl.trim() || undefined,
+        notes: notes.trim() || undefined,
+        email_instructions: emailInstructions.trim() || undefined,
+        contacts: cleaned,
+        skip_cover_letter: !includeCoverLetter,
+        llm_engine: llmEngine,
+      });
 
-        if (!result.ok) {
-          setError(result.error);
-          return;
-        }
-
-        if ("queued" in result && result.queued) {
-          // Still open progress so user can see queue position; PipelineKeeper
-          // will start this run when the active one finishes.
-          window.alert(
-            result.warning ??
-              "This application was queued and will start after the current one finishes.",
-          );
-        }
-
-        router.push(`/pipeline/${result.pipeline_id}`);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to start auto-apply.");
+      if (!result.ok) {
+        setError(result.error);
+        setPending(false);
+        return;
       }
-    });
+
+      // Navigate immediately — pipeline page starts work; don't wait on alerts.
+      if ("queued" in result && result.queued && result.warning) {
+        // Soft notice on the pipeline page via query is nicer than blocking alert.
+        router.push(
+          `/pipeline/${result.pipeline_id}?queued=1`,
+        );
+        return;
+      }
+
+      router.push(`/pipeline/${result.pipeline_id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start auto-apply.");
+      setPending(false);
+    }
   }
+
+  const pipelineSummary = useMemo(() => {
+    const steps = ["Parse JD", "Resume"];
+    if (includeCoverLetter) steps.push("Cover letter");
+    if (contactCount > 0) steps.push("Cold emails", "Gmail drafts");
+    return steps;
+  }, [includeCoverLetter, contactCount]);
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        {/* JD takes the left two-thirds */}
-        <div className="lg:col-span-7 li-card p-4 space-y-3">
-          <div>
-            <h2 className="li-section-title">Job description</h2>
-            <p className="li-meta mt-1">
-              Paste the full JD. Parsing through cover letter run automatically.
-              Cold email and Gmail drafts run only when contacts are added.
-            </p>
-          </div>
+        {/* JD + role details */}
+        <div className="lg:col-span-7 li-card p-4 space-y-4">
+          <SectionHeading
+            step={1}
+            title="Job description"
+            hint="Runs server-side with AI — paste a JD and the pipeline starts automatically."
+          />
           <textarea
             value={jd}
             onChange={(e) => setJd(e.target.value)}
-            rows={5}
-            placeholder="Paste the job description here…"
-            className="w-full h-[120px] resize-y rounded-lg border border-border-hairline bg-surface p-3 text-[14px] text-on-surface focus:outline-none focus:border-primary"
+            rows={7}
+            placeholder="Paste the full job description here…"
+            className="w-full h-[160px] resize-y rounded-xl border border-border-hairline bg-surface p-3 text-[14px] text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-shadow"
           />
+          <div className="flex items-center justify-between text-[11.5px] text-on-surface-variant -mt-2 px-0.5">
+            <span>
+              {jd.trim().length < 50
+                ? `Paste at least 50 characters (${jd.trim().length}/50)`
+                : `${jd.trim().length.toLocaleString()} characters`}
+            </span>
+          </div>
+
+          <SectionHeading step={2} title="Role details" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               value={company}
               onChange={(e) => setCompany(e.target.value)}
               placeholder="Company *"
               required
-              className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary outline-none"
+              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow"
             />
             <input
               value={role}
               onChange={(e) => setRole(e.target.value)}
               placeholder="Role *"
               required
-              className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary outline-none"
+              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow"
             />
             <input
               value={jobUrl}
               onChange={(e) => setJobUrl(e.target.value)}
               placeholder="Job URL (optional)"
-              className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary outline-none sm:col-span-2"
+              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow sm:col-span-2"
             />
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Notes (optional)"
               rows={2}
-              className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary outline-none sm:col-span-2"
-            />
-            <textarea
-              value={emailInstructions}
-              onChange={(e) => setEmailInstructions(e.target.value)}
-              placeholder="Email instructions (optional) - e.g. mention relocating in July, ask about team structure, keep under 120 words"
-              rows={3}
-              className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary outline-none sm:col-span-2"
+              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow sm:col-span-2"
             />
           </div>
+
+          <label className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-muted bg-surface-container-low px-3 py-2.5 cursor-pointer">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13.5px] font-semibold text-on-surface">
+                Cover letter needed?
+              </div>
+              <p className="text-[12px] text-on-surface-variant mt-0.5">
+                {includeCoverLetter
+                  ? "A tailored cover letter PDF will be generated."
+                  : "Cover letter stage will be skipped — faster pipeline."}
+              </p>
+            </div>
+            <select
+              value={includeCoverLetter ? "yes" : "no"}
+              onChange={(e) => setIncludeCoverLetter(e.target.value === "yes")}
+              aria-label="Cover letter needed"
+              className="shrink-0 cursor-pointer rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[13px] font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+            >
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </label>
         </div>
 
-        {/* Contacts + submit on the right */}
+        {/* Contacts + submit */}
         <div className="lg:col-span-5 flex flex-col gap-3">
           <div className="li-card p-4 space-y-3 flex-1">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="li-section-title">Contacts</h2>
-                <p className="li-meta mt-1">
-                  Optional - skip cold email &amp; Gmail drafts if empty.
-                </p>
-              </div>
+              <SectionHeading
+                step={3}
+                title="Contacts"
+                hint="Optional — without contacts, cold emails and Gmail drafts are skipped."
+              />
               <button
                 type="button"
                 onClick={() => setContacts((prev) => [...prev, emptyContact()])}
-                className="li-btn-ghost text-[13px] text-primary"
+                className="li-btn-ghost text-[13px] text-primary shrink-0"
               >
                 + Add
               </button>
             </div>
 
-            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+            <ContactFinderGuide company={company} />
+
+            <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
               {contacts.map((c, i) => (
                 <div
                   key={i}
-                  className="grid grid-cols-1 gap-2 rounded-lg border border-border-muted p-3 bg-canvas/50"
+                  className="grid grid-cols-1 gap-2 rounded-xl border border-border-muted p-3 bg-canvas/50"
                 >
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -214,10 +382,48 @@ export function QuickApplyForm() {
                 </div>
               ))}
             </div>
+
+            <textarea
+              value={emailInstructions}
+              onChange={(e) => setEmailInstructions(e.target.value)}
+              placeholder="Email instructions (optional) — e.g. mention relocating in July, keep under 120 words"
+              rows={2}
+              className="w-full rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[13px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow"
+            />
+          </div>
+
+          {/* What will run */}
+          <div className="li-card p-4 space-y-2">
+            <h3 className="text-[13px] font-semibold text-on-surface">
+              This run will:
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {pipelineSummary.map((s) => (
+                <span
+                  key={s}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/8 border border-primary/15 px-2.5 py-1 text-[12px] font-medium text-primary"
+                >
+                  <span className="material-symbols-outlined text-[13px]">
+                    check_small
+                  </span>
+                  {s}
+                </span>
+              ))}
+              {!includeCoverLetter && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1 text-[12px] font-medium text-on-surface-variant line-through">
+                  Cover letter
+                </span>
+              )}
+              {contactCount === 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1 text-[12px] font-medium text-on-surface-variant line-through">
+                  Cold emails
+                </span>
+              )}
+            </div>
           </div>
 
           {error && (
-            <div className="rounded-lg bg-error-container text-on-error-container border border-error/20 p-3 text-[13px]">
+            <div className="rounded-xl bg-error-container text-on-error-container border border-error/20 p-3 text-[13px]">
               {error}
             </div>
           )}
@@ -225,10 +431,12 @@ export function QuickApplyForm() {
           <button
             type="button"
             disabled={!canSubmit || pending}
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
             className="li-btn-primary w-full justify-center disabled:opacity-50"
           >
-            {pending ? "Starting pipeline…" : "Start auto-apply"}
+            {pending
+              ? "Opening pipeline…"
+              : "Start auto-apply"}
           </button>
         </div>
       </div>

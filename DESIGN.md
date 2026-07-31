@@ -206,9 +206,12 @@ The theme can be cycled from the **Me dropdown** (header profile menu).
 
 ## Dashboard
 
-- Compact profile header with **Start Quick Apply** (primary) and **Update Profile** (split card / secondary CTA)
-- Full-width **pipeline metrics** + follow-ups bar — no Apply / Jobs / Profile / Settings shortcut tiles
+- Compact profile header with **Start Apply** (primary) and **Update Profile**
+- **Fresh jobs banner** (subtle gradient card) — LinkedIn last-hour filter CTA; sits under the hero
+- **Pipeline metrics** — four cards (Total applications, This week, Gmail drafts, Companies contacted) with date filter (7d / 30d default / 90d / custom)
+- **Recent applications** + **Quick actions** side-by-side on large screens
 - Setup guide accordion or floating pill overlays; does not own the main column
+- Prefer soft primary/tertiary-container gradients over solid brand-blue slabs for promotional banners
 
 ---
 

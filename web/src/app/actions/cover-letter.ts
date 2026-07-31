@@ -42,6 +42,8 @@ import { normalizeCoverLetterContent } from "@/lib/cover-letter/normalize";
 import { DriveClient } from "@/lib/google/drive";
 import { DocsClient } from "@/lib/google/docs";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
+import { getRequestUserId, runAsUser } from "@/lib/auth/request-user";
+import { requireUser } from "@/lib/auth/user";
 import { buildJdContent } from "@/lib/resume/context";
 import { resumeContentSchema } from "@/lib/resume/fabrication";
 import {
@@ -152,9 +154,9 @@ async function persistCoverLetterArtifacts(
     await updateCoverLetterVersionContentForRetry(coverLetterVersionId, content);
   }
 
-  const finishDrive = async () => {
+  const finishDrive = async (userId: string) => {
     try {
-      const auth = await getGoogleAuthClient();
+      const auth = await getGoogleAuthClient(userId);
       const drive = new DriveClient(auth);
       const docs = new DocsClient(auth);
 
@@ -199,8 +201,11 @@ async function persistCoverLetterArtifacts(
   };
 
   if (options.deferDrive) {
+    // Prefer ALS userId (pipeline wraps runAsUser) — cookies() are forbidden inside after().
+    const userId =
+      getRequestUserId() ?? (await requireUser()).id;
     after(() => {
-      void finishDrive().catch((err) => {
+      void runAsUser(userId, () => finishDrive(userId)).catch((err) => {
         console.error("[cover-letter] deferred Drive export failed", err);
       });
     });
@@ -212,7 +217,8 @@ async function persistCoverLetterArtifacts(
     };
   }
 
-  return finishDrive();
+  const userId = getRequestUserId() ?? (await requireUser()).id;
+  return finishDrive(userId);
 }
 
 export async function exportCoverLetterPrompt(
@@ -518,22 +524,62 @@ export async function submitCoverLetterResponse(
       rawResponse,
       schemaResult.data as Record<string, unknown>,
     );
-    await writeAuditLog("prompt.completed", "prompt_runs", promptRunId);
 
-    revalidatePath(`/applications/${existing.target_entity_id}`);
-    const status_advance = await maybeAdvanceApplicationStatus(
-      existing.target_entity_id,
-      "cover_letter_ready",
-    );
-    return {
-      ok: true as const,
-      parsed: schemaResult.data,
-      version: result.version,
-      cover_letter_version_id: result.cover_letter_version_id,
-      status_advance,
-      drive_deferred: true as const,
-    };
+    // Best-effort side effects — content is already saved; never fail the pipeline here.
+    try {
+      await writeAuditLog("prompt.completed", "prompt_runs", promptRunId);
+      revalidatePath(`/applications/${existing.target_entity_id}`);
+      const status_advance = await maybeAdvanceApplicationStatus(
+        existing.target_entity_id,
+        "cover_letter_ready",
+      );
+      return {
+        ok: true as const,
+        parsed: schemaResult.data,
+        version: result.version,
+        cover_letter_version_id: result.cover_letter_version_id,
+        status_advance,
+        drive_deferred: true as const,
+      };
+    } catch (sideEffectErr) {
+      console.error(
+        "[cover-letter] post-save side effect failed",
+        sideEffectErr,
+      );
+      return {
+        ok: true as const,
+        parsed: schemaResult.data,
+        version: result.version,
+        cover_letter_version_id: result.cover_letter_version_id,
+        drive_deferred: true as const,
+      };
+    }
   } catch (e) {
+    // Persist may have succeeded before a later throw (e.g. cookies()/after()).
+    const versions = await listCoverLetterVersions(existing.target_entity_id);
+    const linked = versions.find((v) => v.prompt_run_id === promptRunId);
+    if (linked && (linked.status === "ready" || linked.status === "uploading")) {
+      try {
+        await completePromptRun(
+          promptRunId,
+          rawResponse,
+          schemaResult.data as Record<string, unknown>,
+        );
+      } catch {
+        /* ignore */
+      }
+      console.error(
+        "[cover-letter] save succeeded but submit threw; treating as ok",
+        e,
+      );
+      return {
+        ok: true as const,
+        parsed: schemaResult.data,
+        version: linked.version,
+        cover_letter_version_id: linked.id,
+        drive_deferred: true as const,
+      };
+    }
     const error = formatCoverLetterExportError(e);
     return {
       ok: false as const,

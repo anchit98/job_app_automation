@@ -4,8 +4,23 @@ import type { CoverLetterContent } from "@/lib/cover-letter/validate";
 const GREETING_LINE =
   /^Dear\s+[^,\n]+(?:\s+Hiring\s+(?:Team|Manager)|\s+Recruiting\s+Team)?,?\s*(?:\n+|$)/i;
 
-const SIGNOFF_BLOCK =
-  /(?:\n\n|\n)(?:Sincerely|Warm regards|Best regards|Kind regards|Regards|Thank you),?\s*\n[\s\S]*$/i;
+const SIGNOFF_PHRASE =
+  "(?:Sincerely|Warm\\s+regards|Best\\s+regards|Kind\\s+regards|With\\s+regards|Yours\\s+truly|Yours\\s+sincerely|Regards|Thank\\s+you|Thanks)";
+
+/** Trailing sign-off + optional name/title lines (template already has these). */
+const SIGNOFF_BLOCK = new RegExp(
+  `(?:\\n\\n+|\\n+)${SIGNOFF_PHRASE},?\\s*(?:\\n+[\\s\\S]*)?$`,
+  "i",
+);
+
+/** Entire section is only a sign-off (no leading newline). */
+const SIGNOFF_ONLY = new RegExp(`^${SIGNOFF_PHRASE},?\\s*(?:\\n+[\\s\\S]*)?$`, "i");
+
+/** Inline trailing "Warm regards, Name" on the last line. */
+const SIGNOFF_INLINE_TAIL = new RegExp(
+  `(?:\\s+)${SIGNOFF_PHRASE},?\\s+[A-Z][A-Za-z .'-]{1,60}\\s*$`,
+  "i",
+);
 
 /** Quantified outcomes to bold in exported Google Docs. */
 export const COVER_LETTER_METRIC_PATTERN =
@@ -20,11 +35,25 @@ export function stripCoverLetterGreeting(text: string): string {
 }
 
 export function stripCoverLetterSignoff(text: string): string {
-  return text.replace(SIGNOFF_BLOCK, "").trim();
+  let result = text.trim();
+  if (SIGNOFF_ONLY.test(result)) return "";
+  result = result.replace(SIGNOFF_BLOCK, "").trim();
+  result = result.replace(SIGNOFF_INLINE_TAIL, "").trim();
+  if (SIGNOFF_ONLY.test(result)) return "";
+  return result;
 }
 
 export function normalizeCoverLetterSection(text: string): string {
   return stripCoverLetterSignoff(stripCoverLetterGreeting(text));
+}
+
+export function sectionContainsSignoff(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (SIGNOFF_ONLY.test(t)) return true;
+  if (SIGNOFF_BLOCK.test(t)) return true;
+  if (SIGNOFF_INLINE_TAIL.test(t)) return true;
+  return new RegExp(`\\b${SIGNOFF_PHRASE}\\b`, "i").test(t);
 }
 
 /** Remove duplicate greeting/sign-off from structured sections before export. */
@@ -41,12 +70,17 @@ export function normalizeCoverLetterContent(
   };
 
   if (content.body?.trim()) {
-    const lines = content.body.split(/\n\n+/);
+    let body = stripCoverLetterSignoff(stripCoverLetterGreeting(content.body));
+    const lines = body.split(/\n\n+/);
     const withoutLeadingGreeting =
       lines.length > 0 && /^Dear\s/i.test(lines[0])
         ? lines.slice(1)
         : lines;
-    normalized.body = withoutLeadingGreeting.join("\n\n").trim();
+    normalized.body = withoutLeadingGreeting
+      .map((p) => normalizeCoverLetterSection(p))
+      .filter(Boolean)
+      .join("\n\n")
+      .trim();
   }
 
   return normalized;

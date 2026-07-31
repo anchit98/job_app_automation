@@ -36,7 +36,7 @@ export function PasteToGptDrawer({
 
   return (
     <Card className="space-y-4">
-      <CardTitle>Paste-to-GPT</CardTitle>
+      <CardTitle>Paste to AI</CardTitle>
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
         Copy the prompt, run it in AI, then paste the response back.
       </p>

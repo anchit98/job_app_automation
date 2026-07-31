@@ -1,6 +1,6 @@
 # Edge Cases — AI-Powered Job Application & Outreach Automation Platform
 
-> Companion to [`architecture.md`](architecture.md) and [`problemstatement.md`](problemstatement.md). This document enumerates the failure modes, corner cases, and adversarial inputs the app must gracefully handle. It is organized phase by phase (mirroring `architecture.md` §6) with a dedicated cross-cutting section for concerns that span multiple phases.
+> Companion to [`architecture.md`](architecture.md) and [`problemstatement.md`](problemstatement.md). This document enumerates the failure modes, corner cases, and adversarial inputs the app must gracefully handle.
 >
 > Every entry is written as: **Scenario → Symptom → Mitigation → Severity**. Severity levels:
 >
@@ -16,13 +16,52 @@ Each phase's edge cases are grouped by category:
 
 - **Auth & Identity** — email/password login + Google OAuth (Drive/Gmail)
 - **Data & Persistence** — Supabase Postgres writes, JSON validation
-- **Paste-to-GPT** — Prompt Composer + Paste-Back Bridge failures
-- **External Services** — Google Drive / Gmail / Mailmeteor / ChatGPT UI
+- **OpenAI / Paste-to-GPT** — Server Chat Completions (`gpt-4.1-mini`) + optional Bridge paste-back
+- **External Services** — Google Drive / Gmail / guided Mailmeteor & LinkedIn (no in-app scraping)
 - **UX** — client-side, browser, and human-factor issues
-- **Concurrency & Timing** — races, retries, idempotency, cron drift
-- **Content & Safety** — fabrication, PII, hallucination, malformed input
+- **Concurrency & Timing** — races, retries, idempotency, cron drift, Drive PDF wait before drafts
+- **Content & Safety** — fabrication, PII, hallucination, malformed input, cover sign-off leakage
 
 Each edge case includes an example test case where practical, so QA has something to reproduce.
+
+---
+
+## 0.1 OpenAI server path & Drive PDF wait (current default)
+
+- **`CHATGPT_API_KEY` / `OPENAI_API_KEY` missing.**
+  - *Symptom:* Apply AI stages fail immediately.
+  - *Mitigation:* Clear error from `generateWithOpenAI`; document key in `docs/setup.md`. Health / ops should flag missing key.
+  - *Severity:* High for Apply.
+
+- **OpenAI 429 / insufficient_quota / timeout.**
+  - *Symptom:* Stage fails or retries then fails.
+  - *Mitigation:* Limited retries + backoff in `openai.ts`; friendly error strings; user can retry stage from pipeline UI.
+  - *Severity:* Medium.
+
+- **Schema-invalid JSON from the model.**
+  - *Symptom:* Validation fails after a successful HTTP 200.
+  - *Mitigation:* Repair prompt rounds (schema only); then stage `failed` with message.
+  - *Severity:* Medium.
+
+- **Gmail drafts created before Drive PDFs are ready.**
+  - *Symptom (historical):* Drafts without resume/cover attachments.
+  - *Mitigation:* `gmail_drafts` waits/polls until resume (± cover) PDFs are ready in Drive; fails clearly on timeout/upload failure.
+  - *Severity:* High if unaddressed (addressed in current pipeline).
+
+- **Cover letter JSON includes greeting or “Best regards”.**
+  - *Symptom:* Duplicate greeting/sign-off in PDF (template already has both).
+  - *Mitigation:* Prompt forbids them; `normalize` / `validate` strip residual sign-offs.
+  - *Severity:* Low–Medium (quality).
+
+- **Resume grows past one page after JD keyword stuffing.**
+  - *Symptom:* Two-page PDF / wrapped lines.
+  - *Mitigation:* Prompt requires in-place replace without lengthening lines; layout/word-budget helpers.
+  - *Severity:* Medium (quality).
+
+- **Legacy `llm_engine = gemma` rows in DB.**
+  - *Symptom:* Confusion in UI/logs.
+  - *Mitigation:* `normalizePipelineLlmEngine` maps `gemma` → `openai` when reading.
+  - *Severity:* Low.
 
 ---
 

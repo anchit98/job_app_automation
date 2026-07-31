@@ -28,6 +28,8 @@ import { DriveClient } from "@/lib/google/drive";
 import { DocsClient, type DocLayoutMap } from "@/lib/google/docs";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { isGoogleReconnectError } from "@/lib/google/reconnect";
+import { getRequestUserId, runAsUser } from "@/lib/auth/request-user";
+import { requireUser } from "@/lib/auth/user";
 import { buildJdContent, condenseMasterResume } from "@/lib/resume/context";
 import { fitResumeToMasterLayout } from "@/lib/resume/auto-fit";
 import { buildJdKeywordBrief } from "@/lib/resume/jd-keywords";
@@ -199,7 +201,7 @@ async function persistResumeArtifacts(
   assertMasterDocReady(masterRow);
 
   const profile = await getProfileRow();
-  const fullName = profile?.full_name ?? "Anchit Boruah";
+  const fullName = profile?.full_name?.trim() || "Candidate";
 
   // Reuse an existing upload_failed / uploading row for this prompt so retries
   // don't create v2…v7 clones while Google is disconnected.
@@ -224,9 +226,9 @@ async function persistResumeArtifacts(
     await updateResumeVersionContentForRetry(resumeVersionId, content);
   }
 
-  const finishDrive = async () => {
+  const finishDrive = async (userId: string) => {
     try {
-      const auth = await getGoogleAuthClient();
+      const auth = await getGoogleAuthClient(userId);
       const drive = new DriveClient(auth);
       const docs = new DocsClient(auth);
 
@@ -266,9 +268,11 @@ async function persistResumeArtifacts(
   };
 
   if (options?.deferDrive) {
-    // AI chain continues; Drive runs after the HTTP response.
+    // Prefer ALS userId (pipeline wraps runAsUser) — cookies() are forbidden inside after().
+    const userId =
+      getRequestUserId() ?? (await requireUser()).id;
     after(() => {
-      void finishDrive().catch((err) => {
+      void runAsUser(userId, () => finishDrive(userId)).catch((err) => {
         console.error("[resume] deferred Drive export failed", err);
       });
     });
@@ -280,7 +284,8 @@ async function persistResumeArtifacts(
     };
   }
 
-  return finishDrive();
+  const userId = getRequestUserId() ?? (await requireUser()).id;
+  return finishDrive(userId);
 }
 
 export async function submitResumeResponse(
@@ -420,7 +425,7 @@ export async function submitResumeResponse(
     return {
       ok: false as const,
       error: fabrication.structural_errors.some((f) => f.path === "tailorable")
-        ? "Word count exceeds the 400-word ceiling for bullets + skills. See the repair prompt."
+        ? "Word count exceeds the budget for bullets + skills. See the repair prompt."
         : "Structural validation failed. See the repair prompt.",
       structural_errors: fabrication.structural_errors,
       repair_prompt: buildResumeRepairPrompt(
@@ -467,22 +472,58 @@ export async function submitResumeResponse(
       rawResponse,
       schemaResult.data as Record<string, unknown>,
     );
-    await writeAuditLog("prompt.completed", "prompt_runs", promptRunId);
 
-    revalidatePath(`/applications/${existing.target_entity_id}`);
-    const status_advance = await maybeAdvanceApplicationStatus(
-      existing.target_entity_id,
-      "resume_ready",
-    );
-    return {
-      ok: true as const,
-      parsed: schemaResult.data,
-      version: result.version,
-      resume_version_id: result.resume_version_id,
-      status_advance,
-      drive_deferred: true as const,
-    };
+    // Best-effort side effects — content is already saved; never fail the pipeline here.
+    try {
+      await writeAuditLog("prompt.completed", "prompt_runs", promptRunId);
+      revalidatePath(`/applications/${existing.target_entity_id}`);
+      const status_advance = await maybeAdvanceApplicationStatus(
+        existing.target_entity_id,
+        "resume_ready",
+      );
+      return {
+        ok: true as const,
+        parsed: schemaResult.data,
+        version: result.version,
+        resume_version_id: result.resume_version_id,
+        status_advance,
+        drive_deferred: true as const,
+      };
+    } catch (sideEffectErr) {
+      console.error("[resume] post-save side effect failed", sideEffectErr);
+      return {
+        ok: true as const,
+        parsed: schemaResult.data,
+        version: result.version,
+        resume_version_id: result.resume_version_id,
+        drive_deferred: true as const,
+      };
+    }
   } catch (e) {
+    const versions = await listResumeVersions(existing.target_entity_id);
+    const linked = versions.find((v) => v.prompt_run_id === promptRunId);
+    if (linked && (linked.status === "ready" || linked.status === "uploading")) {
+      try {
+        await completePromptRun(
+          promptRunId,
+          rawResponse,
+          schemaResult.data as Record<string, unknown>,
+        );
+      } catch {
+        /* ignore */
+      }
+      console.error(
+        "[resume] save succeeded but submit threw; treating as ok",
+        e,
+      );
+      return {
+        ok: true as const,
+        parsed: schemaResult.data,
+        version: linked.version,
+        resume_version_id: linked.id,
+        drive_deferred: true as const,
+      };
+    }
     const error = formatResumeExportError(e);
     return {
       ok: false as const,
@@ -559,7 +600,7 @@ export async function retryResumeUpload(resumeVersionId: string) {
   }
 
   const profile = await getProfileRow();
-  const fullName = profile?.full_name ?? "Anchit Boruah";
+  const fullName = profile?.full_name?.trim() || "Candidate";
 
   try {
     const auth = await getGoogleAuthClient();

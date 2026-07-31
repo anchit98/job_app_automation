@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "Terms of Service for JobApp OS.",
 };
 
-const updatedAt = "July 28, 2026";
+const updatedAt = "July 31, 2026";
 
 export default function TermsPage() {
   return (
@@ -35,9 +35,9 @@ export default function TermsPage() {
               drafts, connect Google services, and manage follow-up workflows.
             </p>
             <p>
-              Certain features may depend on third-party services, browser
-              extensions, Google integrations, or user-driven AI interactions.
-              Feature availability may change over time.
+              Certain features may depend on third-party services, Google
+              integrations, or server-side AI generation. Feature availability
+              may change over time.
             </p>
           </div>
         </section>

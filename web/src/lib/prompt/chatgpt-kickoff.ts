@@ -25,7 +25,7 @@ export function withChatGptKickoff(
     case "resume":
       return `TASK - run immediately (do not refuse, do not ask what to do):
 
-ATS keyword swap for Anchit Boruah's resume. Do NOT rewrite - start from each master subheader/headline, bullet, and skill verbatim and only replace words/phrases with JD keywords where already true. Do not append new titles or keywords to the subheader. Leave lines unchanged when no clean fit. Keep all master metrics. ≤400 words across bullets + skills. Return ONLY complete JSON.
+Tailor the user's master resume to the job description by REPLACING words with JD keywords in place. Do not add clauses or grow line length — one-page PDF is mandatory. Do not invent experience. Each output line must be ≤ the master line length. Same bullet/skill counts as master. Every bullet must be a complete finished sentence. Return ONLY complete JSON.
 
 ---
 
@@ -34,7 +34,7 @@ ${promptBody}`;
     case "cover_letter":
       return `TASK - run immediately:
 
-Write the cover letter per the instructions below. Return ONLY the JSON object specified at the end - no markdown fences, no commentary.
+Write the cover letter per the instructions below. Do NOT include a greeting or sign-off (Warm regards / name) — the Google Doc template already has both. Maximize grounded JD keywords while staying concise. Return ONLY the JSON object specified at the end - no markdown fences, no commentary.
 
 ---
 
@@ -52,7 +52,7 @@ ${promptBody}`;
     case "cold_email":
       return `TASK - run immediately:
 
-Generate the cold emails per the instructions below. Return ONLY the JSON specified at the end.
+Generate short, structured cold emails per the instructions below. Showcase the candidate's best traits, skills, and achievements as bullet points. Return ONLY the JSON specified at the end.
 
 ---
 

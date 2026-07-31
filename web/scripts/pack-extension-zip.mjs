@@ -1,5 +1,5 @@
 /**
- * Pack ../extension into public/downloads/jobapp-bridge.zip
+ * Pack ../extension into ../artifacts/jobapp-bridge.zip (local/dev only — not public).
  * Run: node scripts/pack-extension-zip.mjs
  */
 import fs from "fs";
@@ -11,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.join(__dirname, "..");
 const repoRoot = path.join(webRoot, "..");
 const extensionDir = path.join(repoRoot, "extension");
-const outDir = path.join(webRoot, "public", "downloads");
+const outDir = path.join(repoRoot, "artifacts");
 const outZip = path.join(outDir, "jobapp-bridge.zip");
 
 const files = [

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { dbGet } from "@/lib/db";
 import { listRecentPromptRuns } from "@/lib/db/queries";
 import { isGoogleConnected } from "@/lib/google/tokens";
-import { getActiveExtensionTokenRow } from "@/lib/extension/tokens";
 import { peekQueuedExtensionRun } from "@/lib/db/pipeline";
 
 export default async function HealthPage() {
@@ -15,11 +14,9 @@ export default async function HealthPage() {
     dbError = e instanceof Error ? e.message : "Database error";
   }
 
-  const [googleConnected, recentRuns, extensionToken, pendingExt] =
-    await Promise.all([
+  const [googleConnected, recentRuns, pendingExt] = await Promise.all([
       isGoogleConnected().catch(() => false),
       listRecentPromptRuns(8),
-      getActiveExtensionTokenRow(),
       peekQueuedExtensionRun(),
     ]);
 
@@ -39,19 +36,12 @@ export default async function HealthPage() {
         : "Connect Google from the dashboard",
     },
     {
-      label: "Extension token",
-      ok: Boolean(extensionToken),
-      detail: extensionToken
-        ? `Active (${extensionToken.token_prefix}…)`
-        : "Generate in Settings",
-    },
-    {
       label: "Pending prompt runs",
       ok: pendingCount < 10,
       detail: `${pendingCount} pending`,
     },
     {
-      label: "Extension queue",
+      label: "AI wake queue",
       ok: true,
       detail: pendingExt
         ? `Waiting on ${pendingExt.kind} (${pendingExt.prompt_run_id.slice(0, 8)}…)`

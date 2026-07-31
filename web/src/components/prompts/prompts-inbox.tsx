@@ -51,7 +51,7 @@ export function PromptsInbox({ items }: PromptsInboxProps) {
         </span>
         <p className="mt-3 text-[16px] text-on-surface">Inbox is clear</p>
         <p className="text-[13px] text-on-surface-variant mt-1">
-          Pending paste-to-GPT tasks appear here after you export a prompt.
+          Pending paste-to-AI tasks appear here after you export a prompt.
         </p>
       </div>
     );

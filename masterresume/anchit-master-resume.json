@@ -69,8 +69,8 @@
   "skills": [
     "Product Management: Product Discovery, Product Strategy, Product Roadmap, PRD, Cross-Functional Leadership, Stakeholder Management, Agile/Scrum, GTM, Voice of the Customer",
     "Product Analytics & Growth: KPI Ownership, A/B Testing, Funnel Optimization, Retention, Churn, CSAT",
-    "AI & Automation: LLM Integration, RAG, Agentic AI, MCP Integrations, Process Automation",
-    "Data & Build: Power BI, Cursor, Google Antigravity, Render, Vercel, Google Stitch, SQL, Figma, Miro, Whimsical, Jira, Wrike"
+    "AI & Automation: Claude, OpenAI APIs, Gemini, RAG, AI Prototyping, Process Automation",
+    "Data & Build: Python, SQL, Streamlit, Replit, Railway, Render, Supabase, Vercel, Power BI, Cursor, Jira, Miro"
   ],
   "education": [
     {

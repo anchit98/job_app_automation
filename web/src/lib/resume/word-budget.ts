@@ -52,7 +52,9 @@ export function parseResumeWordBudget(
   return {
     work_through_skills_total: masterTotal,
     fixed_line_words: fixedLineWords,
-    tailorable_words: TAILORABLE_WORD_CEILING,
+    // Never force the resume below the master's own length — that caused
+    // mid-sentence chops. Allow at least the master total (and the 400 floor).
+    tailorable_words: Math.max(TAILORABLE_WORD_CEILING, masterTotal),
   };
 }
 

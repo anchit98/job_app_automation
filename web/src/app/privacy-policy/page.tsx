@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "Privacy Policy for JobApp OS.",
 };
 
-const updatedAt = "July 28, 2026";
+const updatedAt = "July 31, 2026";
 
 export default function PrivacyPolicyPage() {
   return (
@@ -126,16 +126,18 @@ export default function PrivacyPolicyPage() {
           <div className="space-y-4 text-[15px] leading-7 text-on-surface">
             <p>
               JobApp OS relies on third-party infrastructure and APIs,
-              including hosting, database, Google services, and user-driven AI
-              workflows. When you use the Google integration, your data may be
+              including hosting, database, Google services, and server-side AI
+              generation. When you use the Google integration, your data may be
               transmitted to Google in order to access or create Google Drive,
               Google Docs, and Gmail resources that you authorize.
             </p>
             <p>
-              JobApp OS may also help you prepare prompts and process responses
-              for external AI tools through the browser or the JobApp Bridge
-              workflow. Your use of those external services remains subject to
-              their own privacy terms and policies.
+              JobApp OS uses AI on the server to generate tailored resumes,
+              cover letters, and outreach from the materials you store in the
+              app. Generated content is validated before it enters your
+              application pipeline. Your use of the service remains subject to
+              these policies; third-party infrastructure providers remain subject
+              to their own terms.
             </p>
             <p>
               JobApp OS does not sell your personal information. We use Google

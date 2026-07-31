@@ -1,11 +1,11 @@
 import type { ResumeContent } from "@/lib/resume/fabrication";
 import {
   parseResumeWordBudget,
-  TAILORABLE_WORD_CEILING,
 } from "@/lib/resume/word-budget";
 
 /**
- * Prompt guide: surgical keyword swap + 400-word ceiling.
+ * Prompt guide: maximize JD keyword coverage via in-place word swaps only.
+ * Never grow line count — one-page PDF is mandatory.
  */
 export function buildResumeStructuralGuide(
   content: ResumeContent,
@@ -14,24 +14,34 @@ export function buildResumeStructuralGuide(
 ): string {
   const budget = parseResumeWordBudget(docLayout, content);
   const lines: string[] = [
-    "EDIT MODE (SUBHEADER + WORK EXPERIENCE → SKILLS):",
+    "EDIT MODE — REPLACE WORDS, DO NOT ADD (ONE PAGE):",
     "- Copy each MASTER line below as the starting text",
-    "- Replace words/phrases with JD keywords only where the fact already exists - do NOT rewrite or append",
-    "- Subheader (headline): same rule - swap words inside the master line; do not add new titles or keyword stacks",
-    "- If no clean keyword fit, return the master line unchanged",
-    `- Maximum ${TAILORABLE_WORD_CEILING} words total across bullets + skills (shorter is fine)`,
+    "- REPLACE existing words/phrases with JD keywords where the fact is already true",
+    "- Do NOT append, stack, or insert extra clauses — that increases line wrap and breaks one page",
+    "- Same bullet count as MASTER; same skill line count as MASTER",
+    "- Each output line character length must be ≤ the corresponding MASTER line (prefer shorter)",
+    "- Subheader (headline): replace words inside the master line only; never add titles or keyword stacks",
+    "- If a JD keyword cannot fit by replacing words without inventing or lengthening, skip it or swap it into skills by replacing an existing skill item",
+    `- Maximum ${budget.tailorable_words} words total across bullets + skills (never grow past master)`,
+    "",
+    "LINE COUNT / ONE PAGE (non-negotiable):",
+    "- One page only. Growing any line past MASTER length risks a second page — forbidden",
+    "- Prefer a shorter complete sentence over a longer keyword-stuffed line",
+    "- NEVER end a bullet mid-sentence or mid-clause",
+    "- Completeness + same-or-shorter length beats keyword coverage",
     "",
     "ATS STRATEGY:",
-    "- Prefer minimal synonym/phrase swaps over new sentences",
+    "- Synonym/phrase REPLACE only — not new sentences",
     "- Keep every metric and outcome from MASTER - never invent numbers",
-    "- Skills: keep each Category: prefix; reorder/swap items after the colon for JD terms",
+    "- Skills: keep each Category: prefix; REPLACE items after the colon (drop least-relevant master items if you add a JD term so length stays ≤ master)",
     "",
     "JSON OUTPUT:",
     '- { "headline", "experience": [{ "bullets": [...] }, ...], "projects": [...], "skills": [...] }',
-    "- experience/projects: ONLY bullets arrays",
+    "- experience/projects: ONLY bullets arrays (same lengths as MASTER)",
+    "- Every bullet must be a finished sentence ending in . ! or ?",
     "- Complete full JSON in one reply",
     "",
-    `MASTER LINES (reference ~${budget.work_through_skills_total} words - ceiling ${TAILORABLE_WORD_CEILING}):`,
+    `MASTER LINES (reference ~${budget.work_through_skills_total} words - ceiling ${budget.tailorable_words}):`,
   ];
 
   if (content.headline?.trim()) {

@@ -293,7 +293,6 @@ export function AdminCenterClient({
                       <SetupDot ok={user.console_done} title="Console" />
                       <SetupDot ok={user.google_connected} title="Google" />
                       <SetupDot ok={user.profile_done} title="Profile" />
-                      <SetupDot ok={user.extension_configured} title="Bridge" />
                     </div>
                   </td>
                   <td className="px-3 py-2 hidden sm:table-cell">
@@ -305,7 +304,6 @@ export function AdminCenterClient({
                       <SetupDot ok={user.console_done} title="Console" />
                       <SetupDot ok={user.google_connected} title="Google" />
                       <SetupDot ok={user.profile_done} title="Profile" />
-                      <SetupDot ok={user.extension_configured} title="Bridge" />
                     </div>
                   </td>
                   <td className="px-3 py-2">

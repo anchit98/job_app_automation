@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { GoogleConnectPanel } from "@/components/google/google-connect-panel";
-import { ExtensionBridgeControls } from "@/components/settings/extension-bridge-controls";
 import {
   clearSetupConsoleDone,
   markSetupConsoleDone,
@@ -14,20 +13,18 @@ export type SetupGuideStatus = {
   consoleDone: boolean;
   googleConnected: boolean;
   profileDone: boolean;
-  extensionTokenConfigured: boolean;
   guideCollapsed: boolean;
   googleError?: string | null;
   appUrl: string;
   redirectUri: string;
 };
 
-type StepId = "console" | "google" | "profile" | "extension";
+type StepId = "console" | "google" | "profile";
 
 const STEPS: { id: StepId; title: string }[] = [
   { id: "console", title: "Google Cloud Console" },
   { id: "google", title: "Connect Google account" },
   { id: "profile", title: "Profile & master docs" },
-  { id: "extension", title: "Install JobApp Bridge" },
 ];
 
 export function SetupGuide({ status }: { status: SetupGuideStatus }) {
@@ -36,26 +33,14 @@ export function SetupGuide({ status }: { status: SetupGuideStatus }) {
   const [minimized, setMinimized] = useState(status.guideCollapsed);
   /** Floating checklist panel vs tiny chatbot-style pill */
   const [panelOpen, setPanelOpen] = useState(false);
-  const [extensionLive, setExtensionLive] = useState({
-    tokenConfigured: status.extensionTokenConfigured,
-    bridgeOk: null as boolean | null,
-  });
 
   const stepsDone = useMemo(
     () => ({
       console: consoleDone,
       google: status.googleConnected,
       profile: status.profileDone,
-      extension:
-        extensionLive.tokenConfigured || status.extensionTokenConfigured,
     }),
-    [
-      consoleDone,
-      status.googleConnected,
-      status.profileDone,
-      extensionLive.tokenConfigured,
-      status.extensionTokenConfigured,
-    ],
+    [consoleDone, status.googleConnected, status.profileDone],
   );
 
   const completedCount = STEPS.filter((s) => stepsDone[s.id]).length;
@@ -222,8 +207,8 @@ export function SetupGuide({ status }: { status: SetupGuideStatus }) {
         <div>
           <h2 className="li-section-title">Setup guide</h2>
           <p className="li-meta mt-1 max-w-xl">
-            Connect Google Cloud OAuth, link your account, finish your profile,
-            and install JobApp Bridge so Quick Apply can run end-to-end.
+            Connect Google Cloud OAuth, link your account, and finish your
+            profile so Apply can generate materials end-to-end in the cloud.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -439,45 +424,13 @@ export function SetupGuide({ status }: { status: SetupGuideStatus }) {
               >
                 Open Profile
               </Link>
-              <button
-                type="button"
-                className="li-btn-secondary text-[13px]"
-                onClick={() => setOpenStep("extension")}
-              >
-                Next: Extension
-              </button>
-            </div>
-          </StepBody>
-        )}
-
-        <StepHeader
-          index={4}
-          title="Install JobApp Bridge"
-          done={stepsDone.extension}
-          open={openStep === "extension"}
-          onToggle={() => toggleStep("extension")}
-        />
-        {openStep === "extension" && (
-          <StepBody>
-            <p className="text-[13px] text-on-surface-variant mb-3">
-              The Chrome extension opens your AI chat, pastes prompts, and posts
-              replies back. Download it for your machine, load unpacked, then
-              paste the token.
-            </p>
-            <ExtensionBridgeControls
-              showInstallGuide
-              onStatusChange={setExtensionLive}
-            />
-            <p className="li-meta mt-3">
-              After saving Options, reload this tab. Manage tokens anytime under{" "}
               <Link
-                href="/settings"
-                className="text-primary font-semibold hover:underline"
+                href="/apply"
+                className="li-btn-secondary text-[13px] no-underline"
               >
-                Privacy &amp; Settings
+                Go to Apply
               </Link>
-              .
-            </p>
+            </div>
           </StepBody>
         )}
       </div>

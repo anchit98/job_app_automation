@@ -1,12 +1,17 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { getDashboardData } from "@/app/actions/tracker";
 import { getProfile } from "@/app/actions/profile";
 import { getMasterResume } from "@/app/actions/master-resume";
-import { getExtensionTokenStatus } from "@/app/actions/extension";
 import { isGoogleConnected } from "@/lib/google/tokens";
 import { env } from "@/lib/env";
+import { parseMetricsRange } from "@/lib/tracker/metrics-range";
+import { searchApplications } from "@/lib/tracker/queries";
 import { SetupGuide } from "@/components/setup/setup-guide";
 import { DashboardMetricsGrid } from "@/components/dashboard/dashboard-metrics";
+import { RecentApplications } from "@/components/dashboard/recent-applications";
+import { QuickActions } from "@/components/dashboard/quick-actions";
+import { FreshJobsBanner } from "@/components/dashboard/fresh-jobs-hack";
 import { ClearPendingPromptsButton } from "@/components/dashboard/clear-pending-prompts-button";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { profileAvatarSrc } from "@/lib/profile-avatar";
@@ -19,43 +24,24 @@ export default async function DashboardPage({
   const params = await searchParams;
   const googleError =
     typeof params.google_error === "string" ? params.google_error : null;
+  const metricsRange = parseMetricsRange(params);
 
-  const [
-    dashboard,
-    profile,
-    resume,
-    connected,
-    extensionStatus,
-  ] = await Promise.all([
-    getDashboardData().catch(() => null),
+  const [dashboard, profile, resume, connected, recent] = await Promise.all([
+    getDashboardData(metricsRange).catch(() => null),
     getProfile().catch(() => null),
     getMasterResume().catch(() => null),
     isGoogleConnected().catch(() => false),
-    getExtensionTokenStatus().catch(() => ({
-      configured: false,
-      token_prefix: null,
-      created_at: null,
-    })),
+    searchApplications({ page: 1, pageSize: 6 }).catch(() => null),
   ]);
 
   const metrics = dashboard?.metrics ?? {
     totalApplications: 0,
     applicationsThisWeek: 0,
-    responseRate: null,
-    interviewRate: null,
-    offerRate: null,
-    pendingFollowUps: 0,
-    snoozedFollowUps: 0,
     companiesContacted: 0,
     emailsSent: 0,
-    pendingPrompts: 0,
-    incompleteApplied: 0,
   };
-  const metricsFormatted = dashboard?.metricsFormatted ?? {
-    responseRate: "-",
-    interviewRate: "-",
-    offerRate: "-",
-  };
+  const pendingPrompts = dashboard?.pendingPrompts ?? 0;
+  const recentItems = recent?.items ?? [];
 
   const profileDone = Boolean(
     profile?.full_name &&
@@ -68,80 +54,108 @@ export default async function DashboardPage({
     `${appUrl.replace(/\/$/, "")}/api/auth/google/callback`;
 
   const displayName = profile?.full_name || "Your profile";
+  const firstName = (profile?.full_name ?? "").trim().split(/\s+/)[0] || null;
   const headline = profile?.headline || "Job application command center";
 
   return (
     <div className="dashboard-desktop-frame flex flex-col gap-3 lg:gap-4 overflow-y-auto max-md:min-h-0 max-md:pb-2">
-      <section className="li-card p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-center shrink-0">
-        <div className="lg:col-span-7 flex items-start gap-3 min-w-0">
-          <UserAvatar
-            src={profileAvatarSrc(profile)}
-            name={displayName}
-            size={56}
-            className="border-2"
-          />
-          <div className="min-w-0">
-            <h1 className="li-page-title truncate text-[22px] lg:text-[24px]">
-              {displayName}
-            </h1>
-            <p className="text-[14px] text-on-surface-variant mt-0.5 line-clamp-1 max-md:line-clamp-2">
-              {headline}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[13px] max-md:grid max-md:grid-cols-2 max-md:gap-2 max-md:max-w-xs">
-              <span className="text-on-surface-variant max-md:rounded-md max-md:bg-surface-container-low max-md:px-2.5 max-md:py-1.5">
-                Applications{" "}
-                <strong className="text-primary font-semibold">
-                  {metrics.totalApplications}
-                </strong>
-              </span>
-              <span className="text-on-surface-variant max-md:rounded-md max-md:bg-surface-container-low max-md:px-2.5 max-md:py-1.5">
-                This week{" "}
-                <strong className="text-on-surface font-semibold">
-                  {metrics.applicationsThisWeek}
-                </strong>
-              </span>
+      {/* Hero */}
+      <section className="li-card overflow-hidden shrink-0">
+        <div
+          className="h-16 lg:h-20 bg-[linear-gradient(115deg,var(--primary-container)_0%,var(--surface-bright)_55%,var(--surface)_100%)]"
+          aria-hidden
+        />
+        <div className="px-4 lg:px-6 pb-4 lg:pb-5">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div className="flex items-end gap-4 min-w-0 -mt-8 lg:-mt-10">
+              <div className="rounded-full ring-4 ring-surface shrink-0 bg-surface">
+                <UserAvatar
+                  src={profileAvatarSrc(profile)}
+                  name={displayName}
+                  size={64}
+                  className="border-2"
+                />
+              </div>
+              <div className="min-w-0 pb-0.5">
+                <p className="li-meta">
+                  {firstName ? `Welcome back, ${firstName}` : "Welcome back"}
+                </p>
+                <h1 className="li-page-title truncate text-[22px] lg:text-[26px] leading-tight">
+                  {displayName}
+                </h1>
+                <p className="text-[14px] text-on-surface-variant mt-0.5 line-clamp-1 max-md:line-clamp-2">
+                  {headline}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <Link
+                href="/apply"
+                className="li-btn-primary shrink-0 no-underline justify-center max-sm:w-full"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  rocket_launch
+                </span>
+                Start Apply
+              </Link>
+              <Link
+                href="/onboarding"
+                className="group shrink-0 no-underline inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-hairline bg-surface px-4 py-2 text-[13px] font-semibold text-on-surface shadow-[var(--shadow-card)] hover:border-primary/40 hover:text-primary transition-colors max-sm:w-full"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  contact_page
+                </span>
+                Update Profile
+              </Link>
             </div>
           </div>
-        </div>
 
-        <div className="lg:col-span-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 shrink-0">
-          <Link
-            href="/apply"
-            className="li-btn-primary shrink-0 no-underline justify-center max-sm:w-full"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              rocket_launch
-            </span>
-            Start Quick Apply
-          </Link>
-          <Link
-            href="/onboarding"
-            className="group shrink-0 no-underline inline-flex items-stretch overflow-hidden rounded-lg border border-border-hairline bg-surface shadow-[var(--shadow-card)] hover:border-outline/60 transition-colors max-sm:w-full"
-          >
-            <span
-              className="flex items-center justify-center px-2.5 border-r border-border-hairline bg-surface-container-low text-on-surface-variant group-hover:bg-primary-container group-hover:text-primary transition-colors"
-              aria-hidden
-            >
-              <span className="material-symbols-outlined text-[20px]">
-                contact_page
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border-hairline bg-surface-container-low px-3 py-1 text-[12px] text-on-surface-variant">
+              <span
+                className="material-symbols-outlined text-[15px] text-primary"
+                aria-hidden
+              >
+                work
               </span>
+              <strong className="font-semibold text-on-surface">
+                {metrics.totalApplications}
+              </strong>
+              applications
             </span>
-            <span className="flex items-center gap-1 px-3 py-2 text-[13px] font-semibold text-on-surface">
-              Update Profile
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:text-primary group-hover:translate-x-0.5 transition-all">
-                arrow_forward
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border-hairline bg-surface-container-low px-3 py-1 text-[12px] text-on-surface-variant">
+              <span
+                className="material-symbols-outlined text-[15px] text-success"
+                aria-hidden
+              >
+                trending_up
               </span>
+              <strong className="font-semibold text-on-surface">
+                {metrics.applicationsThisWeek}
+              </strong>
+              this week
             </span>
-          </Link>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border-hairline bg-surface-container-low px-3 py-1 text-[12px] text-on-surface-variant">
+              <span
+                className={`material-symbols-outlined text-[15px] ${connected ? "text-success" : "text-status-waiting"}`}
+                aria-hidden
+              >
+                {connected ? "cloud_done" : "cloud_off"}
+              </span>
+              {connected ? "Google connected" : "Google not connected"}
+            </span>
+          </div>
         </div>
       </section>
+
+      <FreshJobsBanner />
 
       <SetupGuide
         status={{
           consoleDone: Boolean(profile?.setup_console_done_at),
           googleConnected: connected,
           profileDone,
-          extensionTokenConfigured: Boolean(extensionStatus.configured),
           guideCollapsed: Boolean(profile?.setup_guide_collapsed),
           googleError,
           appUrl,
@@ -149,26 +163,32 @@ export default async function DashboardPage({
         }}
       />
 
-      {metrics.pendingPrompts > 0 && (
+      {pendingPrompts > 0 && (
         <div className="li-card-flat p-3 border-l-4 border-l-status-waiting bg-status-waiting-container shrink-0">
           <p className="text-[14px] font-semibold text-on-surface">
-            {metrics.pendingPrompts} AI step
-            {metrics.pendingPrompts === 1 ? "" : "s"} pending
+            {pendingPrompts} AI step
+            {pendingPrompts === 1 ? "" : "s"} pending
           </p>
           <p className="li-meta mt-1">
-            JobApp Bridge handles these automatically - clear if leftover from
-            aborted runs.
+            Leftover from aborted runs — safe to clear if nothing is actively
+            generating.
           </p>
-          <ClearPendingPromptsButton count={metrics.pendingPrompts} />
+          <ClearPendingPromptsButton count={pendingPrompts} />
         </div>
       )}
 
-      <div className="flex-1 min-h-0 flex flex-col gap-3 lg:gap-4">
-        <section className="li-card p-4 lg:p-5 flex-1 min-h-0 flex flex-col">
-          <DashboardMetricsGrid
-            metrics={metrics}
-            formatted={metricsFormatted}
-          />
+      <section className="li-card p-4 lg:p-5 shrink-0">
+        <Suspense fallback={null}>
+          <DashboardMetricsGrid metrics={metrics} range={metricsRange} />
+        </Suspense>
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4 shrink-0 pb-1">
+        <section className="li-card p-4 lg:p-5 lg:col-span-2">
+          <RecentApplications items={recentItems} />
+        </section>
+        <section className="li-card p-4 lg:p-5">
+          <QuickActions />
         </section>
       </div>
     </div>

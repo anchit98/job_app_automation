@@ -444,14 +444,14 @@ Search by:
 
 Dashboard should display:
 
-- Total applications
+- Total applications (date-range aware)
 - Applications this week
-- Response rate
-- Interview rate
-- Offer rate
-- Pending follow-ups
+- Gmail drafts created (emails sent / drafted metric)
 - Companies contacted
-- Emails sent
+- Date filter: last 7 days, last 30 days (default), last 3 months, custom range
+- Fresh LinkedIn jobs guidance (last-hour filter hack)
+- Recent applications and quick actions
+- Setup / Google connection status as needed
 
 ---
 
@@ -492,6 +492,7 @@ Product success will be measured by:
 
 - Automatic submission of applications on LinkedIn or company career portals
 - Automatic sending of emails without user approval
+- Automated LinkedIn scraping or bulk email-enrichment APIs inside the product (guided Mailmeteor / LinkedIn usage only)
 - Interview scheduling integrations
 - Salary negotiation assistance
 - Offer comparison
@@ -504,17 +505,20 @@ Product success will be measured by:
 # 12. Future Enhancements
 
 **Shipped (moved from future to current):**
-- ✅ Browser extension (**JobApp Bridge**) — automates ChatGPT paste flow end-to-end
-- ✅ Gmail integration — drafts created via Gmail API (send remains manual by design)
+- ✅ Browser extension (**JobApp Bridge**) — ChatGPT paste automation (now optional)
+- ✅ **Server-side OpenAI Apply** (`gpt-4.1-mini`) as default generation path
+- ✅ Gmail integration — drafts via Gmail API; wait for Drive PDFs before attach
 - ✅ Multi-user hosted deploy with email/password auth
-- ✅ Analytics dashboard with application metrics + funnel rates
+- ✅ Dashboard metrics with date filter + fresh-jobs / Apply contact guides
+- ✅ Marketing Insider tips, FAQ, launch pricing (₹299 / first 100 / 60 apps messaging)
 - ✅ Admin Center + email password recovery
 - ✅ JobApp OS branding
 - ✅ Manual UPI paywall + admin payment review (including phone review links)
-- ✅ Mobile-ready app shell (bottom tabs, Jobs cards, aligned metrics)
+- ✅ Mobile-ready app shell
 - ✅ Privacy Policy + Terms of Service
 
 **Still planned:**
+- Enforce application quotas / tiered packs with usage metering
 - Calendar integration for interview scheduling
 - Automatic recruiter discovery from company pages
 - AI-based recruiter prioritization

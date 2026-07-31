@@ -4,7 +4,9 @@ import { getRequestUserId } from "@/lib/auth/request-user";
 import { requireUser } from "@/lib/auth/user";
 import {
   buildInitialStages,
+  normalizePipelineLlmEngine,
   type PipelineContactInput,
+  type PipelineLlmEngine,
   type PipelineRunRecord,
   type PipelineRunStatus,
   type PipelineStage,
@@ -19,13 +21,20 @@ async function currentUserId(explicit?: string): Promise<string> {
 }
 
 function mapPipelineRow(row: Record<string, unknown>): PipelineRunRecord {
+  const stages = (
+    JSON.parse((row.stages_json as string) || "[]") as PipelineStage[]
+  ).map((stage) =>
+    stage.llm_engine
+      ? { ...stage, llm_engine: normalizePipelineLlmEngine(stage.llm_engine) }
+      : stage,
+  );
   return {
     id: row.id as string,
     user_id: row.user_id as string,
     application_id: row.application_id as string,
     status: row.status as PipelineRunStatus,
     current_stage: (row.current_stage as PipelineStageId) || null,
-    stages: JSON.parse((row.stages_json as string) || "[]") as PipelineStage[],
+    stages,
     contacts: JSON.parse((row.contacts_json as string) || "[]") as PipelineContactInput[],
     error: (row.error as string) || null,
     created_at: row.created_at as string,
@@ -37,14 +46,17 @@ export async function insertPipelineRun(input: {
   application_id: string;
   contacts: PipelineContactInput[];
   userId?: string;
+  llm_engine?: PipelineLlmEngine;
 }): Promise<PipelineRunRecord> {
   const id = randomUUID();
   const uid = await currentUserId(input.userId);
+  const llmEngine = input.llm_engine ?? "openai";
   const stages = buildInitialStages();
   stages[0] = {
     ...stages[0],
     status: "completed",
     detail: "Application created",
+    llm_engine: llmEngine,
   };
 
   await dbRun(`INSERT INTO pipeline_runs
@@ -118,7 +130,7 @@ export async function updatePipelineRun(
 }
 
 /**
- * Atomically claim a pending pipeline stage before exporting a ChatGPT prompt.
+ * Atomically claim a pending pipeline stage before exporting an AI prompt.
  * Only one concurrent caller (UI poll vs paste-back on separate Vercel isolates)
  * wins - losers get null and should reuse the winner's awaiting state.
  */
@@ -197,7 +209,7 @@ export async function upsertPendingExtensionRun(input: {
   );
 }
 
-/** Short-lived arm so ChatGPT only opens after an explicit Quick Apply signal. */
+/** Short-lived arm so AI chat only opens after an explicit Quick Apply signal. */
 export async function armExtensionWake(promptRunId: string, seconds = 60): Promise<boolean> {
   const secs = Math.max(5, Math.floor(seconds));
   // Use RETURNING - postgres.js `count` is unreliable for UPDATE without it.
@@ -221,7 +233,7 @@ export async function armExtensionWake(promptRunId: string, seconds = 60): Promi
 
 /**
  * Atomically consume a wake arm. Returns the run payload only when armed;
- * otherwise null. Prevents refresh / background polls from opening ChatGPT.
+ * otherwise null. Prevents refresh / background polls from opening AI chat.
  */
 export async function consumeExtensionWake(promptRunId: string): Promise<{
   prompt_run_id: string;
@@ -268,7 +280,7 @@ export function getLatestPendingExtensionRun(): {
   return null;
 }
 
-/** Health / UI only - does not arm or open ChatGPT. */
+/** Health / UI only - does not arm or open AI chat. */
 export async function peekQueuedExtensionRun(): Promise<{
   prompt_run_id: string;
   kind: string;
@@ -390,6 +402,61 @@ export async function listBusyPipelineRuns(userId?: string): Promise<PipelineRun
     uid,
   )) as Record<string, unknown>[];
   return rows.map(mapPipelineRow);
+}
+
+/**
+ * Mark abandoned running/awaiting pipelines as failed so they stop blocking
+ * the Classic Apply queue. Server OpenAI Apply no longer queues behind these, but
+ * Classic still does — and the Jobs UI should not show zombie "running" rows.
+ */
+export async function failStaleBusyPipelines(
+  userId?: string,
+  staleAfterMinutes = 6,
+): Promise<number> {
+  const uid = await currentUserId(userId);
+  const rows = (await dbAll(
+    `SELECT * FROM pipeline_runs
+     WHERE user_id = ?
+       AND status IN ('running', 'awaiting_chatgpt')
+       AND updated_at::timestamptz < (NOW() AT TIME ZONE 'utc') - make_interval(mins => ?::int)`,
+    uid,
+    staleAfterMinutes,
+  )) as Record<string, unknown>[];
+
+  let fixed = 0;
+  for (const row of rows) {
+    const run = mapPipelineRow(row);
+    const stageId = run.current_stage;
+    const stages = stageId
+      ? run.stages.map((s) =>
+          s.id === stageId &&
+          (s.status === "running" || s.status === "awaiting_chatgpt")
+            ? {
+                ...s,
+                status: "failed" as const,
+                error:
+                  "Timed out / interrupted. Use Resume on the application to retry.",
+                detail: "Stale — auto-cleared",
+              }
+            : s,
+        )
+      : run.stages;
+
+    await dbRun(
+      `UPDATE pipeline_runs
+       SET status = 'failed',
+           stages_json = ?,
+           error = ?,
+           updated_at = (NOW() AT TIME ZONE 'utc')::text
+       WHERE id = ?
+         AND status IN ('running', 'awaiting_chatgpt')`,
+      JSON.stringify(stages),
+      "Timed out / interrupted. Use Resume on the application to retry.",
+      run.id,
+    );
+    fixed += 1;
+  }
+  return fixed;
 }
 
 export async function listQueuedPipelineRuns(userId?: string): Promise<PipelineRunRecord[]> {

@@ -47,7 +47,7 @@ async function promptOwnedByUser(
 }
 
 /**
- * Chrome extension posts ChatGPT response text here.
+ * Chrome extension posts AI response text here.
  * Body: { prompt_run_id, raw_response, partial?: boolean }
  */
 export async function POST(request: Request) {

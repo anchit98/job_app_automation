@@ -12,7 +12,7 @@ import { isGoogleReconnectError } from "@/lib/google/reconnect";
 function isPermanentExtensionFailure(message?: string | null): boolean {
   if (!message) return false;
   if (isGoogleReconnectError(message)) return true;
-  return /file export failed|upload_failed|schema validation|repair prompt|empty chatgpt response/i.test(
+  return /file export failed|upload_failed|schema validation|repair prompt|empty (chatgpt|ai) response/i.test(
     message,
   );
 }

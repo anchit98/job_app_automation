@@ -1,5 +1,5 @@
 /**
- * Runs in the ChatGPT page world so ProseMirror sees real editing commands.
+ * Runs in the AI chat page world so ProseMirror sees real editing commands.
  * Talks to the extension content script via window.postMessage.
  */
 (function () {
@@ -166,7 +166,7 @@
 
     let ok = insertText(el, text);
     await new Promise((r) => setTimeout(r, 120));
-    // ChatGPT sometimes auto-attaches Search after detecting URLs — strip it.
+    // AI chat sometimes auto-attaches Search after detecting URLs — strip it.
     disableComposerExtras();
     await new Promise((r) => setTimeout(r, 40));
     let send = findSendEnabled();

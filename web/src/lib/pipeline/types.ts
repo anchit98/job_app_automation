@@ -23,6 +23,17 @@ export type PipelineRunStatus =
   | "failed"
   | "needs_manual";
 
+/** chatgpt = legacy browser-extension path; openai = server OpenAI API (main Apply flow). */
+export type PipelineLlmEngine = "chatgpt" | "openai";
+
+/** Normalize stored engine ids (legacy rows may still say "gemma"). */
+export function normalizePipelineLlmEngine(
+  value: string | null | undefined,
+): PipelineLlmEngine {
+  if (value === "chatgpt") return "chatgpt";
+  return "openai";
+}
+
 export interface PipelineStage {
   id: PipelineStageId;
   label: string;
@@ -35,6 +46,11 @@ export interface PipelineStage {
   chatgpt_url?: string | null;
   prompt_text?: string | null;
   repair_prompt?: string | null;
+  /**
+   * Stored on create_application for the whole run.
+   * Defaults to openai when absent (main Apply path).
+   */
+  llm_engine?: PipelineLlmEngine;
 }
 
 export interface PipelineContactInput {
@@ -63,10 +79,10 @@ export const PIPELINE_STAGE_DEFS: Array<{
   needsChatGpt: boolean;
 }> = [
   { id: "create_application", label: "Create application", needsChatGpt: false },
+  { id: "save_contacts", label: "Save contacts", needsChatGpt: false },
   { id: "jd_parse", label: "Parse job description", needsChatGpt: true },
   { id: "resume", label: "Tailor resume", needsChatGpt: true },
   { id: "cover_letter", label: "Write cover letter", needsChatGpt: true },
-  { id: "save_contacts", label: "Save contacts", needsChatGpt: false },
   { id: "cold_email", label: "Draft cold emails", needsChatGpt: true },
   { id: "gmail_drafts", label: "Create Gmail drafts", needsChatGpt: false },
 ];
@@ -77,4 +93,21 @@ export function buildInitialStages(): PipelineStage[] {
     label: def.label,
     status: "pending" as const,
   }));
+}
+
+export function getPipelineLlmEngine(
+  run: Pick<PipelineRunRecord, "stages">,
+): PipelineLlmEngine {
+  return normalizePipelineLlmEngine(
+    run.stages.find((s) => s.id === "create_application")?.llm_engine,
+  );
+}
+
+export function stageNeedsLlm(stageId: PipelineStageId): boolean {
+  return (
+    stageId === "jd_parse" ||
+    stageId === "resume" ||
+    stageId === "cover_letter" ||
+    stageId === "cold_email"
+  );
 }

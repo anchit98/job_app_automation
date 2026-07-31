@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   advancePipeline,
-  getPipelineStatus,
-  retryFailedPipeline,
+  resumePipeline,
 } from "@/app/actions/pipeline";
 import { ensureExtensionToken, armExtensionForPromptRun } from "@/app/actions/extension";
 import {
@@ -13,6 +12,7 @@ import {
   type ApplicationStatus,
 } from "@/lib/applications/status";
 import type { PipelineRunRecord, PipelineStage } from "@/lib/pipeline/types";
+import { getPipelineLlmEngine } from "@/lib/pipeline/types";
 
 function isGoogleReconnectError(message?: string | null): boolean {
   if (!message) return false;
@@ -21,19 +21,132 @@ function isGoogleReconnectError(message?: string | null): boolean {
   );
 }
 
-function stageIcon(status: PipelineStage["status"]) {
-  switch (status) {
-    case "completed":
-    case "skipped":
-      return "check_circle";
-    case "running":
-    case "awaiting_chatgpt":
-      return "progress_activity";
-    case "failed":
-      return "error";
-    default:
-      return "radio_button_unchecked";
+/** Short, plain-language status/error text for tech and non-tech users. */
+function friendlyMessage(raw: string | null | undefined): string {
+  if (!raw) return "Something went wrong. Please retry.";
+  const msg = raw.trim();
+  if (!msg) return "Something went wrong. Please retry.";
+
+  // Progress / success details (not failures)
+  if (/^generating with (gemma|llama|gpt)/i.test(msg)) return "Writing…";
+  if (/fixing ai reply|schema repair|retry after error|trying again/i.test(msg)) {
+    return "Trying again…";
   }
+  if (/gemma ok|openai ok|ai response accepted|drive export ready/i.test(msg)) {
+    return "Done";
+  }
+  if (/more email batches/i.test(msg)) return "Writing more emails…";
+  if (/no new drafts/i.test(msg)) return "Nothing new to draft";
+  if (/creating gmail drafts/i.test(msg)) return "Creating Gmail drafts…";
+  if (/uploading resume pdf/i.test(msg)) return "Uploading resume PDF to Drive…";
+  if (/uploading cover letter pdf/i.test(msg)) {
+    return "Uploading cover letter PDF to Drive…";
+  }
+  if (/waiting for (resume|cover letter) pdf|waiting for drive pdfs/i.test(msg)) {
+    return "Waiting for Drive PDFs…";
+  }
+  if (/saved \d+ contact|contacts saved/i.test(msg)) return "Contacts saved";
+  if (/created \d+ draft/i.test(msg)) return "Drafts created";
+  if (/skipped/i.test(msg)) return "Skipped";
+  if (/retrying after interrupted|resumed by user/i.test(msg)) {
+    return "Starting again…";
+  }
+  if (/^waiting/i.test(msg)) return "Waiting…";
+  if (/^working/i.test(msg) || /^running/i.test(msg)) return "Working…";
+
+  // Failures
+  if (
+    /reconnect|invalid_grant|revoked|insufficient|not connected|drive export|failed to upload to drive|upload to drive is taking/i.test(
+      msg,
+    )
+  ) {
+    return "Google needs to be reconnected.";
+  }
+  if (
+    /timeout|timed out|max-time|abort|aborted|ETIMEDOUT|ECONNRESET|fetch failed|network|curl/i.test(
+      msg,
+    )
+  ) {
+    return "This took too long. Please retry.";
+  }
+  if (/rate limit|429|quota|too many|busy/i.test(msg)) {
+    return "The service is busy. Retry in a minute.";
+  }
+  if (
+    /schema|JSON|parse|invalid response|unusable|validation|zod|expected/i.test(
+      msg,
+    )
+  ) {
+    return "The AI reply wasn't usable. Please retry.";
+  }
+  if (/interrupted|orphaned/i.test(msg)) {
+    return "This step stopped early. Please retry.";
+  }
+  if (/api key|unauthorized|401|403|forbidden/i.test(msg)) {
+    return "The AI service isn't available right now.";
+  }
+  if (/extension|bridge|chrome:\/\/extensions|load unpacked|__JOBAPP/i.test(msg)) {
+    return "This run could not continue automatically. Start a new Apply.";
+  }
+  if (/not found|missing/i.test(msg)) {
+    return "Something needed for this step is missing.";
+  }
+  if (/failed|error|exception/i.test(msg)) {
+    return "This step failed. Please retry.";
+  }
+
+  // Already short and plain — keep it; otherwise fall back.
+  if (msg.length <= 60 && !/[{\[\]\\]|HTTP\/|at \w+\.|node:|Error:/i.test(msg)) {
+    return msg;
+  }
+  return "Something went wrong. Please retry.";
+}
+
+function pipelineStatusLabel(status: string): string {
+  switch (status) {
+    case "awaiting_chatgpt":
+      return "waiting on AI";
+    case "needs_manual":
+      return "needs attention";
+    default:
+      return status;
+  }
+}
+
+function stageStatusLabel(stage: PipelineStage, isServerOpenAi: boolean): string {
+  if (stage.error) return friendlyMessage(stage.error);
+  if (stage.detail) return friendlyMessage(stage.detail);
+  switch (stage.status) {
+    case "pending":
+      return "Waiting…";
+    case "running":
+      return isServerOpenAi ? "Writing…" : "Working…";
+    case "awaiting_chatgpt":
+      return "Waiting on AI…";
+    case "completed":
+      return "Done";
+    case "skipped":
+      return "Skipped";
+    case "failed":
+      return "Failed";
+    default:
+      return "Waiting…";
+  }
+}
+
+function parsePipelineTimestamp(value: string): number | null {
+  if (!value) return null;
+  // DB returns "2026-07-30 11:20:57.583459" in UTC without a zone marker.
+  const iso = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+  const ts = Date.parse(iso);
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
 }
 
 function stagesSettled(pipeline: PipelineRunRecord) {
@@ -100,12 +213,11 @@ async function publishSignal(
   }
 
   if (!bridge?.wake) {
-    // Fallback if app-bridge.js hasn't injected yet (reload extension).
     window.dispatchEvent(new CustomEvent("jobapp-pending", { detail: payload }));
     return {
       ok: false,
       error:
-        "JobApp Bridge not detected on this page. Load/reload the unpacked extension, then hard-refresh this tab.",
+        "This run could not continue automatically. Start a new Apply from /apply.",
     };
   }
 
@@ -115,13 +227,12 @@ async function publishSignal(
       const detail =
         res?.error ||
         res?.reason ||
-        "Extension did not open AI.";
+        "AI could not start for this stage.";
       return {
         ok: false,
-        error:
-          /token/i.test(detail)
-            ? `${detail} Open extension Options → paste the token from Settings → Save → reload this page.`
-            : detail,
+        error: /token/i.test(detail)
+          ? "This run could not continue automatically. Start a new Apply from /apply."
+          : detail,
         reason: res?.reason,
       };
     }
@@ -129,7 +240,7 @@ async function publishSignal(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : "Extension wake failed.",
+      error: e instanceof Error ? e.message : "Could not start AI for this stage.",
     };
   }
 }
@@ -179,6 +290,8 @@ export function PipelineProgress({
   initialApplicationStatus?: ApplicationStatus | null;
 }) {
   const [pipeline, setPipeline] = useState(initialPipeline);
+  const pipelineRef = useRef(pipeline);
+  pipelineRef.current = pipeline;
   const [applicationStatus, setApplicationStatus] = useState<ApplicationStatus | null>(
     initialApplicationStatus,
   );
@@ -200,16 +313,101 @@ export function PipelineProgress({
     [pipeline],
   );
 
-  const completedCount = pipeline.stages.filter(
-    (s) => s.status === "completed" || s.status === "skipped",
-  ).length;
-  const progressPct = Math.round(
-    (completedCount / Math.max(pipeline.stages.length, 1)) * 100,
+  const isServerOpenAi = useMemo(
+    () => getPipelineLlmEngine(pipeline) === "openai",
+    [pipeline],
   );
 
-  const refresh = useCallback(async () => {
-    const status = await getPipelineStatus(pipeline.id);
-    if (status.ok) {
+  // Weighted progress: in-flight stages count half so the bar keeps moving
+  // instead of jumping only on stage completion.
+  const progressPct = useMemo(() => {
+    const total = Math.max(pipeline.stages.length, 1);
+    let done = 0;
+    for (const s of pipeline.stages) {
+      if (s.status === "completed" || s.status === "skipped") done += 1;
+      else if (s.status === "running" || s.status === "awaiting_chatgpt") {
+        done += 0.5;
+      }
+    }
+    return Math.min(100, Math.round((done / total) * 100));
+  }, [pipeline.stages]);
+
+  const isLive = pipelineStillActive(pipeline);
+
+  // 1s ticker so the elapsed clock and animations feel alive between polls.
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isLive) return;
+    const t = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [isLive]);
+
+  const startedTs = useMemo(
+    () => parsePipelineTimestamp(pipeline.created_at),
+    [pipeline.created_at],
+  );
+  const endTs = useMemo(
+    () =>
+      isLive ? null : parsePipelineTimestamp(pipeline.updated_at),
+    [isLive, pipeline.updated_at],
+  );
+  const elapsedLabel =
+    startedTs != null
+      ? formatElapsed((endTs ?? nowTs) - startedTs)
+      : null;
+
+  const updatedTs = useMemo(
+    () => parsePipelineTimestamp(pipeline.updated_at),
+    [pipeline.updated_at],
+  );
+  const secondsSinceUpdate =
+    updatedTs != null ? Math.max(0, Math.floor((nowTs - updatedTs) / 1000)) : 0;
+
+  const showRetry =
+    pipeline.status !== "completed" &&
+    (pipeline.status === "failed" ||
+      pipeline.status === "needs_manual" ||
+      pipeline.status === "queued" ||
+      Boolean(pipeline.error) ||
+      Boolean(error) ||
+      pipeline.stages.some((s) => s.status === "failed") ||
+      // Looks stuck: no progress update for 90s+ while still live
+      (isLive && secondsSinceUpdate >= 90));
+
+  function handleRetry() {
+    startTransition(async () => {
+      setError(null);
+      const result = await resumePipeline(pipeline.id);
+      if (result.pipeline) setPipeline(result.pipeline);
+      if (!result.ok) {
+        setError(result.error ?? "Retry failed.");
+      } else if ("warning" in result && result.warning) {
+        setError(result.warning);
+      }
+    });
+  }
+
+  /** Parallel HTTP poll — not blocked by long-running advancePipeline server actions. */
+  const statusInFlight = useRef(false);
+  const refreshLive = useCallback(async () => {
+    if (statusInFlight.current) return null;
+    statusInFlight.current = true;
+    try {
+      const res = await fetch(`/api/pipeline/${pipeline.id}/status`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!res.ok) return null;
+      const status = (await res.json()) as {
+        ok: boolean;
+        pipeline?: PipelineRunRecord;
+        application_status?: ApplicationStatus | null;
+        downloads?: {
+          resume_version: number | null;
+          cover_letter_version: number | null;
+        };
+      };
+      if (!status.ok || !status.pipeline) return null;
       setPipeline(status.pipeline);
       if (status.application_status) {
         setApplicationStatus(status.application_status);
@@ -217,32 +415,39 @@ export function PipelineProgress({
       if (status.downloads) {
         setDownloads(status.downloads);
       }
+      return status;
+    } catch {
+      return null;
+    } finally {
+      statusInFlight.current = false;
     }
-    return status;
   }, [pipeline.id]);
 
+  const advanceInFlight = useRef(false);
   const tick = useCallback(async () => {
-    const advanced = await advancePipeline(pipeline.id);
-    if (advanced.pipeline) setPipeline(advanced.pipeline);
-    const status = await getPipelineStatus(pipeline.id);
-    if (status.ok) {
-      if (status.application_status) {
-        setApplicationStatus(status.application_status);
-      }
-      if (status.downloads) {
-        setDownloads(status.downloads);
-      }
+    if (advanceInFlight.current) {
+      return { ok: true as const, skipped: true as const };
     }
-    if (!advanced.ok) {
-      setError(advanced.error ?? "Pipeline error");
-    } else {
-      setError(null);
+    advanceInFlight.current = true;
+    try {
+      const advanced = await advancePipeline(pipeline.id);
+      if (advanced.pipeline) setPipeline(advanced.pipeline);
+      // Refresh via HTTP so icons catch any stages that finished mid-flight.
+      await refreshLive();
+      if (!advanced.ok && !("skipped" in advanced && advanced.skipped)) {
+        setError(advanced.error ?? "Pipeline error");
+      } else if (advanced.ok) {
+        setError(null);
+      }
+      return advanced;
+    } finally {
+      advanceInFlight.current = false;
     }
-    return advanced;
-  }, [pipeline.id]);
+  }, [pipeline.id, refreshLive]);
 
   // Ensure extension token exists (auto-create on first use).
   useEffect(() => {
+    if (isServerOpenAi) return;
     void (async () => {
       const result = await ensureExtensionToken();
       setBridgeConfigured(result.configured);
@@ -250,10 +455,11 @@ export function PipelineProgress({
         setBridgeToken(result.token);
       }
     })();
-  }, []);
+  }, [isServerOpenAi]);
 
-  // Detect JobApp Bridge content script on this origin.
+  // Detect injected helper script on this origin (legacy path only).
   useEffect(() => {
+    if (isServerOpenAi) return;
     const check = async () => {
       const bridge = (
         window as unknown as {
@@ -303,44 +509,99 @@ export function PipelineProgress({
 
   useEffect(() => {
     let cancelled = false;
+    let statusInterval: ReturnType<typeof setInterval> | null = null;
+    let advanceInterval: ReturnType<typeof setInterval> | null = null;
+
+    const stopIfSettled = (p: PipelineRunRecord) => {
+      if (
+        stagesSettled(p) &&
+        (p.status === "completed" ||
+          p.status === "failed" ||
+          p.status === "needs_manual")
+      ) {
+        if (statusInterval) clearInterval(statusInterval);
+        if (advanceInterval) clearInterval(advanceInterval);
+        statusInterval = null;
+        advanceInterval = null;
+        return true;
+      }
+      return false;
+    };
+
     void (async () => {
       if (pipelineStillActive(pipeline)) {
-        const advanced = await tick();
-        if (cancelled) return;
-        if (advanced.pipeline) setPipeline(advanced.pipeline);
+        await tick();
       }
     })();
 
-    const interval = setInterval(async () => {
-      if (cancelled || pending) return;
-      // Keep refreshing until every stage is terminal - pipeline.status alone
-      // can briefly look "completed" while gmail_drafts is still running.
-      const latest = await refresh();
-      if (!latest.ok || cancelled) return;
+    // Status poll — coalesced + slower so we don't flood Supabase (was 1s → 3–35s each).
+    statusInterval = setInterval(async () => {
+      if (cancelled) return;
+      const latest = await refreshLive();
+      if (latest?.pipeline) stopIfSettled(latest.pipeline);
+    }, 2500);
+
+    // Drive the pipeline forward. While an AI stage is live, status poll alone is enough.
+    advanceInterval = setInterval(async () => {
+      if (cancelled || pending || advanceInFlight.current) return;
+
+      let latestPipeline = pipelineRef.current;
+      const liveAi = latestPipeline.stages.find(
+        (s) =>
+          (s.status === "running" || s.status === "awaiting_chatgpt") &&
+          (s.id === "jd_parse" ||
+            s.id === "resume" ||
+            s.id === "cover_letter" ||
+            s.id === "cold_email"),
+      );
+      if (getPipelineLlmEngine(latestPipeline) === "openai" && liveAi) {
+        return;
+      }
+
       if (
-        stagesSettled(latest.pipeline) &&
-        (latest.pipeline.status === "completed" ||
-          latest.pipeline.status === "failed" ||
-          latest.pipeline.status === "needs_manual")
+        stagesSettled(latestPipeline) &&
+        (latestPipeline.status === "completed" ||
+          latestPipeline.status === "failed" ||
+          latestPipeline.status === "needs_manual")
       ) {
         return;
       }
-      if (pipelineStillActive(latest.pipeline)) {
-        await tick();
+
+      if (!pipelineStillActive(latestPipeline)) {
+        const refreshed = await refreshLive();
+        if (!refreshed?.pipeline || cancelled) return;
+        latestPipeline = refreshed.pipeline;
+        if (stopIfSettled(latestPipeline)) return;
+        if (!pipelineStillActive(latestPipeline)) return;
+        const liveAfter = latestPipeline.stages.find(
+          (s) =>
+            (s.status === "running" || s.status === "awaiting_chatgpt") &&
+            (s.id === "jd_parse" ||
+              s.id === "resume" ||
+              s.id === "cover_letter" ||
+              s.id === "cold_email"),
+        );
+        if (getPipelineLlmEngine(latestPipeline) === "openai" && liveAfter) {
+          return;
+        }
       }
-    }, 2500);
+
+      await tick();
+    }, 2000);
+
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (statusInterval) clearInterval(statusInterval);
+      if (advanceInterval) clearInterval(advanceInterval);
     };
-    // Re-subscribe when top-level status changes; stage details come from refresh().
     // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid restarting on every stages_json patch
-  }, [pipeline.status, pending, refresh, tick]);
+  }, [pipeline.status, pending, refreshLive, tick]);
 
   // Keep waking AI while this stage is waiting (JD parse, resume, etc.).
   // First signal can be missed if the extension wasn't ready; re-arm periodically.
   // Skip auto-wake when Drive export is blocked on Google reconnect.
   useEffect(() => {
+    if (isServerOpenAi) return;
     if (
       pipeline.status !== "awaiting_chatgpt" ||
       !activeStage?.prompt_run_id ||
@@ -425,7 +686,7 @@ export function PipelineProgress({
           ) {
             return;
           }
-          setError(woke.error ?? "Could not wake JobApp Bridge.");
+          setError(woke.error ?? "Could not start AI for this stage.");
           return;
         }
         markSignaled(promptRunId);
@@ -447,6 +708,7 @@ export function PipelineProgress({
       clearInterval(interval);
     };
   }, [
+    isServerOpenAi,
     pipeline.status,
     pipeline.id,
     pipeline.error,
@@ -496,7 +758,7 @@ export function PipelineProgress({
         { clearLock: true },
       );
       if (!woke.ok) {
-        setError(woke.error ?? "Could not wake JobApp Bridge.");
+        setError(woke.error ?? "Could not start AI for this stage.");
         return;
       }
       setError(null);
@@ -509,14 +771,31 @@ export function PipelineProgress({
           <div>
             <h2 className="li-section-title">
               Auto-apply progress
+              {isServerOpenAi && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-info-container px-2 py-0.5 text-[11px] font-semibold text-primary align-middle">
+                  AI
+                </span>
+              )}
             </h2>
             <p className="li-meta mt-1">
-              Pipeline: <span className="text-on-surface font-semibold">{pipeline.status}</span>
+              Pipeline:{" "}
+              <span className="text-on-surface font-semibold">
+                {pipelineStatusLabel(pipeline.status)}
+              </span>
               {applicationStatus ? (
                 <>
                   {" · Application: "}
                   <span className="text-on-surface font-semibold">
                     {APPLICATION_STATUS_LABELS[applicationStatus]}
+                  </span>
+                </>
+              ) : null}
+              {elapsedLabel ? (
+                <>
+                  {" · "}
+                  <span className="pp-elapsed text-on-surface font-semibold">
+                    {isLive ? "Elapsed " : "Took "}
+                    {elapsedLabel}
                   </span>
                 </>
               ) : null}
@@ -529,88 +808,113 @@ export function PipelineProgress({
               </Link>
             </p>
           </div>
-          <div className="text-[24px] font-semibold text-primary">{progressPct}%</div>
+          <div className="flex flex-col items-end gap-2">
+            <div className="pp-percent text-[24px] font-semibold text-primary">
+              {progressPct}%
+            </div>
+            {showRetry && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={handleRetry}
+                className="li-btn-secondary text-[12px] disabled:opacity-50"
+              >
+                {pending ? "Retrying…" : "Retry"}
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="h-2 rounded-full bg-surface-container overflow-hidden">
+        <div className="pp-progressbar">
           <div
-            className="h-full bg-primary transition-all duration-500 rounded-full"
+            className={`pp-progressbar-fill ${isLive ? "pp-progressbar-live" : ""}`}
             style={{ width: `${progressPct}%` }}
           />
         </div>
 
-        <ul className="divide-y divide-border-muted border border-border-muted rounded-lg overflow-hidden">
-          {pipeline.stages.map((stage) => {
-            const active = stage.id === pipeline.current_stage;
+        <ol className="space-y-0">
+          {pipeline.stages.map((stage, idx) => {
+            const active =
+              stage.id === pipeline.current_stage ||
+              stage.status === "running" ||
+              stage.status === "awaiting_chatgpt";
+            const done =
+              stage.status === "completed" || stage.status === "skipped";
+            const failed = stage.status === "failed";
+            const inFlight =
+              stage.status === "running" || stage.status === "awaiting_chatgpt";
+            const isLast = idx === pipeline.stages.length - 1;
+            const nodeClass = failed
+              ? "pp-node-failed"
+              : stage.status === "skipped"
+                ? "pp-node-skipped"
+                : stage.status === "completed"
+                  ? "pp-node-done"
+                  : inFlight || active
+                    ? "pp-node-active"
+                    : "";
             return (
               <li
                 key={stage.id}
-                className={`flex items-start gap-3 px-3 py-2.5 ${
-                  active ? "bg-info-container" : "bg-surface"
-                }`}
+                className="pp-row relative flex gap-3 pb-4 last:pb-0"
+                style={{ animationDelay: `${idx * 60}ms` }}
               >
-                <span
-                  className={`material-symbols-outlined text-[20px] mt-0.5 ${
-                    stage.status === "failed"
-                      ? "text-error"
-                      : stage.status === "completed" || stage.status === "skipped"
-                        ? "text-success"
-                        : active
-                          ? "text-status-waiting"
-                          : "text-on-surface-variant"
-                  } ${active && (stage.status === "running" || stage.status === "awaiting_chatgpt") ? "animate-spin" : ""}`}
-                >
-                  {stageIcon(stage.status)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[14px] font-semibold text-on-surface">
-                    {stage.label}
+                {!isLast && (
+                  <span
+                    className={`pp-connector ${done ? "pp-connector-done" : ""}`}
+                    aria-hidden
+                  />
+                )}
+                <div className={`pp-node ${nodeClass}`}>
+                  {inFlight ? (
+                    <span className="pp-spinner" aria-label="In progress" />
+                  ) : (
+                    <span className="material-symbols-outlined text-[13px] leading-none">
+                      {failed
+                        ? "priority_high"
+                        : stage.status === "completed"
+                          ? "check"
+                          : stage.status === "skipped"
+                            ? "remove"
+                            : "circle"}
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 flex min-h-[24px] flex-col justify-center">
+                  <div className="flex items-center gap-2 leading-tight">
+                    <span
+                      className={`text-[14px] font-semibold ${
+                        failed
+                          ? "text-error"
+                          : done || active
+                            ? "text-on-surface"
+                            : "text-on-surface-variant"
+                      }`}
+                    >
+                      {stage.label}
+                    </span>
+                    {stage.status === "skipped" && (
+                      <span className="rounded-full bg-surface-container px-2 py-0.5 text-[10.5px] font-medium text-on-surface-variant">
+                        skipped
+                      </span>
+                    )}
                   </div>
-                  <div className="text-[12px] text-on-surface-variant">
-                    {stage.detail || stage.error || stage.status}
+                  <div
+                    className={`mt-0.5 truncate text-[12px] leading-snug ${
+                      failed ? "text-error" : "text-on-surface-variant"
+                    } ${inFlight ? "pp-detail-running" : ""}`}
+                    title={stage.error || stage.detail || undefined}
+                  >
+                    {stageStatusLabel(stage, isServerOpenAi)}
                   </div>
                 </div>
               </li>
             );
           })}
-        </ul>
+        </ol>
       </div>
 
       <div className="lg:col-span-5 flex flex-col gap-3">
-      {/* Full setup card only when a brand-new token must be pasted into Options. */}
-      {bridgeToken && (
-        <div className="li-card-flat border-l-4 border-l-primary bg-info-container p-4 space-y-3">
-          <h3 className="li-section-title">
-            Connect JobApp Bridge (required for AI)
-          </h3>
-          <ol className="list-decimal pl-5 text-[13px] text-on-surface-variant space-y-1">
-            <li>
-              Chrome → <code className="text-[12px]">chrome://extensions</code> → Developer
-              mode → Load unpacked → select the <code className="text-[12px]">extension/</code>{" "}
-              folder in this project.
-            </li>
-            <li>Open the extension Options page.</li>
-            <li>
-              App URL: <code className="text-[12px]">http://localhost:3000</code>
-            </li>
-            <li>
-              Paste this token (shown once):
-              <code className="block mt-2 text-[11px] break-all bg-surface-container-highest p-2 rounded">
-                {bridgeToken}
-              </code>
-              <button
-                type="button"
-                className="text-[12px] text-primary underline mt-1"
-                onClick={() => navigator.clipboard.writeText(bridgeToken)}
-              >
-                Copy token
-              </button>
-            </li>
-            <li>Save options, then reload this page. The pipeline will continue automatically.</li>
-          </ol>
-        </div>
-      )}
-
       {pipeline.status === "queued" && (
         <div className="li-card p-4 space-y-2">
           <h3 className="text-[16px] font-medium text-on-surface">Queued</h3>
@@ -621,99 +925,84 @@ export function PipelineProgress({
         </div>
       )}
 
-      {/* Compact bridge status - not an error banner. */}
-      {pipeline.status === "awaiting_chatgpt" && (
-        <p className="text-[12px] text-on-surface-variant px-1">
-          JobApp Bridge on this tab:{" "}
-          {bridgeDetected == null
-            ? "checking…"
-            : bridgeDetected
-              ? "connected"
-              : "not injected - hard-refresh this tab after reloading the extension"}
-          {bridgeConfigured ? " · token ready" : ""}
-          {" · "}
-          <Link href="/settings" className="text-primary hover:underline">
-            Privacy &amp; Settings
-          </Link>
-        </p>
+      {isServerOpenAi &&
+        (pipeline.status === "running" ||
+          activeStage?.status === "running") && (
+        <div className="li-card p-4 space-y-2">
+          <h3 className="text-[16px] font-medium text-on-surface">
+            Generating with AI
+            {activeStage ? ` — ${activeStage.label}` : ""}
+          </h3>
+          <p className="text-[13px] text-on-surface-variant">
+            Everything runs automatically — keep this tab open. Each AI step
+            takes about 1–2 minutes.
+          </p>
+          {(activeStage?.detail || activeStage?.error || pipeline.error) && (
+            <p
+              className={`text-[12px] ${
+                activeStage?.error || pipeline.error
+                  ? "text-error"
+                  : "text-on-surface-variant"
+              }`}
+            >
+              {friendlyMessage(
+                activeStage?.error || pipeline.error || activeStage?.detail,
+              )}
+            </p>
+          )}
+        </div>
       )}
 
-      {pipeline.status === "awaiting_chatgpt" && (
+      {!isServerOpenAi && pipeline.status === "awaiting_chatgpt" && (
         <div className="li-card p-4 space-y-3">
           <h3 className="text-[16px] font-medium text-on-surface">
             {isGoogleReconnectError(activeStage?.error || pipeline.error || error)
               ? "Google reconnect required"
-              : "Waiting on JobApp Bridge"}
+              : "Waiting on AI"}
             {activeStage ? ` - ${activeStage.label}` : ""}
           </h3>
           {isGoogleReconnectError(activeStage?.error || pipeline.error || error) ? (
             <>
               <p className="text-[13px] text-on-surface-variant">
-                AI already produced this stage&apos;s content, but Drive export
-                failed because Google is disconnected or revoked. Reconnect Google,
-                then this page will retry the export and continue automatically -
-                no need to re-run AI.
+                Google got disconnected. Reconnect it and this run continues
+                automatically.
               </p>
               <a href="/api/auth/google/start" className="li-btn-primary text-[12px] no-underline inline-flex">
                 Reconnect Google
               </a>
-              <p className="text-[12px] text-on-surface-variant">
-                After reconnecting, keep this pipeline tab open - export recovery
-                runs on the next refresh/advance tick.
-              </p>
             </>
           ) : (
             <>
               <p className="text-[13px] text-on-surface-variant">
-                AI runs this stage (including JD parsing). You can leave this
-                page - JobApp OS keeps the pipeline moving from any screen and
-                wakes JobApp Bridge automatically.
+                This older run is stuck waiting. Start a fresh Apply from{" "}
+                <Link href="/apply" className="text-primary font-semibold hover:underline">
+                  Apply
+                </Link>{" "}
+                for automatic cloud generation.
               </p>
-              <button
-                type="button"
-                onClick={() => wakeExtensionForCurrentStage()}
-                className="li-btn-primary text-[12px]"
+              <Link
+                href="/apply"
+                className="li-btn-primary text-[12px] no-underline inline-flex"
               >
-                Open AI chat for this stage
-              </button>
-              {bridgeDetected === false && (
-                <p className="text-[12px] text-on-surface-variant">
-                  If AI did not open: reload JobApp Bridge in{" "}
-                  <code className="text-[11px]">chrome://extensions</code>, then
-                  hard-refresh this tab (Ctrl+Shift+R) and click the button again.
-                </p>
-              )}
+                Start Apply
+              </Link>
             </>
           )}
           {(activeStage?.error || pipeline.error) && (
             <p className="text-[12px] text-error">
-              {activeStage?.error || pipeline.error}
+              {friendlyMessage(activeStage?.error || pipeline.error || "")}
             </p>
           )}
         </div>
       )}
 
       {error &&
-        !/No pending extension run to arm/i.test(error) &&
-        !(bridgeDetected === false && /Bridge not detected|not detected on this page/i.test(error)) && (
-        <div className="rounded-xl bg-error-container text-on-error-container p-4 space-y-3">
-          <p className="text-[13px]">{error}</p>
-          {pipeline.status === "failed" && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() =>
-                startTransition(async () => {
-                  const result = await retryFailedPipeline(pipeline.id);
-                  if (result.pipeline) setPipeline(result.pipeline);
-                  setError(null);
-                })
-              }
-              className="rounded-full bg-on-error-container text-error-container px-4 py-1.5 text-[12px]"
-            >
-              Retry failed stage
-            </button>
-          )}
+        !isGoogleReconnectError(error) &&
+        !/No pending extension run to arm|Bridge not detected|not detected on this page|could not continue automatically|chrome:\/\/extensions/i.test(
+          error,
+        ) && (
+        <div className="rounded-xl bg-error-container text-on-error-container p-4">
+          <p className="text-[13px]">{friendlyMessage(error)}</p>
         </div>
       )}
 
@@ -722,7 +1011,8 @@ export function PipelineProgress({
         <div className="li-card p-4 space-y-3">
           <h3 className="li-section-title">Download PDFs</h3>
           <p className="li-meta">
-            Save files locally as soon as Drive export finishes for each stage.
+            Available once Drive export finishes — Gmail drafts wait for these
+            PDFs before attaching.
           </p>
           <div className="flex flex-wrap gap-2">
             {downloads.resume_version != null && (
@@ -752,23 +1042,7 @@ export function PipelineProgress({
             Resume, cover letter, and Gmail drafts are ready. Review and send from the
             application workspace.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {downloads.resume_version != null && (
-              <a
-                href={`/api/applications/${pipeline.application_id}/resume/${downloads.resume_version}/pdf`}
-                className="li-btn-ghost text-[12px] no-underline border border-border-hairline"
-              >
-                Download resume
-              </a>
-            )}
-            {downloads.cover_letter_version != null && (
-              <a
-                href={`/api/applications/${pipeline.application_id}/cover-letter/${downloads.cover_letter_version}/pdf`}
-                className="li-btn-ghost text-[12px] no-underline border border-border-hairline"
-              >
-                Download cover letter
-              </a>
-            )}
+          <div className="mt-4">
             <Link
               href={`/applications/${pipeline.application_id}`}
               className="li-btn-primary text-[13px] no-underline"

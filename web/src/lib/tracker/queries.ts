@@ -178,55 +178,64 @@ export async function searchApplications(
   };
 }
 
+export interface DashboardMetricsBounds {
+  fromIso: string;
+  toIso: string;
+  thisWeekFromIso: string;
+  thisWeekToIso: string;
+}
+
 export async function getDashboardMetricsRow(
+  bounds: DashboardMetricsBounds,
   userId?: string,
 ): Promise<DashboardMetricsRow> {
   const uid = await currentUserId(userId);
-  const row = await dbGet(`SELECT
-         (SELECT COUNT(*) FROM applications WHERE user_id = ?) AS total,
+  const row = await dbGet(
+    `SELECT
          (SELECT COUNT(*) FROM applications
           WHERE user_id = ?
-            AND created_at >= (NOW() AT TIME ZONE 'utc' - INTERVAL '7 days')::text) AS this_week,
+            AND created_at >= ?
+            AND created_at <= ?) AS total,
          (SELECT COUNT(*) FROM applications
           WHERE user_id = ?
-            AND status IN (
-            'applied', 'email_sent', 'hr_replied', 'interview_scheduled',
-            'offer', 'accepted', 'rejected', 'withdrawn'
-          )) AS applied_denominator,
-         (SELECT COUNT(*) FROM applications
-          WHERE user_id = ?
-            AND status IN ('hr_replied', 'interview_scheduled', 'offer', 'accepted')) AS responded,
-         (SELECT COUNT(*) FROM applications
-          WHERE user_id = ?
-            AND status IN ('interview_scheduled', 'offer', 'accepted')) AS interviewed,
-         (SELECT COUNT(*) FROM applications
-          WHERE user_id = ?
-            AND status IN ('offer', 'accepted')) AS offered,
+            AND created_at >= ?
+            AND created_at <= ?) AS this_week,
          (SELECT COUNT(DISTINCT company) FROM applications
           WHERE user_id = ?
             AND status IN ('email_sent', 'hr_replied', 'interview_scheduled', 'offer', 'accepted')
-            AND company IS NOT NULL AND TRIM(company) != '') AS companies_contacted,
+            AND company IS NOT NULL AND TRIM(company) != ''
+            AND created_at >= ?
+            AND created_at <= ?) AS companies_contacted,
          (SELECT COUNT(*) FROM emails e
           INNER JOIN applications a ON a.id = e.application_id
-          WHERE a.user_id = ? AND e.draft_status = 'created') AS emails_sent,
-         (SELECT COUNT(*) FROM prompt_runs
-          WHERE user_id = ? AND status = 'pending' AND prompt_text != '') AS pending_prompts,
-         (SELECT COUNT(*) FROM follow_ups f
-          INNER JOIN applications a ON a.id = f.application_id
           WHERE a.user_id = ?
-            AND f.status IN ('pending', 'enqueued', 'processing', 'snoozed')
-            AND f.status != 'skipped') AS pending_follow_ups,
-         (SELECT COUNT(*) FROM follow_ups f
-          INNER JOIN applications a ON a.id = f.application_id
-          WHERE a.user_id = ? AND f.status = 'snoozed') AS snoozed_follow_ups,
-         (SELECT COUNT(*) FROM applications a
-          WHERE a.user_id = ?
-            AND a.status = 'applied'
-            AND NOT EXISTS (
-              SELECT 1 FROM resume_versions rv WHERE rv.application_id = a.id
-            )) AS incomplete_applied`,
-    uid, uid, uid, uid, uid, uid, uid, uid, uid, uid, uid, uid);
+            AND e.draft_status = 'created'
+            AND e.created_at >= ?
+            AND e.created_at <= ?) AS emails_sent`,
+    uid,
+    bounds.fromIso,
+    bounds.toIso,
+    uid,
+    bounds.thisWeekFromIso,
+    bounds.thisWeekToIso,
+    uid,
+    bounds.fromIso,
+    bounds.toIso,
+    uid,
+    bounds.fromIso,
+    bounds.toIso,
+  );
   return row as unknown as DashboardMetricsRow;
+}
+
+export async function countPendingPromptRuns(userId?: string): Promise<number> {
+  const uid = await currentUserId(userId);
+  const row = await dbGet(
+    `SELECT COUNT(*) AS total FROM prompt_runs
+     WHERE user_id = ? AND status = 'pending' AND prompt_text != ''`,
+    uid,
+  );
+  return Number((row as { total?: number } | null)?.total ?? 0);
 }
 
 export interface PendingPromptRunItem extends PromptRun {

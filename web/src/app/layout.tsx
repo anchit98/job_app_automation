@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "JobApp OS | Job Application Automation",
-  description: "Job application pipeline. Quick Apply with AI bridge",
+  description: "Job application pipeline. Apply with cloud AI",
   icons: {
     icon: [
       { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },

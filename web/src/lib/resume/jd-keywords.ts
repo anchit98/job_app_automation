@@ -82,15 +82,15 @@ export function buildJdKeywordBrief(application: Application): string {
   }
 
   const lines = [
-    "JD KEYWORD TARGETS - swap into master subheader, bullets, and skills where already true (do not append to the subheader):",
+    "JD KEYWORD TARGETS — REPLACE words in master lines (do not append; do not grow line length):",
     "",
-    `Must-have (${keywords.must_have.length}) - include at least 70% somewhere in the tailored resume:`,
+    `Must-have (${keywords.must_have.length}) — cover via in-place swaps where already true (skip if it would lengthen a line):`,
     ...keywords.must_have.map((keyword) => `- ${keyword}`),
     "",
-    `Nice-to-have (${keywords.nice_to_have.length}) - include where naturally grounded:`,
+    `Nice-to-have (${keywords.nice_to_have.length}) — only if a clean REPLACE fits without adding words:`,
     ...keywords.nice_to_have.map((keyword) => `- ${keyword}`),
     "",
-    `Tech stack (${keywords.tech_stack.length}) - reflect in relevant bullets/projects/skills:`,
+    `Tech stack (${keywords.tech_stack.length}) — REPLACE into bullets/projects/skills; drop a less-relevant skill item if needed to keep length ≤ master:`,
     ...keywords.tech_stack.map((tool) => `- ${tool}`),
   ];
 

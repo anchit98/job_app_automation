@@ -79,7 +79,7 @@ export type ArmExtensionPayload = {
   chatgpt_url?: string;
 };
 
-/** Arm ChatGPT open for one prompt run (called only from Quick Apply / pipeline wake). */
+/** Arm AI chat open for one prompt run (called only from Quick Apply / pipeline wake). */
 export async function armExtensionForPromptRun(
   promptRunId: string,
   payload?: ArmExtensionPayload,

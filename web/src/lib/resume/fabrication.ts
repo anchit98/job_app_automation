@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { buildResumeStructuralGuide } from "@/lib/resume/prompt-anchors";
+import { isIncompleteBullet } from "@/lib/resume/bullet-layout";
 import {
   countTailorableWords,
   parseResumeWordBudget,
-  TAILORABLE_WORD_CEILING,
 } from "@/lib/resume/word-budget";
 
 export { countSentences } from "@/lib/resume/bullet-layout";
@@ -104,7 +104,7 @@ function joinBulletParts(previous: string, next: string): string {
 }
 
 /**
- * ChatGPT sometimes emits extra bullet strings for one slot. Merge overflow
+ * The AI sometimes emits extra bullet strings for one slot. Merge overflow
  * into the last expected slot.
  */
 export function normalizeBulletsToMasterShape(
@@ -164,11 +164,24 @@ function checkBullets(
   masterBulletsAligned: string[],
   basePath: string,
   fabrication_flags: FabricationFlag[],
+  structural_errors: FabricationFlag[],
 ) {
   for (let j = 0; j < bullets.length; j++) {
     const bullet = bullets[j];
     const masterBullet = masterBulletsAligned[j] ?? "";
     const bulletPath = `${basePath}.bullets[${j}]`;
+
+    if (isIncompleteBullet(bullet)) {
+      structural_errors.push({
+        id: flagId(bulletPath, "structural_drift"),
+        path: bulletPath,
+        bullet,
+        reason: "structural_drift",
+        message:
+          "Bullet ends mid-sentence. Rewrite as a complete finished sentence at or under the master line length.",
+        suggested_source: masterBullet || undefined,
+      });
+    }
 
     const match = masterBullet
       ? findBestMasterMatch(bullet, [masterBullet])
@@ -235,7 +248,7 @@ export function checkResumeFabrication(
       path: "tailorable",
       bullet: "",
       reason: "structural_drift",
-      message: `Word count too high: bullets + skills must be at most ${TAILORABLE_WORD_CEILING} words, got ${actualWords}.`,
+      message: `Word count too high: bullets + skills must be at most ${budget.tailorable_words} words, got ${actualWords}.`,
     });
   }
 
@@ -248,6 +261,7 @@ export function checkResumeFabrication(
       masterExp.bullets,
       `experience[${i}]`,
       fabrication_flags,
+      structural_errors,
     );
   }
 
@@ -260,6 +274,7 @@ export function checkResumeFabrication(
       masterProj.bullets,
       `projects[${i}]`,
       fabrication_flags,
+      structural_errors,
     );
   }
 

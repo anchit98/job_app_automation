@@ -5,11 +5,12 @@ import { writeAuditLog } from "@/lib/audit";
 import { htmlToPlainText } from "@/lib/cover-letter/html";
 import { getApplicationById, abandonAllPendingPromptRuns } from "@/lib/db/queries";
 import {
-  formatRate,
   mapDashboardMetrics,
   type DashboardMetrics,
 } from "@/lib/tracker/metrics";
+import type { MetricsRange } from "@/lib/tracker/metrics-range";
 import {
+  countPendingPromptRuns,
   deleteApplicationRow,
   findSimilarApplications,
   getDashboardMetricsRow,
@@ -27,23 +28,22 @@ import {
 import type { TimelineEvent } from "@/lib/tracker/timeline";
 import type { Application } from "@/lib/db/types";
 
-export async function getDashboardData(): Promise<{
+export async function getDashboardData(range: MetricsRange): Promise<{
   metrics: DashboardMetrics;
-  metricsFormatted: {
-    responseRate: string;
-    interviewRate: string;
-    offerRate: string;
-  };
+  pendingPrompts: number;
 }> {
-  const row = await getDashboardMetricsRow();
-  const metrics = mapDashboardMetrics(row);
+  const [row, pendingPrompts] = await Promise.all([
+    getDashboardMetricsRow({
+      fromIso: range.fromIso,
+      toIso: range.toIso,
+      thisWeekFromIso: range.thisWeekFromIso,
+      thisWeekToIso: range.thisWeekToIso,
+    }),
+    countPendingPromptRuns(),
+  ]);
   return {
-    metrics,
-    metricsFormatted: {
-      responseRate: formatRate(metrics.responseRate),
-      interviewRate: formatRate(metrics.interviewRate),
-      offerRate: formatRate(metrics.offerRate),
-    },
+    metrics: mapDashboardMetrics(row),
+    pendingPrompts,
   };
 }
 
@@ -120,7 +120,7 @@ export async function deleteApplication(applicationId: string) {
   return { ok: true as const };
 }
 
-/** Clear all pending ChatGPT prompt runs (dashboard count → 0). */
+/** Clear all pending AI prompt runs (dashboard count → 0). */
 export async function clearAllPendingPrompts() {
   const cleared = await abandonAllPendingPromptRuns();
   await writeAuditLog("prompts.cleared_pending", "prompt_runs", "all", {

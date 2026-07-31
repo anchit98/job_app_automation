@@ -81,14 +81,14 @@ async function wakeBridgeOnce(signal: {
       if (res?.ok === false || res?.opened === false) {
         return {
           ok: false,
-          error: res?.error || res?.reason || "Extension did not open AI.",
+          error: res?.error || res?.reason || "Could not start AI.",
         };
       }
       return { ok: true };
     } catch (e) {
       return {
         ok: false,
-        error: e instanceof Error ? e.message : "Extension wake failed.",
+        error: e instanceof Error ? e.message : "Could not start AI.",
       };
     }
   }
@@ -144,7 +144,7 @@ export function ApplicationFollowUpButton({
     }, 4000);
   }
 
-  /** Poll only - never wake AI again. One GPT reply fans out to all contacts. */
+  /** Poll only - never wake AI again. One AI reply fans out to all contacts. */
   async function waitForGeneratedDrafts(followUpId: string) {
     setPhase("waiting_chatgpt");
     const deadline = Date.now() + 4 * 60 * 1000;
@@ -250,7 +250,7 @@ export function ApplicationFollowUpButton({
         chatgpt_url: "https://chatgpt.com/",
       });
       if (!armed.ok) {
-        setError(armed.error ?? "Could not arm JobApp Bridge.");
+        setError(armed.error ?? "Could not start AI for this follow-up.");
         setPhase("idle");
         runningRef.current = false;
         return;
@@ -263,7 +263,7 @@ export function ApplicationFollowUpButton({
         chatgpt_url: "https://chatgpt.com/",
       });
       if (!woke.ok) {
-        setError(woke.error ?? "Could not open AI via JobApp Bridge.");
+        setError(woke.error ?? "Could not open AI for this follow-up.");
         setPhase("idle");
         runningRef.current = false;
         return;

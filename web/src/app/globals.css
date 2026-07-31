@@ -491,6 +491,374 @@ html {
   animation: af-fade-up 0.28s ease-out both;
 }
 
+/* ---- Pipeline progress stepper ---- */
+@keyframes pp-pop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes pp-bar-stripes {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 28px 0;
+  }
+}
+
+.pp-row {
+  animation: af-fade-up 0.35s ease-out both;
+}
+.pp-node {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  margin-top: 1px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Pending = yellow (soft) */
+  border: 1.5px solid color-mix(in srgb, var(--status-waiting) 45%, var(--border-muted));
+  background: color-mix(in srgb, var(--status-waiting-container) 60%, var(--surface));
+  color: color-mix(in srgb, var(--status-waiting) 80%, var(--on-surface-variant));
+  transition:
+    background-color 0.4s ease,
+    border-color 0.4s ease,
+    color 0.4s ease;
+}
+/* Pass = green */
+.pp-node-done {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+.pp-node-done .material-symbols-outlined {
+  animation: pp-pop 0.35s ease-out both;
+}
+.pp-node-skipped {
+  background: var(--surface-container);
+  border-color: var(--border-muted);
+  color: var(--on-surface-variant);
+}
+/* Fail = red */
+.pp-node-failed {
+  background: var(--error-container);
+  border-color: var(--error);
+  color: var(--error);
+}
+/* In progress = yellow, pulsing */
+.pp-node-active {
+  border-color: var(--status-waiting);
+  background: var(--status-waiting-container);
+  color: var(--status-waiting);
+}
+.pp-node-active::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 1.5px solid color-mix(in srgb, var(--status-waiting) 45%, transparent);
+  animation: af-pulse-ring 1.5s ease-in-out infinite;
+}
+.pp-spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 9999px;
+  border: 1.5px solid color-mix(in srgb, var(--status-waiting) 30%, transparent);
+  border-top-color: var(--status-waiting);
+  animation: af-orbit 0.8s linear infinite;
+}
+.pp-connector {
+  position: absolute;
+  left: 10px;
+  top: 25px;
+  bottom: 1px;
+  width: 1.5px;
+  border-radius: 2px;
+  background: var(--border-muted);
+  overflow: hidden;
+}
+.pp-connector::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--success);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.6s ease;
+}
+.pp-connector-done::after {
+  transform: scaleY(1);
+}
+.pp-detail-running {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--status-waiting) 16%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: af-shimmer 1.6s linear infinite;
+  border-radius: 6px;
+}
+.pp-progressbar {
+  position: relative;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--surface-container);
+  overflow: hidden;
+}
+.pp-progressbar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--primary);
+  transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pp-progressbar-fill.pp-progressbar-live {
+  background-image: linear-gradient(
+    45deg,
+    color-mix(in srgb, #fff 22%, transparent) 25%,
+    transparent 25%,
+    transparent 50%,
+    color-mix(in srgb, #fff 22%, transparent) 50%,
+    color-mix(in srgb, #fff 22%, transparent) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 28px 28px;
+  animation: pp-bar-stripes 0.9s linear infinite;
+}
+.pp-percent {
+  font-variant-numeric: tabular-nums;
+  transition: color 0.3s ease;
+}
+.pp-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ambient animated background for apply + pipeline pages */
+@keyframes qa-drift-a {
+  0%,
+  100% {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, 4%, 0) scale(1.12);
+  }
+}
+@keyframes qa-drift-b {
+  0%,
+  100% {
+    transform: translate3d(3%, 2%, 0) scale(1.08);
+  }
+  50% {
+    transform: translate3d(-4%, -4%, 0) scale(1);
+  }
+}
+.qa-ambient {
+  position: relative;
+  isolation: isolate;
+}
+.qa-ambient::before,
+.qa-ambient::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(90px);
+  will-change: transform;
+}
+.qa-ambient::before {
+  width: 560px;
+  height: 560px;
+  top: -160px;
+  right: -140px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--primary) 20%, transparent),
+    transparent 70%
+  );
+  animation: qa-drift-a 20s ease-in-out infinite;
+}
+.qa-ambient::after {
+  width: 480px;
+  height: 480px;
+  bottom: -180px;
+  left: 8%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--success) 16%, transparent),
+    transparent 70%
+  );
+  animation: qa-drift-b 26s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .qa-ambient::before,
+  .qa-ambient::after {
+    animation: none;
+  }
+}
+
+/* ---- Dashboard fresh-jobs banner ---- */
+.fjb-banner {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border-hairline));
+  background: linear-gradient(
+    118deg,
+    color-mix(in srgb, var(--primary-container) 60%, var(--surface)) 0%,
+    var(--surface) 45%,
+    color-mix(in srgb, var(--tertiary-container) 35%, var(--surface)) 100%
+  );
+  box-shadow:
+    var(--shadow-card),
+    0 14px 34px -26px color-mix(in srgb, var(--primary) 45%, transparent);
+  animation: af-fade-up 0.45s ease-out both;
+}
+.fjb-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--primary) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary) 6%, transparent) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: radial-gradient(ellipse 80% 100% at 20% 0%, black 10%, transparent 70%);
+}
+.fjb-blob {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(46px);
+  will-change: transform;
+}
+.fjb-blob-a {
+  width: 260px;
+  height: 260px;
+  top: -120px;
+  right: 10%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--primary) 16%, transparent),
+    transparent 70%
+  );
+  animation: qa-drift-a 16s ease-in-out infinite;
+}
+.fjb-blob-b {
+  width: 220px;
+  height: 220px;
+  bottom: -130px;
+  left: 32%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--tertiary) 12%, transparent),
+    transparent 70%
+  );
+  animation: qa-drift-b 22s ease-in-out infinite;
+}
+.fjb-bolt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  color: var(--primary);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--primary) 16%, var(--surface)),
+    color-mix(in srgb, var(--primary) 6%, var(--surface))
+  );
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+}
+.fjb-bolt::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 18px;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  animation: af-pulse-ring 2.2s ease-in-out infinite;
+}
+.fjb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border-hairline));
+  background: color-mix(in srgb, var(--primary) 4%, var(--surface));
+  color: var(--on-surface-variant);
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+.fjb-chip:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border-hairline));
+  color: var(--primary);
+}
+.fjb-chip .material-symbols-outlined {
+  color: var(--primary);
+}
+.fjb-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  background: var(--primary);
+  color: var(--on-primary);
+  padding: 11px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--primary) 70%, transparent);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+.fjb-cta:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px -14px color-mix(in srgb, var(--primary) 75%, transparent);
+}
+.fjb-cta .fjb-cta-arrow {
+  transition: transform 0.2s ease;
+}
+.fjb-cta:hover .fjb-cta-arrow {
+  transform: translateX(3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fjb-banner,
+  .fjb-blob-a,
+  .fjb-blob-b,
+  .fjb-bolt::after {
+    animation: none;
+  }
+}
+
 /* Billing / paywall */
 .bp-hero {
   position: relative;

@@ -3,6 +3,7 @@ import {
   countMetricsInText,
   extractResumeMetricTokens,
   normalizeCoverLetterSection,
+  sectionContainsSignoff,
   sectionStartsWithGreeting,
 } from "@/lib/cover-letter/normalize";
 
@@ -142,6 +143,31 @@ export function checkNoGreetingInSections(
   return null;
 }
 
+export function checkNoSignoffInSections(
+  content: Omit<CoverLetterContent, "body">,
+): CoverLetterValidationIssue | null {
+  const fields: Array<[string, string]> = [
+    ["opening_hook", content.opening_hook],
+    ["why_this_role", content.why_this_role],
+    ...content.evidence_points.map(
+      (p, i) => [`evidence_points[${i}]`, p] as [string, string],
+    ),
+    ["why_this_company", content.why_this_company],
+    ["cta", content.cta],
+  ];
+
+  for (const [path, text] of fields) {
+    if (sectionContainsSignoff(text)) {
+      return {
+        path,
+        message:
+          'Do not include a sign-off (e.g. "Warm regards," / name) in section fields - the Google Doc template already has the closing.',
+      };
+    }
+  }
+  return null;
+}
+
 export function checkMetricsHighlighted(
   content: Omit<CoverLetterContent, "body">,
   resume: {
@@ -192,6 +218,9 @@ export function validateCoverLetterContent(
   const greetingIssue = checkNoGreetingInSections(content);
   if (greetingIssue) issues.push(greetingIssue);
 
+  const signoffIssue = checkNoSignoffInSections(content);
+  if (signoffIssue) issues.push(signoffIssue);
+
   const metricsIssue = checkMetricsHighlighted(content, context.resume);
   if (metricsIssue) issues.push(metricsIssue);
 
@@ -216,26 +245,33 @@ export function validateCoverLetterContent(
 
 export function assembleBodyFromSections(
   content: Omit<CoverLetterContent, "body"> & { body?: string },
-  fullName: string,
-  targetCompany: string,
+  _fullName: string,
+  _targetCompany: string,
 ): string {
   if (content.body?.trim()) {
-    const lines = content.body.split(/\n\n+/);
-    const withoutGreeting =
-      lines.length > 0 && /^Dear\s/i.test(lines[0]) ? lines.slice(1) : lines;
-    return withoutGreeting.join("\n\n").trim();
+    const cleaned = normalizeCoverLetterSection(
+      stripBodyEnvelope(content.body),
+    );
+    if (cleaned.length >= 80) return cleaned;
   }
 
-  const greeting = `Dear ${targetCompany} Hiring Team,`;
-  const signOff = `Sincerely,\n${fullName}`;
+  // Body is reference-only. Template already has greeting + sign-off — never append them.
   const paragraphs = [
-    greeting,
     normalizeCoverLetterSection(content.opening_hook),
     normalizeCoverLetterSection(content.why_this_role),
     ...content.evidence_points.map(normalizeCoverLetterSection),
-    normalizeCoverLetterSection(content.why_this_company),
-    normalizeCoverLetterSection(content.cta),
-    signOff,
+    normalizeCoverLetterSection(
+      `${content.why_this_company} ${content.cta}`.trim(),
+    ),
   ];
   return paragraphs.filter(Boolean).join("\n\n");
+}
+
+function stripBodyEnvelope(body: string): string {
+  let text = body.trim();
+  text = text.replace(
+    /^Dear\s+[^,\n]+(?:\s+Hiring\s+(?:Team|Manager))?,?\s*(?:\n\n+|\n+)/i,
+    "",
+  );
+  return text;
 }

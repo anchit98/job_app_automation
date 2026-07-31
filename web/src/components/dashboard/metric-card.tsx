@@ -1,50 +1,59 @@
 interface MetricCardProps {
   label: string;
   value: string | number;
+  icon?: string;
+  tone?: "primary" | "success" | "tertiary" | "neutral";
   hint?: string;
   href?: string;
-  accent?: "primary" | "secondary" | "default";
 }
+
+const TONE_CLASSES: Record<NonNullable<MetricCardProps["tone"]>, string> = {
+  primary: "bg-primary-container text-primary",
+  success: "bg-success-container text-success",
+  tertiary: "bg-tertiary-container text-tertiary",
+  neutral: "bg-surface-container-low text-on-surface-variant",
+};
 
 export function MetricCard({
   label,
   value,
+  icon,
+  tone = "neutral",
   hint,
   href,
-  accent = "default",
 }: MetricCardProps) {
-  const accentClass =
-    accent === "primary"
-      ? "border-primary/30 bg-primary-container"
-      : accent === "secondary"
-        ? "border-border-hairline bg-surface-container-low"
-        : "border-border-hairline bg-surface";
-
   const inner = (
     <div
-      className={`rounded-lg border p-3 sm:p-4 h-full min-h-0 flex flex-col justify-center gap-1 max-md:min-h-[118px] max-md:grid max-md:grid-rows-[2.5rem_1fr_2rem] max-md:justify-normal ${accentClass} ${href ? "hover:bg-[var(--ghost-hover)] transition-colors" : ""}`}
+      className={`group relative h-full rounded-xl border border-border-hairline bg-surface p-4 flex flex-col gap-3 transition-all duration-200 ${
+        href
+          ? "hover:border-primary/40 hover:shadow-[var(--shadow-card)]"
+          : "hover:shadow-[var(--shadow-card)]"
+      }`}
     >
-      <span className="text-[11px] sm:text-[12px] font-semibold uppercase tracking-wide text-on-surface-variant max-md:leading-tight max-md:line-clamp-2 max-md:self-start">
-        {label}
-      </span>
-      <span className="text-[24px] sm:text-[28px] lg:text-[32px] font-semibold leading-none text-on-surface max-md:text-[22px] max-md:tabular-nums max-md:self-center">
+      <div className="flex items-center gap-2.5">
+        {icon ? (
+          <span
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${TONE_CLASSES[tone]}`}
+            aria-hidden
+          >
+            <span className="material-symbols-outlined text-[20px]">{icon}</span>
+          </span>
+        ) : null}
+        <span className="text-[11px] sm:text-[12px] font-semibold uppercase tracking-wide text-on-surface-variant leading-tight">
+          {label}
+        </span>
+      </div>
+      <span className="text-[28px] sm:text-[32px] font-semibold leading-none text-on-surface tabular-nums">
         {value}
       </span>
       {hint ? (
         <span
-          className="text-[11px] sm:text-[12px] text-on-surface-variant line-clamp-2 max-md:leading-tight max-md:self-end max-md:min-h-[2rem]"
+          className="text-[11px] sm:text-[12px] text-on-surface-variant line-clamp-2"
           title={hint}
         >
           {hint}
         </span>
-      ) : (
-        <span
-          className="hidden max-md:block text-[11px] leading-tight self-end min-h-[2rem]"
-          aria-hidden
-        >
-          {"\u00A0"}
-        </span>
-      )}
+      ) : null}
     </div>
   );
 

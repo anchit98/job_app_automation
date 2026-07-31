@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "JobApp Bridge",
   "version": "1.3.18",
-  "description": "Quick Apply ChatGPT bridge — includes job-app-automation-mu.vercel.app.",
+  "description": "Quick Apply AI automation — includes job-app-automation-mu.vercel.app.",
   "permissions": ["storage", "tabs", "scripting"],
   "host_permissions": [
     "http://localhost:3000/*",

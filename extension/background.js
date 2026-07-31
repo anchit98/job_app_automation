@@ -136,7 +136,7 @@ let openAndRunMutex = Promise.resolve();
 /**
  * Always honor an explicit pipeline signal.
  * Clears stale locks from prior stages so cold email / cover letter cannot stall.
- * Returns { opened, reason } so the web app knows whether ChatGPT actually launched.
+ * Returns { opened, reason } so the web app knows whether AI chat actually launched.
  */
 async function openAndRun(pending, { force = false } = {}) {
   const run = async () => {
@@ -261,7 +261,7 @@ async function openAndRun(pending, { force = false } = {}) {
     }
 
     const url = "https://chatgpt.com/";
-    console.info("[JobApp Bridge] opening ChatGPT for", payload.kind, url);
+    console.info("[JobApp Bridge] opening AI chat for", payload.kind, url);
     const tab = await chrome.tabs.create({ url, active: true });
 
     if (tab.id != null) {
@@ -326,7 +326,7 @@ async function closeTrackedBridgeTabs(state, { keepActive = false } = {}) {
     if (keepActive && tabId === state.activeTabId) continue;
     try {
       await chrome.tabs.remove(tabId);
-      console.info("[JobApp Bridge] closed ChatGPT tab", tabId);
+      console.info("[JobApp Bridge] closed AI chat tab", tabId);
     } catch {
       /* already closed */
     }
@@ -424,7 +424,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       let result = null;
       try {
         if (!message.raw_response?.trim()) {
-          throw new Error("Empty ChatGPT response");
+          throw new Error("Empty AI response");
         }
         // Cap wait so cleanup/close still runs if Drive/Gmail work is slow.
         result = await withTimeout(
@@ -459,7 +459,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         } catch {
           /* ignore */
         }
-        // Always delete + close after a real ChatGPT reply so tabs never linger.
+        // Always delete + close after a real AI reply so tabs never linger.
         try {
           if (pasteOk || message.raw_response?.trim() || permanent) {
             await cleanupAndCloseTab(message.prompt_run_id);
@@ -554,7 +554,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       } catch {
         /* ignore */
       }
-      // Drop lock so the next pipeline wake can reopen ChatGPT.
+      // Drop lock so the next pipeline wake can reopen AI chat.
       await clearSessionLock();
       sendResponse({ ok: true });
     })();

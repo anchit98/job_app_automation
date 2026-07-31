@@ -18,7 +18,7 @@ export function ResumeArtifacts({
   if (versions.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No resume yet - it will appear here after Quick Apply finishes.
+        No resume yet - it will appear here after Apply finishes.
       </p>
     );
   }
@@ -69,7 +69,7 @@ export function CoverLetterArtifacts({
   if (versions.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No cover letter yet - created automatically by Quick Apply.
+        No cover letter yet - created automatically by Apply.
       </p>
     );
   }
@@ -114,7 +114,7 @@ export function ContactArtifacts({ contacts }: { contacts: Contact[] }) {
   if (contacts.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No contacts - add them on the Quick Apply form when you start.
+        No contacts - add them on the Apply form when you start.
       </p>
     );
   }
@@ -150,7 +150,7 @@ export function EmailArtifacts({ emails }: { emails: EmailRecord[] }) {
   if (cold.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No cold emails yet - drafted automatically by Quick Apply.
+        No cold emails yet - drafted automatically by Apply.
       </p>
     );
   }
@@ -189,7 +189,7 @@ export function AutoApplyOnlyHint() {
     <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4 mb-4 text-[13px] text-on-surface-variant">
       Generation is automatic via{" "}
       <Link href="/apply" className="text-primary hover:underline">
-        Quick Apply
+        Apply
       </Link>
       . This page is for reviewing outputs only.
     </div>

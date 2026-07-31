@@ -22,7 +22,7 @@ ${previousResponseSnippet.slice(0, 500)}`;
 /**
  * Focused repair prompt for resume bullets/skills that don't fit their line budget.
  * The message from the validator already describes the exact fix; we translate each
- * into a short instruction with a word delta so ChatGPT can act without counting.
+ * into a short instruction with a word delta so the AI can act without counting.
  */
 export function buildResumeRepairPrompt(
   errors: { path: string; message: string; bullet?: string }[],
@@ -44,9 +44,11 @@ Failing items:
 ${lines.join("\n")}
 
 Rules:
-- Surgical edits only - do not rewrite bullets; swap/insert keywords or trim words if over the ceiling.
-- Skills: keep "Category:" prefix exact; remove items after the colon until under the word ceiling.
-- Total across ALL experience bullets + project bullets + skills: at most 400 words (shorter OK).
+- Surgical REPLACE only — swap JD keywords into existing words; do not insert new clauses that grow the line.
+- Each fixed line must stay at or under the master line length (one-page PDF is mandatory).
+- Every bullet must end as a complete finished sentence - never truncate mid-phrase or leave dangling words (and/that/prioritizing/across/etc.). Prefer a shorter complete sentence over an incomplete longer one.
+- Skills: keep "Category:" prefix exact; REPLACE items after the colon; remove items if over the word ceiling.
+- Total across ALL experience bullets + project bullets + skills: stay within the master word budget (shorter OK). Never truncate mid-sentence to hit the cap.
 - Keep all master metrics; no fabrication.
 - Change ONLY listed items - leave everything else identical.
 
@@ -76,9 +78,9 @@ ${errorLines}
 
 Please regenerate returning ONLY valid JSON with these sections:
 - opening_hook, why_this_role, evidence_points (2-3 items), why_this_company, cta, body.
-- Do NOT put a greeting (Dear ...) or sign-off in opening_hook or any section - the app inserts those from the Google Doc template. opening_hook must start with your hook sentence.
+- Do NOT put a greeting (Dear ...) or sign-off (Warm regards / Best regards / name) in opening_hook, cta, or any section - the Google Doc template already has greeting and sign-off. opening_hook must start with your hook sentence. cta is a polite close only (no regards line).
 - evidence_points must each cite tailored resume bullets with quantified metrics (%, $, scale, years, user counts) copied exactly from the resume - at least two metrics total across evidence_points.
-- The body field may include greeting + sign-off for reference, but section fields must not duplicate them.
+- The body field is optional reference text without greeting/sign-off. Section fields must not duplicate them.
 - The body must mention the target company by name.
 - No placeholders like [COMPANY] or {{name}}.
 

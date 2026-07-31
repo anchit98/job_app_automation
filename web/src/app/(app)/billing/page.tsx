@@ -8,9 +8,9 @@ import { ShowUpiQrButton } from "@/components/billing/show-upi-qr-button";
 
 const includedFeatures = [
   { icon: "all_inclusive", label: "Lifetime access" },
+  { icon: "confirmation_number", label: "60 applications included" },
+  { icon: "account_tree", label: "Full Apply pipeline" },
   { icon: "support_agent", label: "One-time setup support" },
-  { icon: "account_tree", label: "All pipeline stages" },
-  { icon: "extension", label: "JobApp Bridge included" },
 ];
 
 export default async function BillingPage() {
@@ -33,7 +33,7 @@ export default async function BillingPage() {
         <div className="relative">
           <p className="inline-flex items-center gap-1.5 rounded-full border border-border-hairline bg-surface px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-primary">
             <span className="material-symbols-outlined text-[14px]">bolt</span>
-            One-time payment
+            Launch offer · first 100 buyers
           </p>
           <h1 className="mt-4 text-[22px] font-semibold leading-tight tracking-[-0.01em] text-on-surface sm:text-[24px]">
             Activate JobApp OS
@@ -43,7 +43,7 @@ export default async function BillingPage() {
             ₹{amount}
           </p>
           <p className="mt-2 text-[13px] text-on-surface-variant">
-            Pay once. Keep your application agent forever.
+            Lifetime access. 60 applications included.
           </p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
             {includedFeatures.map((feature) => (

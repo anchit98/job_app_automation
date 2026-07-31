@@ -15,7 +15,7 @@ export default async function PipelinePage({
   const application = await getApplicationById(pipeline.application_id);
 
   return (
-    <div className="space-y-3">
+    <div className="qa-ambient space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <Link
@@ -23,7 +23,7 @@ export default async function PipelinePage({
             className="li-meta inline-flex items-center gap-1 hover:text-primary no-underline"
           >
             <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-            New Quick Apply
+            New Apply
           </Link>
           <h1 className="li-page-title mt-1">Pipeline</h1>
           {application?.company || application?.role ? (

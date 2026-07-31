@@ -13,7 +13,7 @@ const slides = [
   },
   {
     id: "apply",
-    label: "Quick Apply",
+    label: "Apply",
     icon: "rocket_launch",
     caption: "Paste a JD and launch the full application agent run",
   },
@@ -27,13 +27,13 @@ const slides = [
     id: "pipeline",
     label: "Pipeline",
     icon: "account_tree",
-    caption: "Watch each AI stage complete in sequence",
+    caption: "Watch each AI stage complete automatically",
   },
   {
-    id: "bridge",
-    label: "Bridge",
-    icon: "extension",
-    caption: "JobApp Bridge keeps AI connected to your agent",
+    id: "artifacts",
+    label: "Artifacts",
+    icon: "folder_open",
+    caption: "Resume, cover letter, and drafts saved for each role",
   },
 ] as const;
 
@@ -65,9 +65,7 @@ function DashboardPreview() {
   const metrics = [
     ["Total applications", "7"],
     ["This week", "4"],
-    ["Pending follow-ups", "12"],
-    ["Response rate", "0%"],
-    ["Interview rate", "0%"],
+    ["Gmail drafts", "11"],
     ["Companies contacted", "7"],
   ];
   return (
@@ -80,11 +78,11 @@ function DashboardPreview() {
           </p>
         </div>
         <span className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--on-primary)]">
-          Start Quick Apply
+          Start Apply
         </span>
       </div>
       <p className="mb-2 text-[13px] font-bold">Pipeline metrics</p>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         {metrics.map(([label, value], index) => (
           <div
             key={label}
@@ -106,7 +104,7 @@ function DashboardPreview() {
 
 function ApplyPreview() {
   return (
-    <Frame title="JobApp OS · Quick Apply">
+    <Frame title="JobApp OS · Apply">
       <p className="text-[16px] font-bold">New application</p>
       <p className="mt-1 text-[12px] text-[var(--on-surface-variant)]">
         Company, role, and job description required
@@ -128,14 +126,14 @@ function ApplyPreview() {
           className="mk-gallery-item min-h-28 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface)] px-3.5 py-2.5 text-[13px] text-[var(--on-surface-variant)]"
           style={{ animationDelay: "160ms" }}
         >
-          Paste the full job description. The agent will tailor your resume,
-          cover letter, and outreach to this role.
+          Paste the full job description. AI tailors your resume, cover letter,
+          and outreach automatically on the server.
         </div>
         <div
           className="mk-gallery-item rounded-lg bg-[var(--primary)] px-3.5 py-2.5 text-center text-[13px] font-semibold text-[var(--on-primary)]"
           style={{ animationDelay: "240ms" }}
         >
-          Launch pipeline
+          Start Apply
         </div>
       </div>
     </Frame>
@@ -189,7 +187,7 @@ function PipelinePreview() {
     <Frame title="JobApp OS · Pipeline">
       <p className="text-[16px] font-bold">Live pipeline progress</p>
       <p className="mt-1 text-[12px] text-[var(--on-surface-variant)]">
-        Bridge is handling AI stages automatically
+        Server-side AI is running each stage automatically
       </p>
       <div className="mt-4 space-y-2.5">
         {stages.map(([name, state], index) => (
@@ -217,20 +215,20 @@ function PipelinePreview() {
   );
 }
 
-function BridgePreview() {
+function ArtifactsPreview() {
   return (
-    <Frame title="JobApp Bridge">
+    <Frame title="JobApp OS · Application package">
       <div className="grid gap-3 sm:grid-cols-2">
         {[
           {
-            tag: "App",
-            title: "Prompt ready",
-            body: "Composed from your master resume and the target JD",
+            tag: "Resume",
+            title: "Tailored PDF ready",
+            body: "Keyword-aligned to the JD, grounded in your master resume",
           },
           {
-            tag: "AI",
-            title: "Reply captured",
-            body: "Validated and written back into the pipeline",
+            tag: "Outreach",
+            title: "Gmail drafts queued",
+            body: "Cold emails saved as drafts — you send when ready",
           },
         ].map((card, index) => (
           <div
@@ -252,10 +250,10 @@ function BridgePreview() {
         className="mk-gallery-item mt-3 flex items-center justify-center gap-2 rounded-xl bg-[var(--primary-container)] px-4 py-3 text-[13px] font-bold text-[var(--primary)]"
         style={{ animationDelay: "200ms" }}
       >
-        <span className="material-symbols-outlined mk-spin-slow text-[18px]">
-          sync
+        <span className="material-symbols-outlined text-[18px]">
+          check_circle
         </span>
-        Agent loop connected
+        Package ready to review
       </div>
     </Frame>
   );
@@ -271,8 +269,8 @@ function Preview({ id }: { id: SlideId }) {
       return <JobsPreview />;
     case "pipeline":
       return <PipelinePreview />;
-    case "bridge":
-      return <BridgePreview />;
+    case "artifacts":
+      return <ArtifactsPreview />;
   }
 }
 

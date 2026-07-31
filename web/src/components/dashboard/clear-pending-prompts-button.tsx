@@ -20,7 +20,7 @@ export function ClearPendingPromptsButton({ count }: { count: number }) {
         e.stopPropagation();
         if (
           !window.confirm(
-            `Clear ${count} pending AI prompt${count === 1 ? "" : "s"}? In-progress stages may need a new Quick Apply.`,
+            `Clear ${count} pending AI prompt${count === 1 ? "" : "s"}? In-progress stages may need a new Apply run.`,
           )
         ) {
           return;

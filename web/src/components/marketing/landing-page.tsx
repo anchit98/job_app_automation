@@ -10,27 +10,29 @@ const navLinks = [
   { href: "#about", label: "About" },
   { href: "#features", label: "Features" },
   { href: "#benefits", label: "Why JobApp OS" },
+  { href: "#tips", label: "Insider tips" },
   { href: "#ai", label: "AI" },
   { href: "#gallery", label: "Gallery" },
   { href: "#pricing", label: "Pricing" },
+  { href: "#faq", label: "FAQ" },
 ];
 
 const heroChips = [
   { icon: "verified", label: "Fully customizable" },
-  { icon: "smart_toy", label: "AI in the loop" },
+  { icon: "cloud", label: "Runs in the cloud" },
   { icon: "drafts", label: "Draft-only outreach" },
 ];
 
 const features = [
   {
     icon: "rocket_launch",
-    title: "Quick Apply",
-    body: "Paste a job description with company and role. JobApp OS runs a guided pipeline for resume, cover letter, contacts, cold emails, and Gmail drafts.",
+    title: "Apply",
+    body: "Paste a job description with company and role. JobApp OS runs the full pipeline in the cloud: resume, cover letter, contacts, cold emails, and Gmail drafts.",
   },
   {
-    icon: "extension",
-    title: "JobApp Bridge",
-    body: "The Chrome extension opens your AI chat, pastes each prompt, and posts structured replies back so you can skip the copy-paste grind.",
+    icon: "auto_awesome",
+    title: "Server-side AI",
+    body: "Generations run automatically on JobApp OS servers. Paste a job description and the agent completes each stage without leaving the app.",
   },
   {
     icon: "work",
@@ -50,7 +52,7 @@ const features = [
   {
     icon: "monitoring",
     title: "Dashboard command center",
-    body: "Pipeline metrics, pending prompts, and due follow-ups sit on one screen so you always know what needs attention next.",
+    body: "Pipeline metrics, application status, and due follow-ups sit on one screen so you always know what needs attention next.",
   },
 ];
 
@@ -58,7 +60,7 @@ const benefits = [
   {
     icon: "hub",
     title: "Stop juggling ten tools",
-    body: "LinkedIn, AI chat, Docs, Gmail, trackers, and reminders collapse into one personal application OS.",
+    body: "LinkedIn, documents, Gmail, trackers, and reminders collapse into one personal application OS.",
   },
   {
     icon: "auto_fix_high",
@@ -77,26 +79,78 @@ const benefits = [
   },
 ];
 
+const insiderTips = [
+  {
+    icon: "bolt",
+    tag: "Speed hack",
+    title: "Catch jobs posted in the last hour",
+    body: "A hidden LinkedIn filter surfaces roles posted in the last 60 minutes. Apply first with a tailored resume before hundreds of applicants pile in — early applicants get shortlisted far more often.",
+    points: ["One-click filter on your dashboard", "Newest roles, sorted first"],
+  },
+  {
+    icon: "alternate_email",
+    tag: "Outreach hack",
+    title: "Find any recruiter's email — free",
+    body: "No contact at the company? Find talent partners on LinkedIn and turn their profile into a verified work email in seconds, no signup needed. Cold-emailing 2–3 decision makers per role strengthens every application.",
+    points: ["Guided inside the Apply flow", "Drafts written for you"],
+  },
+];
+
 const aiPoints = [
   {
     icon: "psychology",
-    title: "AI in the loop",
+    title: "AI in the workflow",
     body: "JobApp OS composes structured prompts from your profile and the job description, then validates AI responses before they enter your pipeline.",
   },
   {
-    icon: "sync_alt",
-    title: "Bridge automation",
-    body: "JobApp Bridge moves prompts and replies between the app and AI so the agent can run stages end to end.",
+    icon: "bolt",
+    title: "Runs end to end for you",
+    body: "Paste a JD and start Apply. Stages complete automatically on the server while you watch progress or leave the tab open.",
   },
   {
     icon: "build",
     title: "Repair when output breaks",
-    body: "If a response fails validation, the system generates a repair prompt instead of silently accepting bad data.",
+    body: "If a response fails validation, the system generates a repair pass instead of silently accepting bad data.",
   },
   {
-    icon: "key_off",
-    title: "No API key required",
-    body: "You bring your AI access. The agent orchestrates the workflow around the tools you already use.",
+    icon: "lock",
+    title: "Grounded in your materials",
+    body: "Outputs stay anchored to your master resume and cover letter. Metrics and claims are checked so the agent does not invent experience.",
+  },
+];
+
+const faqs = [
+  {
+    q: "Will emails ever be sent without my approval?",
+    a: "Never. Everything lands in your Gmail as a draft — cold emails and follow-ups included. You review, edit if you like, and hit send yourself. JobApp OS has no ability to send on your behalf.",
+  },
+  {
+    q: "What does JobApp OS access in my Google account?",
+    a: "Only what the pipeline needs: creating documents in Drive, exporting PDFs, and writing drafts in Gmail. It never reads your inbox or existing files, and you can revoke access anytime from your Google account settings.",
+  },
+  {
+    q: "Will the AI invent experience I don't have?",
+    a: "No. Every resume and cover letter is anchored to your master resume, and outputs pass fabrication checks before they enter your pipeline. The AI rephrases and reprioritizes your real experience — it doesn't create fake claims or metrics.",
+  },
+  {
+    q: "Do I need my own AI subscription or API keys?",
+    a: "No. Generation runs on JobApp OS servers and is included in the one-time price. You don't need ChatGPT Plus, API keys, or any other AI account.",
+  },
+  {
+    q: "Are the generated resumes ATS-friendly?",
+    a: "Yes. Resumes are clean, single-page, text-based PDFs built from Google Docs — no graphics, tables, or columns that trip up applicant tracking systems. Keywords from the job description are worked into your real experience.",
+  },
+  {
+    q: "How long does one application take?",
+    a: "A few minutes end to end. Text generation finishes first, PDFs upload to Drive automatically, and Gmail drafts are created once documents are ready — you can watch each stage live on the pipeline page.",
+  },
+  {
+    q: "Is cold-emailing recruiters allowed?",
+    a: "Yes. You're sending a personal, one-to-one note from your own Gmail to a publicly listed professional — that's networking, not spam. Drafts are personalized per contact, and since you send manually, you stay in full control of tone and timing.",
+  },
+  {
+    q: "What happens if a step fails mid-run?",
+    a: "The pipeline validates every AI response and automatically runs a repair pass if something is malformed. If a stage still fails, it's marked clearly on the pipeline page and you can retry just that stage — no need to start over.",
   },
 ];
 
@@ -110,8 +164,8 @@ const aboutSteps = [
   {
     step: "02",
     icon: "play_circle",
-    title: "Run Quick Apply",
-    body: "Paste the JD. The agent walks resume, cover letter, contacts, emails, and drafts in sequence.",
+    title: "Start Apply",
+    body: "Paste the JD. The agent walks resume, cover letter, contacts, emails, and drafts automatically.",
   },
   {
     step: "03",
@@ -202,6 +256,65 @@ function SectionHeading({
         </p>
       ) : null}
     </Reveal>
+  );
+}
+
+function FaqList() {
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+
+  return (
+    <div className="mx-auto mt-10 max-w-3xl space-y-3">
+      {faqs.map((faq, index) => {
+        const open = openIndex === index;
+        return (
+          <Reveal key={faq.q} delay={Math.min(index, 4) * 60}>
+            <div
+              className={`overflow-hidden rounded-2xl border transition-colors duration-200 ${
+                open
+                  ? "border-[color-mix(in_srgb,var(--primary)_35%,var(--border-hairline))] bg-[var(--surface)] shadow-[0_14px_34px_-26px_color-mix(in_srgb,var(--primary)_45%,transparent)]"
+                  : "border-[var(--border-hairline)] bg-[var(--surface)] hover:border-[color-mix(in_srgb,var(--primary)_25%,var(--border-hairline))]"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => setOpenIndex(open ? null : index)}
+                aria-expanded={open}
+                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+              >
+                <span
+                  className={`text-[15px] font-bold leading-6 transition-colors ${
+                    open ? "text-[var(--primary)]" : "text-[var(--on-surface)]"
+                  }`}
+                >
+                  {faq.q}
+                </span>
+                <span
+                  className={`material-symbols-outlined shrink-0 text-[20px] transition-transform duration-200 ${
+                    open
+                      ? "rotate-180 text-[var(--primary)]"
+                      : "text-[var(--on-surface-variant)]"
+                  }`}
+                  aria-hidden
+                >
+                  expand_more
+                </span>
+              </button>
+              <div
+                className={`grid transition-all duration-300 ease-out ${
+                  open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <p className="px-5 pb-5 text-[14px] leading-6 text-[var(--on-surface-variant)]">
+                    {faq.a}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+        );
+      })}
+    </div>
   );
 }
 
@@ -333,9 +446,9 @@ export function LandingPage() {
               </Reveal>
               <Reveal delay={420}>
                 <p className="mt-6 text-[13px] font-medium text-[var(--on-surface-variant)]">
-                  Limited time: lifetime access from{" "}
-                  <span className="price-display font-bold text-[var(--primary)]">₹299</span>{" "}
-                  after activation.
+                  Launch offer for the first 100 buyers:{" "}
+                  <span className="price-display font-bold text-[var(--primary)]">₹299</span>
+                  {" "}· lifetime access · 60 applications included.
                 </p>
               </Reveal>
             </div>
@@ -353,7 +466,7 @@ export function LandingPage() {
             <SectionHeading
               eyebrow="About"
               title="A career operations agent you can shape"
-              lead="Job hunting usually means bouncing between AI, documents, Gmail, and spreadsheets for every role. JobApp OS is built as a fully customizable assistant that turns a pasted job description into a tracked application package: tailored materials, draft outreach, and follow-ups that stay under your control."
+              lead="Job hunting usually means bouncing between documents, Gmail, and spreadsheets for every role. JobApp OS is a fully customizable assistant that turns a pasted job description into a tracked application package: tailored materials, draft outreach, and follow-ups that stay under your control."
             />
             <div className="mt-12 grid gap-5 sm:grid-cols-3">
               {aboutSteps.map((item, index) => (
@@ -439,6 +552,55 @@ export function LandingPage() {
           </div>
         </section>
 
+        <section id="tips" className="marketing-section">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <SectionHeading
+              eyebrow="Insider tips"
+              title="Hacks that get you seen before everyone else"
+              lead="JobApp OS doesn't just automate paperwork — it coaches you with proven job-hunt tactics, built right into the dashboard and Apply flow."
+              align="center"
+            />
+            <div className="mt-12 grid gap-5 lg:grid-cols-2">
+              {insiderTips.map((tip, index) => (
+                <Reveal key={tip.title} delay={(index % 2) * 110}>
+                  <article className="marketing-panel h-full rounded-2xl p-6 text-center sm:text-left">
+                    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="mk-icon-tile">
+                        <span className="material-symbols-outlined text-[22px]">
+                          {tip.icon}
+                        </span>
+                      </span>
+                      <span className="mk-chip text-[12px]">
+                        <span className="material-symbols-outlined text-[14px]">
+                          tips_and_updates
+                        </span>
+                        {tip.tag}
+                      </span>
+                    </div>
+                    <h3 className="mt-5 text-[18px] font-bold">{tip.title}</h3>
+                    <p className="mt-2 text-[14px] leading-6 text-[var(--on-surface-variant)]">
+                      {tip.body}
+                    </p>
+                    <ul className="mt-4 space-y-2">
+                      {tip.points.map((point) => (
+                        <li
+                          key={point}
+                          className="flex items-center justify-center gap-2 text-[13.5px] font-semibold sm:justify-start"
+                        >
+                          <span className="material-symbols-outlined text-[17px] text-[var(--success)]">
+                            check_circle
+                          </span>
+                          {point}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section id="ai" className="marketing-section">
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <div className="grid gap-12 lg:grid-cols-12 lg:items-start">
@@ -446,7 +608,7 @@ export function LandingPage() {
                 <SectionHeading
                   eyebrow="How AI is leveraged"
                   title="AI that prepares. You that decide."
-                  lead="JobApp OS treats AI as the reasoning engine inside a structured agent workflow. Prompts are composed from your materials, responses are validated, and outbound mail stays draft-only until you send it from Gmail."
+                  lead="JobApp OS treats AI as the reasoning engine inside a structured agent workflow. Generations run on the server from your materials, responses are validated, and outbound mail stays draft-only until you send it from Gmail."
                 />
               </div>
               <div className="grid gap-5 sm:grid-cols-2 lg:col-span-7">
@@ -500,23 +662,23 @@ export function LandingPage() {
                       <span className="material-symbols-outlined text-[15px]">
                         bolt
                       </span>
-                      Limited time offer
+                      Limited launch offer · first 100 buyers
                     </p>
                     <h2 className="marketing-display mt-5 text-[30px] font-bold leading-[1.12] tracking-tight sm:text-[38px]">
-                      Lifetime access for serious applicants
+                      Lifetime access. 60 applications included.
                     </h2>
                     <p className="mx-auto mt-4 max-w-xl text-[16px] leading-7 text-[var(--on-surface-variant)] sm:mx-0">
-                      Activate JobApp OS with a one-time payment. Includes
-                      lifetime access and one-time setup support so you can
-                      connect Google, load your master docs, and get the Bridge
-                      running.
+                      One payment unlocks JobApp OS forever — profile, tracker,
+                      drafts, and the full Apply pipeline. This launch price
+                      includes 60 tailored applications; tiers and top-ups come
+                      later as usage grows.
                     </p>
                     <ul className="mt-6 grid gap-3 sm:grid-cols-2">
                       {[
-                        "Lifetime access",
+                        "Lifetime product access",
+                        "60 Apply runs included",
+                        "Resume, cover letter & cold emails",
                         "One-time setup support",
-                        "All pipeline stages",
-                        "JobApp Bridge included",
                       ].map((item) => (
                         <li
                           key={item}
@@ -533,7 +695,7 @@ export function LandingPage() {
                   <div className="lg:col-span-5">
                     <div className="mk-price-card rounded-2xl p-6 text-center sm:p-7">
                       <p className="text-[13px] font-bold uppercase tracking-[0.14em] text-[var(--on-surface-variant)]">
-                        Lifetime access
+                        First 100 buyers
                       </p>
                       <div className="mt-4 flex items-center justify-center gap-3">
                         <span className="text-[26px] font-semibold text-[var(--on-surface-variant)] line-through decoration-[var(--error)]/60 decoration-2 price-display">
@@ -544,8 +706,7 @@ export function LandingPage() {
                         </span>
                       </div>
                       <p className="mt-3 text-[13px] leading-5 text-[var(--on-surface-variant)]">
-                        One-time payment. Lifetime access. One-time setup
-                        support included.
+                        One-time. Lifetime access. 60 applications included.
                       </p>
                       <Link
                         href="/signup"
@@ -566,6 +727,56 @@ export function LandingPage() {
                   </div>
                 </div>
               </div>
+            </Reveal>
+            <Reveal delay={100}>
+              <aside className="mx-auto mt-6 max-w-3xl overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--primary)_28%,var(--border-hairline))] bg-[linear-gradient(118deg,color-mix(in_srgb,var(--primary-container)_70%,var(--surface))_0%,var(--surface)_52%,color-mix(in_srgb,var(--tertiary-container)_40%,var(--surface))_100%)] px-5 py-5 text-center shadow-[0_14px_34px_-26px_color-mix(in_srgb,var(--primary)_40%,transparent)] sm:px-7 sm:py-6 sm:text-left">
+                <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:gap-4">
+                  <span className="mk-icon-tile shrink-0">
+                    <span className="material-symbols-outlined text-[22px]">
+                      lightbulb
+                    </span>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-bold leading-snug text-[var(--on-surface)] sm:text-[16px]">
+                      Why not just DIY?
+                    </p>
+                    <p className="mt-1.5 text-[14px] leading-6 text-[var(--on-surface-variant)]">
+                      Doing this alone means rewriting resumes, cover letters,
+                      and outreach for every role, plus juggling Docs, Gmail,
+                      and a tracker. JobApp OS turns a pasted JD into tailored
+                      docs and draft emails in minutes — so you apply earlier,
+                      more often, and with less busywork.
+                    </p>
+                  </div>
+                </div>
+              </aside>
+            </Reveal>
+          </div>
+        </section>
+
+        <section
+          id="faq"
+          className="marketing-section border-t border-[var(--border-hairline)]"
+        >
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <SectionHeading
+              eyebrow="FAQ"
+              title="Questions people usually ask"
+              lead="Short answers to the doubts that come up before signing up."
+              align="center"
+            />
+            <FaqList />
+            <Reveal delay={120}>
+              <p className="mt-8 text-center text-[14px] text-[var(--on-surface-variant)]">
+                Still curious?{" "}
+                <Link
+                  href="/signup"
+                  className="font-semibold text-[var(--primary)] no-underline hover:underline"
+                >
+                  Sign up free
+                </Link>{" "}
+                and see the pipeline run for yourself.
+              </p>
             </Reveal>
           </div>
         </section>

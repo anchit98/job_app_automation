@@ -97,7 +97,7 @@ export function QuickApplyExistingButton({
         <span className="material-symbols-outlined text-[16px]">
           rocket_launch
         </span>
-        {pending ? "Starting…" : "Quick Apply"}
+        {pending ? "Starting…" : "Apply"}
       </button>
 
       {open && (
@@ -106,11 +106,12 @@ export function QuickApplyExistingButton({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-[18px] font-medium text-on-surface">
-                  Quick Apply this application
+                  Apply to this role
                 </h3>
                 <p className="text-[13px] text-on-surface-variant mt-1">
-                  Re-runs resume → cover letter. Cold emails and Gmail drafts run
-                  only if contacts with emails are included (optional).
+                  Re-runs resume → cover letter on the server. Cold emails and
+                  Gmail drafts run only if contacts with emails are included
+                  (optional).
                 </p>
               </div>
               <button
@@ -226,7 +227,7 @@ export function QuickApplyExistingButton({
                 onClick={() => start(rows)}
                 className="bg-primary text-on-primary rounded-full px-5 py-2 text-[13px] font-medium disabled:opacity-50"
               >
-                {pending ? "Starting…" : "Start Quick Apply"}
+                {pending ? "Starting…" : "Start Apply"}
               </button>
             </div>
           </div>

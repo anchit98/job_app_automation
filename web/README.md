@@ -2,6 +2,8 @@
 
 Next.js 16.2 (App Router, React 19, Turbopack) application for **JobApp OS**.
 
+Default Apply LLM: **OpenAI `gpt-4.1-mini`** (`src/lib/llm/openai.ts`). See [`docs/architecture.md`](../docs/architecture.md).
+
 ## Development
 
 ```bash
@@ -9,31 +11,32 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). On a phone on the same network, use the LAN URL printed by Next.js (e.g. `http://192.168.x.x:3000`).
+Open [http://localhost:3000](http://localhost:3000).
 
 ## Environment
 
-See [`docs/setup.md`](../docs/setup.md) for all required env vars (`DATABASE_URL`, `AUTH_SECRET`, Google OAuth, UPI paywall, etc.).
+See [`docs/setup.md`](../docs/setup.md) for env vars: `DATABASE_URL`, `AUTH_SECRET`, Google OAuth, **`CHATGPT_API_KEY` / `OPENAI_API_KEY`**, UPI paywall, etc.
 
 ## Notable routes
 
 | Route | Purpose |
 |---|---|
-| `/dashboard` | Dashboard — metrics, follow-ups, setup guide |
-| `/apply` | Quick Apply (company + role + JD required) |
-| `/applications` | Jobs (desktop table / mobile cards) |
-| `/billing` | UPI + QR paywall |
-| `/review-payment/[token]` | Signed mobile payment approve/reject |
+| `/` | Marketing (tips, FAQ, launch pricing) |
+| `/dashboard` | Metrics + date filter, fresh-jobs banner, recent apps |
+| `/apply` | Quick Apply + contact finder guide |
+| `/pipeline/[id]` | Progress; waits for Drive PDFs before drafts |
+| `/applications` | Jobs tracker |
+| `/billing` | UPI paywall (₹299 launch offer copy) |
 | `/settings` | Privacy & Settings |
-| `/admin-center` | Admins only (⋮ user actions) |
+| `/admin-center` | Admins |
 | `/privacy-policy`, `/terms` | Legal |
 
-## Mobile UI
+## Product notes
 
-- Bottom tab navigation on small screens  
-- Compact header + Me menu (includes Privacy / Terms)  
-- Safe-area / viewport support  
-- Aligned metric cards and full-width primary actions on phone  
+- Metrics: Total applications, This week, Gmail drafts, Companies contacted (URL date range; default 30d)  
+- Launch offer messaging: first 100 buyers, lifetime access, 60 apps included (metering TBD)  
+- Cover letters: no AI greeting/sign-off (template owns those)  
+- Resumes: JD keywords via in-place replace; preserve line counts  
 
 ## Build & Deploy
 
@@ -42,4 +45,4 @@ npm run build   # also packs the JobApp Bridge extension zip
 npm start
 ```
 
-Deploy the `web/` directory to Vercel. Use the Supabase **Transaction pooler** URI for `DATABASE_URL` in serverless. Set production `NEXT_PUBLIC_APP_URL` and Google redirect to the Vercel domain (not localhost).
+Deploy `web/` to Vercel. Use Supabase **Transaction pooler** for `DATABASE_URL`. Set production URL, Google redirect, and OpenAI key.

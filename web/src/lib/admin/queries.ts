@@ -76,8 +76,7 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
       google_connected: googleConnected,
       profile_done: profileDone,
       extension_configured: extensionConfigured,
-      setup_completed:
-        consoleDone && googleConnected && profileDone && extensionConfigured,
+      setup_completed: consoleDone && googleConnected && profileDone,
     };
   });
 }
