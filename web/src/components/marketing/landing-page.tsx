@@ -121,12 +121,12 @@ const aiPoints = [
 
 const faqs = [
   {
-    q: "Will emails ever be sent without my approval?",
-    a: "Never. Everything lands in your Gmail as a draft — cold emails and follow-ups included. You review, edit if you like, and hit send yourself. JobApp OS has no ability to send on your behalf.",
+    q: "What does JobApp OS access in my Google account?",
+    a: "With your consent, JobApp OS uses Google Drive and Google Docs to create and update tailored resumes and cover letters and export PDFs, and uses Gmail to create outreach and follow-up drafts (with PDF attachments when ready). It does not auto-send email on your behalf. You can revoke access anytime in your Google Account settings. See our Privacy Policy for full details.",
   },
   {
-    q: "What does JobApp OS access in my Google account?",
-    a: "Only what the pipeline needs: creating documents in Drive, exporting PDFs, and writing drafts in Gmail. It never reads your inbox or existing files, and you can revoke access anytime from your Google account settings.",
+    q: "Will emails ever be sent without my approval?",
+    a: "Never. Everything lands in your Gmail as a draft — cold emails and follow-ups included. You review, edit if you like, and hit send yourself. JobApp OS does not send cold outreach or follow-ups for you.",
   },
   {
     q: "Will the AI invent experience I don't have?",
@@ -322,6 +322,7 @@ export function LandingPage() {
   const year = new Date().getFullYear();
   const [scrolled, setScrolled] = useState(false);
   const [showTop, setShowTop] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => {
@@ -334,21 +335,43 @@ export function LandingPage() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [menuOpen]);
+
   function scrollToTop() {
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function closeMenu() {
+    setMenuOpen(false);
   }
 
   return (
     <div className="marketing-page bg-[var(--canvas)] text-[var(--on-surface)]">
       <header
         className={`marketing-nav sticky top-0 z-50 transition-all duration-300 ${
-          scrolled
+          scrolled || menuOpen
             ? "border-b border-[var(--border-hairline)] bg-[var(--surface)]/85 shadow-[0_8px_30px_-18px_rgba(0,0,0,0.25)] backdrop-blur-xl"
             : "bg-transparent"
         }`}
       >
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-center gap-4 px-4 sm:justify-between sm:px-6 lg:px-8">
-          <a href="#top" className="flex items-center gap-2.5 no-underline">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+          <a
+            href="#top"
+            className="flex items-center gap-2.5 no-underline"
+            onClick={closeMenu}
+          >
             <Image
               src="/brand/jobapp-os-logo.png"
               alt="JobApp OS"
@@ -369,13 +392,7 @@ export function LandingPage() {
               </a>
             ))}
           </nav>
-          <div className="hidden items-center gap-2 sm:flex">
-            <Link
-              href="/privacy-policy"
-              className="rounded-lg px-3.5 py-2 text-[13px] font-semibold text-[var(--on-surface-variant)] no-underline transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--on-surface)]"
-            >
-              Privacy
-            </Link>
+          <div className="hidden items-center gap-2 lg:flex">
             <Link
               href="/login"
               className="rounded-lg px-3.5 py-2 text-[13px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]"
@@ -389,7 +406,61 @@ export function LandingPage() {
               </span>
             </Link>
           </div>
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--on-surface)] transition-colors hover:bg-[var(--ghost-hover)] lg:hidden"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav-menu"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <span className="material-symbols-outlined text-[24px]" aria-hidden>
+              {menuOpen ? "close" : "menu"}
+            </span>
+          </button>
         </div>
+
+        {menuOpen ? (
+          <div
+            id="mobile-nav-menu"
+            className="border-t border-[var(--border-hairline)] bg-[var(--surface)] lg:hidden"
+          >
+            <nav
+              className="mx-auto flex max-w-6xl flex-col gap-0.5 px-4 py-3 sm:px-6"
+              aria-label="Mobile"
+            >
+              {navLinks.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="rounded-lg px-3 py-2.5 text-[15px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]"
+                  onClick={closeMenu}
+                >
+                  {link.label}
+                </a>
+              ))}
+              <div className="mt-2 flex flex-col gap-2 border-t border-[var(--border-hairline)] pt-3">
+                <Link
+                  href="/login"
+                  className="rounded-lg px-3 py-2.5 text-center text-[15px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]"
+                  onClick={closeMenu}
+                >
+                  Log in
+                </Link>
+                <Link
+                  href="/signup"
+                  className="mk-btn mk-btn-primary w-full justify-center px-4 py-2.5 text-[14px]"
+                  onClick={closeMenu}
+                >
+                  Sign up
+                  <span className="material-symbols-outlined mk-btn-arrow text-[16px]">
+                    arrow_forward
+                  </span>
+                </Link>
+              </div>
+            </nav>
+          </div>
+        ) : null}
       </header>
 
       <main id="top">
@@ -415,10 +486,12 @@ export function LandingPage() {
               </Reveal>
               <Reveal delay={180}>
                 <p className="mx-auto mt-5 max-w-xl text-[16px] leading-7 text-[var(--on-surface-variant)] sm:mx-0 sm:text-[18px] sm:leading-8">
-                  JobApp OS is a job application automation web app: paste a
-                  job description, get tailored resumes and cover letters,
-                  prepare Gmail outreach drafts, and track every application
-                  in one place.
+                  JobApp OS is a job application automation web app. Paste a
+                  job description to generate tailored resumes and cover
+                  letters, store them in your Google Drive and Google Docs,
+                  prepare Gmail drafts for outreach and follow-ups, and track
+                  every application in one dashboard. You review and send all
+                  emails yourself.
                 </p>
               </Reveal>
               <Reveal delay={260}>
@@ -473,8 +546,8 @@ export function LandingPage() {
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <SectionHeading
               eyebrow="About"
-              title="A career operations agent you can shape"
-              lead="Job hunting usually means bouncing between documents, Gmail, and spreadsheets for every role. JobApp OS is a fully customizable assistant that turns a pasted job description into a tracked application package: tailored materials, draft outreach, and follow-ups that stay under your control."
+              title="What JobApp OS does"
+              lead="JobApp OS helps job seekers automate applications end to end: tailor resumes and cover letters from a pasted job description, save materials to Google Drive/Docs, prepare Gmail drafts for recruiters, schedule follow-up reminders, and track every role in one place — while you stay in control of what gets sent."
             />
             <div className="mt-12 grid gap-5 sm:grid-cols-3">
               {aboutSteps.map((item, index) => (
@@ -807,8 +880,22 @@ export function LandingPage() {
               </span>
             </div>
             <p className="mt-4 text-[14px] leading-6 text-[var(--on-surface-variant)]">
-              Job application automation for resumes, cover letters, Google
-              Drive/Docs storage, Gmail drafts, and application tracking.
+              JobApp OS — job application automation for tailored resumes and
+              cover letters, Google Drive/Docs storage, Gmail drafts, and
+              application tracking.{" "}
+              <Link
+                href="/privacy-policy"
+                className="font-semibold text-[var(--primary)] underline underline-offset-2"
+              >
+                Privacy Policy
+              </Link>
+              {" · "}
+              <Link
+                href="/terms"
+                className="font-semibold text-[var(--primary)] underline underline-offset-2"
+              >
+                Terms
+              </Link>
             </p>
           </div>
           <div className="grid grid-cols-2 gap-8 text-center sm:grid-cols-3 sm:text-left lg:col-span-7">

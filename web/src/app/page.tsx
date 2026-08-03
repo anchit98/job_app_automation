@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "JobApp OS | Job application automation",
   description:
-    "JobApp OS is a job application automation web app. It helps job seekers create tailored resumes and cover letters, store materials in Google Drive and Google Docs, prepare Gmail drafts for outreach, and track applications — without sending email on the user's behalf.",
+    "JobApp OS helps job seekers automate applications: tailored resumes and cover letters stored in Google Drive and Google Docs, Gmail drafts for outreach (you send), and application tracking. Learn why we request Google access in our Privacy Policy.",
 };
 
 export default async function HomePage() {
