@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { reviewPaymentClaimViaEmailToken } from "@/app/actions/payment-review";
+import { formatAppDateTime, parseAppTimestamp } from "@/lib/datetime/india";
 
 export type PaymentReviewClaimView = {
   id: string;
@@ -17,12 +18,9 @@ export type PaymentReviewClaimView = {
 };
 
 function formatWhen(iso: string) {
-  const d = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
+  const d = parseAppTimestamp(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatAppDateTime(d);
 }
 
 export function PaymentReviewClient({

@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "@/lib/tracker/timeline";
+import { formatAppDateTime } from "@/lib/datetime/india";
 
 interface ApplicationTimelineProps {
   events: TimelineEvent[];
@@ -31,7 +32,7 @@ export function ApplicationTimeline({ events }: ApplicationTimelineProps) {
             </p>
           )}
           <p className="text-[11px] text-on-surface-variant mt-1">
-            {new Date(event.created_at).toLocaleString()}
+            {formatAppDateTime(event.created_at)}
           </p>
         </div>
       ))}

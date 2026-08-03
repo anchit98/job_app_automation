@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { DocsClient } from "@/lib/google/docs";
+import { resolveGoogleDocsId } from "@/lib/google/docs-url";
 import { DriveClient } from "@/lib/google/drive";
 import { upsertMasterResumeRow } from "@/lib/db/queries";
 import { env } from "@/lib/env";
@@ -28,12 +29,17 @@ interface SyncResult {
 export async function syncMasterFromGoogleDoc(
   docIdInput?: string,
 ): Promise<SyncResult> {
-  const docId = (docIdInput ?? env.resumeMasterDocId()).trim();
-  if (!docId) {
+  const raw = (docIdInput ?? env.resumeMasterDocId()).trim();
+  if (!raw) {
     throw new Error(
-      "No master Google Doc ID configured. Set RESUME_MASTER_DOC_ID in .env.local or pass the doc ID explicitly.",
+      "No master Google Doc configured. Paste a docs.google.com/document/... link.",
     );
   }
+  const parsed = resolveGoogleDocsId(raw);
+  if (!parsed.ok) {
+    throw new Error(parsed.error);
+  }
+  const docId = parsed.docId;
 
   const auth = await getGoogleAuthClient();
   const docs = new DocsClient(auth);

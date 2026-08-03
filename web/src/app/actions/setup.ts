@@ -1,10 +1,10 @@
 "use server";
 
 import { dbRun } from "@/lib/db";
-import { requireUser, ensureUserProfile } from "@/lib/auth/user";
+import { requireUser, requireAdmin, ensureUserProfile } from "@/lib/auth/user";
 
 export async function markSetupConsoleDone() {
-  const user = await requireUser();
+  const user = await requireAdmin();
   await ensureUserProfile(user.id, user.full_name);
   await dbRun(
     `UPDATE profiles
@@ -18,7 +18,7 @@ export async function markSetupConsoleDone() {
 }
 
 export async function clearSetupConsoleDone() {
-  const user = await requireUser();
+  const user = await requireAdmin();
   await dbRun(
     `UPDATE profiles
      SET setup_console_done_at = NULL,

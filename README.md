@@ -12,13 +12,14 @@ Hosted multi-user app: **Next.js 16** + **Supabase Postgres** + **Google Drive/G
 
 1. **Sign up / sign in** — email + password; sessions scoped per user  
 2. **Manual UPI billing** — unpaid users land on `/billing`; launch offer **₹299** (first 100 buyers messaging): **lifetime access** + **60 applications included**  
-3. **Dashboard** — setup guide, **fresh LinkedIn jobs** banner, date-filtered metrics, recent applications, quick actions  
-4. **Quick Apply** — paste JD + company + role (contacts optional) → OpenAI pipeline; in-app guide to find emails via LinkedIn + [Mailmeteor](https://mailmeteor.com/tools/linkedin-email-finder)  
-5. **Tracker (Jobs)** — applications, contacts, versions, notes  
-6. **Gmail drafts** — created only after Drive PDFs are ready (attachments included)  
-7. **Follow-ups** — enqueue draft prompts (never auto-send)  
-8. **Admin Center** — users, paid access, payment claims  
-9. **Marketing site** — Insider tips, FAQ, launch pricing  
+3. **Profile setup gate** — after payment, Dashboard & Apply stay locked until Google is connected, required profile fields are saved (name, location, phone, LinkedIn), and master resume is synced (`/onboarding`). Settings can be changed anytime.  
+4. **Dashboard** — date-filtered metrics (IST day bounds), fresh LinkedIn jobs banner, recent applications, quick actions  
+5. **Quick Apply** — paste JD + company + role (contacts optional) → OpenAI pipeline; cover letter optional (defaults off until master cover is synced); in-app guide to find emails via LinkedIn + [Mailmeteor](https://mailmeteor.com/tools/linkedin-email-finder)  
+6. **Tracker (Jobs)** — applications, contacts, versions, notes  
+7. **Gmail drafts** — created only after Drive PDFs are ready (attachments included); never auto-send  
+8. **Follow-ups** — enqueue draft prompts on **IST** business days (never auto-send)  
+9. **Admin Center** — users, paid access, payment claims  
+10. **Marketing site** — Insider tips, FAQ, launch pricing, Privacy / Terms
 
 ### Quick Apply pipeline
 
@@ -54,7 +55,7 @@ Emails are always **drafts** until you send them from Gmail.
 1. Follow **[docs/setup.md](docs/setup.md)** — Supabase, Google OAuth, `AUTH_SECRET`, OpenAI key, `.env.local`  
 2. `cd web && npm install && npm run dev`  
 3. Open [http://localhost:3000](http://localhost:3000) → **Sign up**  
-4. Complete Dashboard setup (Connect Google, profile); Bridge optional if OpenAI key is set  
+4. Complete **Profile** (`/onboarding`): Connect Google, required profile fields, master resume; Bridge optional if OpenAI key is set  
 
 ### Minimal env (`web/.env.local`)
 
@@ -78,12 +79,12 @@ Emails are always **drafts** until you send them from Gmail.
 |---|---|
 | `/` | Marketing landing |
 | `/login`, `/signup` | Auth |
-| `/dashboard` | Metrics, fresh-jobs hack, recent apps, setup |
+| `/dashboard` | Metrics, fresh-jobs hack, recent apps |
 | `/apply` | Quick Apply (+ contact finder guide) |
 | `/applications` | Jobs tracker |
 | `/pipeline/[id]` | Live pipeline + PDF downloads |
-| `/onboarding` | Profile & master docs |
-| `/settings` | Privacy & Settings |
+| `/onboarding` | Profile (Google, profile fields, master docs) |
+| `/settings` | Privacy & Settings (password, account) |
 | `/billing` | UPI paywall (launch offer) |
 | `/admin-center` | Admin |
 | `/privacy-policy`, `/terms` | Legal |

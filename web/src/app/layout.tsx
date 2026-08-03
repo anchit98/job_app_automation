@@ -6,7 +6,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "JobApp OS | Job Application Automation",
-  description: "Job application pipeline. Apply with cloud AI",
+  description:
+    "JobApp OS helps job seekers automate applications: tailored resumes and cover letters, Google Drive/Docs storage, Gmail drafts, and application tracking.",
   icons: {
     icon: [
       { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },

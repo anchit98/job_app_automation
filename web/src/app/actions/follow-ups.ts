@@ -29,6 +29,7 @@ import {
   addBusinessDays,
   toUtcIso,
 } from "@/lib/follow-ups/business-days";
+import { APP_TIMEZONE } from "@/lib/datetime/india";
 import { applyFollowUpGreeting } from "@/lib/follow-ups/greeting";
 import {
   buildFollowUpRepairPrompt,
@@ -163,7 +164,7 @@ export async function snoozeFollowUp(followUpId: string, businessDays: number) {
   }
 
   const profile = await getProfileRow();
-  const timezone = profile?.timezone ?? "UTC";
+  const timezone = profile?.timezone?.trim() || APP_TIMEZONE;
   const until = toUtcIso(addBusinessDays(new Date(), businessDays, timezone));
 
   const ok = await updateFollowUpStatus(followUpId, "snoozed", {
@@ -194,7 +195,7 @@ export async function skipFollowUp(followUpId: string) {
 
   if (followUp.sequence === 1) {
     const profile = await getProfileRow();
-    await activateSecondFollowUp(followUp.email_id, profile?.timezone ?? "UTC");
+    await activateSecondFollowUp(followUp.email_id, profile?.timezone?.trim() || APP_TIMEZONE);
   }
 
   revalidateFollowUpPaths(followUp.application_id);
@@ -432,7 +433,7 @@ export async function manualSendFollowUp(followUpId: string) {
   }
 
   const profile = await getProfileRow();
-  const timezone = profile?.timezone ?? "UTC";
+  const timezone = profile?.timezone?.trim() || APP_TIMEZONE;
   const sentAt = new Date().toISOString();
   let firstGmailUrl: string | null = null;
 

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { APPLICATION_STATUS_LABELS } from "@/lib/applications/status";
+import { formatAppDateShort, parseAppTimestamp } from "@/lib/datetime/india";
 import type { ApplicationListItem } from "@/lib/tracker/search";
 
 function formatRelativeTime(dateString: string) {
-  const diff = Date.now() - new Date(dateString).getTime();
+  const diff = Date.now() - parseAppTimestamp(dateString).getTime();
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
@@ -11,10 +12,7 @@ function formatRelativeTime(dateString: string) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(dateString).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  return formatAppDateShort(dateString);
 }
 
 function statusChipClass(status: string) {

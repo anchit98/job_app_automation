@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireUser, userHasPaidAccess } from "@/lib/auth/user";
 import { getLatestPaymentClaim } from "@/lib/billing/payment-claims";
 import { env } from "@/lib/env";
+import { getSetupReadiness } from "@/lib/setup/readiness";
 import { PaymentClaimForm } from "@/components/billing/payment-claim-form";
 import { CopyUpiButton } from "@/components/billing/copy-upi-button";
 import { ShowUpiQrButton } from "@/components/billing/show-upi-qr-button";
@@ -16,7 +17,8 @@ const includedFeatures = [
 export default async function BillingPage() {
   const user = await requireUser();
   if (userHasPaidAccess(user)) {
-    redirect("/dashboard");
+    const readiness = await getSetupReadiness().catch(() => null);
+    redirect(readiness?.setupReady ? "/dashboard" : "/onboarding");
   }
 
   const claim = await getLatestPaymentClaim(user.id);
@@ -126,8 +128,8 @@ export default async function BillingPage() {
         </span>
         <p className="text-[13px] leading-relaxed text-on-surface-variant">
           An admin verifies your transfer and unlocks your account — usually
-          within a few hours. You&apos;ll land straight on your dashboard the
-          next time you sign in.
+          within a few hours. You&apos;ll continue to one-time setup (Connect
+          Google + profile), then Dashboard and Apply unlock.
         </p>
       </section>
     </div>

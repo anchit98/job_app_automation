@@ -1,6 +1,5 @@
 import { UpdatePasswordForm } from "@/components/settings/update-password-form";
 import { DeleteAccountForm } from "@/components/settings/delete-account-form";
-import { ReopenSetupGuideButton } from "@/components/setup/reopen-setup-guide-button";
 import Link from "next/link";
 import { requireUser, userHasPaidAccess } from "@/lib/auth/user";
 
@@ -62,19 +61,14 @@ export default async function SettingsPage() {
         </div>
         <div className="lg:col-span-4 space-y-3">
           <div className="li-card p-4">
-            <h2 className="li-section-title">Setup guide</h2>
-            <p className="li-meta mt-1">
-              Google Cloud Console, Connect Google, and profile — all on
-              Dashboard.
-            </p>
-            <div className="mt-3 flex flex-col gap-2">
+            <h2 className="li-section-title">Profile</h2>
+            <div className="mt-3">
               <Link
-                href="/dashboard"
+                href="/onboarding"
                 className="inline-flex text-[13px] font-semibold text-primary hover:underline"
               >
-                Open Dashboard →
+                Open Profile →
               </Link>
-              <ReopenSetupGuideButton />
             </div>
           </div>
         </div>

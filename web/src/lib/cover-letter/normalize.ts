@@ -39,6 +39,13 @@ export function stripCoverLetterSignoff(text: string): string {
   if (SIGNOFF_ONLY.test(result)) return "";
   result = result.replace(SIGNOFF_BLOCK, "").trim();
   result = result.replace(SIGNOFF_INLINE_TAIL, "").trim();
+  // Trailing closing phrase with no name (common LLM habit before template sign-off).
+  result = result
+    .replace(
+      new RegExp(`(?:\\n+|\\s+)${SIGNOFF_PHRASE},?\\s*$`, "i"),
+      "",
+    )
+    .trim();
   if (SIGNOFF_ONLY.test(result)) return "";
   return result;
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { abandonPromptRun } from "@/app/actions/prompts";
 import type { PendingPromptRunItem } from "@/lib/tracker/queries";
+import { formatAppDateTime } from "@/lib/datetime/india";
 
 const KIND_LABELS: Record<string, string> = {
   jd_parse: "Parse job description",
@@ -86,7 +87,7 @@ export function PromptsInbox({ items }: PromptsInboxProps) {
                   </p>
                 )}
                 <p className="text-[11px] text-on-surface-variant mt-1">
-                  Exported {new Date(item.exported_at).toLocaleString()}
+                  Exported {formatAppDateTime(item.exported_at)}
                 </p>
               </div>
               {href && (

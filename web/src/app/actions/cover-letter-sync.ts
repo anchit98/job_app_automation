@@ -5,6 +5,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { upsertMasterCoverLetterRow } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 import { DocsClient } from "@/lib/google/docs";
+import { resolveGoogleDocsId } from "@/lib/google/docs-url";
 import { DriveClient } from "@/lib/google/drive";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { syncMasterCoverLetterFromDoc } from "@/lib/cover-letter/master-sync";
@@ -18,12 +19,17 @@ interface SyncResult {
 export async function syncCoverLetterFromGoogleDoc(
   docIdInput?: string,
 ): Promise<SyncResult> {
-  const docId = (docIdInput ?? env.coverLetterMasterDocId()).trim();
-  if (!docId) {
+  const raw = (docIdInput ?? env.coverLetterMasterDocId()).trim();
+  if (!raw) {
     throw new Error(
-      "No cover letter Google Doc ID configured. Set COVER_LETTER_MASTER_DOC_ID in .env.local or pass the doc ID explicitly.",
+      "No cover letter Google Doc configured. Paste a docs.google.com/document/... link.",
     );
   }
+  const parsed = resolveGoogleDocsId(raw);
+  if (!parsed.ok) {
+    throw new Error(parsed.error);
+  }
+  const docId = parsed.docId;
 
   const auth = await getGoogleAuthClient();
   const docs = new DocsClient(auth);

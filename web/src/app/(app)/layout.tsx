@@ -1,8 +1,11 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { PaidAccessGate } from "@/components/billing/paid-access-gate";
+import { SetupAccessGate } from "@/components/setup/setup-access-gate";
 import { getCurrentUser, userHasPaidAccess } from "@/lib/auth/user";
 import { getProfile } from "@/app/actions/profile";
 import { profileAvatarSrc } from "@/lib/profile-avatar";
+import { getSetupReadiness } from "@/lib/setup/readiness";
+import { setupAllowed, setupLockedPath } from "@/lib/setup/setup-paths";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -24,21 +27,38 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [user, profile, headerStore] = await Promise.all([
+  const [user, profile, headerStore, readiness] = await Promise.all([
     getCurrentUser(),
     getProfile().catch(() => null),
     headers(),
+    getSetupReadiness().catch(() => ({
+      googleConnected: false,
+      profileDone: false,
+      masterResumeDone: false,
+      setupReady: false,
+    })),
   ]);
 
   const isPaid = user ? userHasPaidAccess(user) : true;
   const pathname = headerStore.get("x-pathname") || "";
+  const setupReady = !isPaid || readiness.setupReady;
 
   // Server-side redirect when pathname is available from middleware.
   if (user && !isPaid && pathname && !unpaidAllowed(pathname)) {
     redirect("/billing");
   }
   if (user && isPaid && pathname === "/billing") {
-    redirect("/dashboard");
+    redirect(readiness.setupReady ? "/dashboard" : "/onboarding");
+  }
+  if (
+    user &&
+    isPaid &&
+    !readiness.setupReady &&
+    pathname &&
+    setupLockedPath(pathname) &&
+    !setupAllowed(pathname)
+  ) {
+    redirect("/onboarding");
   }
 
   return (
@@ -48,8 +68,13 @@ export default async function AppLayout({
       avatarSrc={profileAvatarSrc(profile)}
       isAdmin={user?.is_admin}
       isPaid={isPaid}
+      setupReady={setupReady}
     >
-      <PaidAccessGate isPaid={isPaid}>{children}</PaidAccessGate>
+      <PaidAccessGate isPaid={isPaid}>
+        <SetupAccessGate isPaid={isPaid} setupReady={setupReady}>
+          {children}
+        </SetupAccessGate>
+      </PaidAccessGate>
     </AppShell>
   );
 }

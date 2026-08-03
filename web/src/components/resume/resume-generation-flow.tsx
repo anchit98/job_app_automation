@@ -18,6 +18,7 @@ import { UnifiedPasteModal } from "@/components/paste-flow/unified-paste-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import type { ResumeVersion } from "@/lib/db/types";
+import { formatAppDateTime } from "@/lib/datetime/india";
 import type { FabricationFlag, ResumeContent } from "@/lib/resume/fabrication";
 
 interface ResumeGenerationFlowProps {
@@ -181,7 +182,7 @@ export function ResumeGenerationFlow({
                   <span className="font-medium">v{v.version}</span>
                   <span className="ml-2 text-zinc-500">{v.status}</span>
                   <span className="ml-2 text-xs text-zinc-400">
-                    {new Date(v.created_at).toLocaleString()}
+                    {formatAppDateTime(v.created_at)}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">

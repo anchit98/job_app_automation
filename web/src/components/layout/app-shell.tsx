@@ -23,6 +23,9 @@ function isActive(pathname: string, href: string) {
   if (href === "/apply") {
     return pathname === "/apply" || pathname.startsWith("/apply/");
   }
+  if (href === "/onboarding") {
+    return pathname === "/onboarding" || pathname.startsWith("/onboarding/");
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -33,6 +36,7 @@ export function AppShell({
   avatarSrc,
   isAdmin,
   isPaid = true,
+  setupReady = true,
 }: {
   children: React.ReactNode;
   userEmail?: string | null;
@@ -40,6 +44,8 @@ export function AppShell({
   avatarSrc?: string | null;
   isAdmin?: boolean;
   isPaid?: boolean;
+  /** False until Google + profile + master resume are ready */
+  setupReady?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -52,14 +58,23 @@ export function AppShell({
   }, [pathname]);
 
   const activePath = optimisticPath ?? pathname;
-  const showApplicationSearch = isPaid && activePath === "/applications";
-  const dashboardHref = isPaid ? "/dashboard" : "/billing";
+  const showApplicationSearch = isPaid && setupReady && activePath === "/applications";
+  const homeHref = !isPaid
+    ? "/billing"
+    : setupReady
+      ? "/dashboard"
+      : "/onboarding";
+
+  const setupLockedHrefs = new Set(["/dashboard", "/apply", "/applications"]);
 
   const navLinks = isPaid
     ? [
         ...paidLinks,
         ...(isAdmin
           ? [{ href: "/admin-center", icon: "admin_panel_settings", label: "Admin" }]
+          : []),
+        ...(!setupReady
+          ? [{ href: "/onboarding", icon: "checklist", label: "Setup" }]
           : []),
       ]
     : [
@@ -74,9 +89,9 @@ export function AppShell({
         <div className="mx-auto h-nav-height max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-2 md:gap-4">
           <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
             <Link
-              href={dashboardHref}
+              href={homeHref}
               prefetch
-              onClick={() => setOptimisticPath(dashboardHref)}
+              onClick={() => setOptimisticPath(homeHref)}
               className="flex items-center gap-2 shrink-0 no-underline"
             >
               <Image
@@ -99,6 +114,14 @@ export function AppShell({
                 </span>
                 <span className="sm:hidden">Locked</span>
                 <span className="hidden sm:inline">Locked until payment</span>
+              </span>
+            ) : !setupReady ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/8 px-2.5 py-1 text-[11px] font-semibold text-primary max-md:px-2 max-md:py-0.5 max-md:text-[10px]">
+                <span className="material-symbols-outlined text-[14px] max-md:text-[12px]">
+                  checklist
+                </span>
+                <span className="sm:hidden">Setup</span>
+                <span className="hidden sm:inline">Finish one-time setup</span>
               </span>
             ) : null}
             {showApplicationSearch ? (
@@ -130,15 +153,23 @@ export function AppShell({
           <div className="flex items-center gap-0.5 shrink-0">
             <nav className="hidden md:flex items-center gap-0.5 sm:gap-1">
               {navLinks.map((link) => {
+                const lockedBySetup =
+                  isPaid && !setupReady && setupLockedHrefs.has(link.href);
+                const href = lockedBySetup ? "/onboarding" : link.href;
                 const active = isActive(activePath, link.href);
                 return (
                   <Link
                     key={link.href}
-                    href={link.href}
+                    href={href}
                     prefetch
+                    title={
+                      lockedBySetup
+                        ? "Finish one-time setup first"
+                        : undefined
+                    }
                     onClick={() => {
-                      if (!isActive(pathname, link.href)) {
-                        setOptimisticPath(link.href);
+                      if (!isActive(pathname, href)) {
+                        setOptimisticPath(href);
                       }
                     }}
                     className={`
@@ -147,14 +178,24 @@ export function AppShell({
                       ${
                         active
                           ? "border-on-surface text-on-surface"
-                          : "border-transparent text-on-surface-variant hover:text-on-surface"
+                          : lockedBySetup
+                            ? "border-transparent text-on-surface-variant/50"
+                            : "border-transparent text-on-surface-variant hover:text-on-surface"
                       }
                     `}
                   >
                     <span
-                      className={`material-symbols-outlined text-[22px] ${active ? "filled" : ""}`}
+                      className={`relative material-symbols-outlined text-[22px] ${active ? "filled" : ""}`}
                     >
                       {link.icon}
+                      {lockedBySetup ? (
+                        <span
+                          className="material-symbols-outlined absolute -right-1 -top-1 text-primary"
+                          style={{ fontSize: 12 }}
+                        >
+                          lock
+                        </span>
+                      ) : null}
                     </span>
                     <span className="text-[11px] font-semibold mt-0.5 leading-none">
                       {link.label}
@@ -218,26 +259,40 @@ export function AppShell({
       >
         <div className="mx-auto flex h-14 max-w-content-max items-stretch justify-around px-1">
           {navLinks.map((link) => {
+            const lockedBySetup =
+              isPaid && !setupReady && setupLockedHrefs.has(link.href);
+            const href = lockedBySetup ? "/onboarding" : link.href;
             const active = isActive(activePath, link.href);
             return (
               <Link
                 key={`mobile-${link.href}`}
-                href={link.href}
+                href={href}
                 prefetch
+                title={
+                  lockedBySetup ? "Finish one-time setup first" : undefined
+                }
                 onClick={() => {
-                  if (!isActive(pathname, link.href)) {
-                    setOptimisticPath(link.href);
+                  if (!isActive(pathname, href)) {
+                    setOptimisticPath(href);
                   }
                 }}
                 className={`
                   flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 no-underline
-                  ${active ? "text-primary" : "text-on-surface-variant"}
+                  ${active ? "text-primary" : lockedBySetup ? "text-on-surface-variant/50" : "text-on-surface-variant"}
                 `}
               >
                 <span
-                  className={`material-symbols-outlined text-[24px] ${active ? "filled" : ""}`}
+                  className={`relative material-symbols-outlined text-[24px] ${active ? "filled" : ""}`}
                 >
                   {link.icon}
+                  {lockedBySetup ? (
+                    <span
+                      className="material-symbols-outlined absolute -right-1 -top-0.5 text-primary"
+                      style={{ fontSize: 11 }}
+                    >
+                      lock
+                    </span>
+                  ) : null}
                 </span>
                 <span className="max-w-full truncate text-[10px] font-semibold leading-none">
                   {link.label}

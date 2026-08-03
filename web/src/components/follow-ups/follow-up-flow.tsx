@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/follow-ups";
 import { UnifiedPasteModal } from "@/components/paste-flow/unified-paste-modal";
 import type { Contact, EmailRecord, FollowUp } from "@/lib/db/types";
+import { formatAppDateTime } from "@/lib/datetime/india";
 import { gmailDraftWebUrl } from "@/lib/emails/gmail-url";
 
 const STATUS_LABEL: Record<FollowUp["status"], string> = {
@@ -123,7 +124,7 @@ export function FollowUpFlow({
         <h3 className="text-[16px] font-medium text-on-surface">Follow-ups</h3>
         <p className="text-[13px] text-on-surface-variant mt-1">
           Cadence: 5 business days after email sent, then 10 business days after
-          the first follow-up is sent. Times use your profile timezone. Gmail
+          the first follow-up is sent. Times use India (IST) business days. Gmail
           drafts reply in the original cold-email thread (no re-attached PDFs).
         </p>
         {needsConfirm && (
@@ -163,10 +164,10 @@ export function FollowUpFlow({
                   <p className="text-[12px] text-on-surface-variant">
                     {STATUS_LABEL[fu.status]}
                     {fu.due_at && fu.status !== "sent"
-                      ? ` · due ${new Date(fu.due_at).toLocaleString()}`
+                      ? ` · due ${formatAppDateTime(fu.due_at)}`
                       : ""}
                     {fu.sent_at
-                      ? ` · sent ${new Date(fu.sent_at).toLocaleString()}`
+                      ? ` · sent ${formatAppDateTime(fu.sent_at)}`
                       : ""}
                   </p>
                 </div>

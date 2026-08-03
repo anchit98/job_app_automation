@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "Terms of Service for JobApp OS.",
 };
 
-const updatedAt = "July 31, 2026";
+const updatedAt = "August 3, 2026";
 
 export default function TermsPage() {
   return (
@@ -29,15 +29,20 @@ export default function TermsPage() {
           <h2 className="li-section-title">1. Service Overview</h2>
           <div className="space-y-4 text-[15px] leading-7 text-on-surface">
             <p>
-              JobApp OS is a job application workflow platform that helps users
-              organize candidate information, create and manage resumes and
-              cover letters, maintain application records, prepare outreach
-              drafts, connect Google services, and manage follow-up workflows.
+              JobApp OS is a job application automation platform. Users paste a
+              job description; the service helps generate tailored resumes and
+              cover letters, store materials via Google Drive and Google Docs,
+              prepare Gmail drafts for outreach and follow-ups, and track
+              applications in a dashboard.
             </p>
             <p>
-              Certain features may depend on third-party services, Google
-              integrations, or server-side AI generation. Feature availability
-              may change over time.
+              Generations run server-side using AI (OpenAI). Certain features
+              depend on Google authorization, a completed Profile setup
+              (Google connection, required profile fields, and master resume),
+              and billing access where applicable. Outreach email is created as{" "}
+              <strong className="font-semibold">Gmail drafts only</strong> —
+              JobApp OS does not auto-send cold emails or follow-ups on your
+              behalf. Feature availability may change over time.
             </p>
           </div>
         </section>
@@ -53,9 +58,9 @@ export default function TermsPage() {
             </p>
             <p>
               You must provide accurate information when registering and keep
-              your information reasonably up to date. We may suspend or disable
-              accounts that are fraudulent, abusive, deceptive, or in violation
-              of these Terms.
+              your Profile information reasonably up to date. We may suspend or
+              disable accounts that are fraudulent, abusive, deceptive, or in
+              violation of these Terms.
             </p>
           </div>
         </section>
@@ -70,7 +75,10 @@ export default function TermsPage() {
               <li>abuse, disrupt, reverse engineer, or overload the platform;</li>
               <li>attempt unauthorized access to other accounts or systems;</li>
               <li>send spam, malware, or harmful automated communications;</li>
-              <li>misrepresent identity, qualifications, or job application content;</li>
+              <li>
+                misrepresent identity, qualifications, or job application
+                content;
+              </li>
               <li>use the platform in a way that harms the service or other users.</li>
             </ul>
           </div>
@@ -87,10 +95,11 @@ export default function TermsPage() {
               content and that it does not violate law or third-party rights.
             </p>
             <p>
-              You are solely responsible for reviewing any generated or drafted
-              content before relying on it or sending it to employers, contacts,
-              or third parties. JobApp OS does not guarantee factual accuracy,
-              completeness, compliance, interview success, or hiring outcomes.
+              You are solely responsible for reviewing any AI-generated or
+              drafted content before relying on it or sending it to employers,
+              contacts, or third parties. JobApp OS does not guarantee factual
+              accuracy, completeness, compliance, interview success, or hiring
+              outcomes.
             </p>
           </div>
         </section>
@@ -99,8 +108,9 @@ export default function TermsPage() {
           <h2 className="li-section-title">5. Google and Third-Party Integrations</h2>
           <div className="space-y-4 text-[15px] leading-7 text-on-surface">
             <p>
-              JobApp OS may connect to Google Drive, Google Docs, Gmail, and
-              other third-party services when you authorize those integrations.
+              JobApp OS may connect to Google Drive, Google Docs, Gmail, OpenAI,
+              and other third-party services when you authorize those
+              integrations or when the operator configures them for Apply.
               Your use of those services remains subject to their own terms and
               policies.
             </p>
@@ -119,7 +129,15 @@ export default function TermsPage() {
               Some features or account states may require payment before access
               is granted. Where manual payment review is used, activation may be
               delayed until an administrator verifies the payment reference and
-              approves access.
+              approves access. Launch offer details (such as one-time pricing,
+              lifetime access messaging, or included application volume) are
+              described on the live billing and marketing pages and may change.
+            </p>
+            <p>
+              After paid access is granted, Dashboard and Apply may remain
+              locked until required Profile setup is complete (Connect Google,
+              required profile fields, and master resume). Profile settings can
+              be updated anytime thereafter.
             </p>
             <p>
               Unless expressly stated otherwise on the live service, fees are
@@ -223,7 +241,7 @@ export default function TermsPage() {
           <h2 className="li-section-title">13. Governing Law and Disputes</h2>
           <div className="space-y-4 text-[15px] leading-7 text-on-surface">
             <p>
-              These Terms are governed by the laws applicable in the operator's
+              These Terms are governed by the laws applicable in the operator&apos;s
               principal place of business, unless local consumer protection law
               requires otherwise. Any dispute relating to the service will be
               resolved in the appropriate courts or forums of that jurisdiction,

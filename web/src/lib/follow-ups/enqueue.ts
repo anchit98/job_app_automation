@@ -11,6 +11,7 @@ import {
   updatePromptRunText,
 } from "@/lib/db/queries";
 import type { FollowUp } from "@/lib/db/types";
+import { APP_TIMEZONE } from "@/lib/datetime/india";
 import {
   claimFollowUpForProcessing,
   followUpsExistForEmail,
@@ -31,7 +32,7 @@ export async function scheduleFollowUpsForApplication(
   applicationId: string,
 ): Promise<number> {
   const profile = await getProfileRow();
-  const timezone = profile?.timezone ?? "UTC";
+  const timezone = profile?.timezone?.trim() || APP_TIMEZONE;
   const emails = (await listEmails(applicationId)).filter(
     (e) => e.kind === "cold" && e.draft_status === "created",
   );

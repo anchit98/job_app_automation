@@ -1,3 +1,9 @@
+import {
+  indiaDayEndToUtcIso,
+  indiaDayStartToUtcIso,
+  indiaTodayDateInput,
+} from "@/lib/datetime/india";
+
 export type MetricsRangePreset = "7d" | "30d" | "90d" | "custom";
 
 export interface MetricsRange {
@@ -13,20 +19,12 @@ export interface MetricsRange {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function startOfUtcDay(dateStr: string): string {
-  return `${dateStr}T00:00:00.000Z`;
-}
-
-function endOfUtcDay(dateStr: string): string {
-  return `${dateStr}T23:59:59.999Z`;
-}
-
 function daysAgoIso(days: number, now = new Date()): string {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function toDateInputValue(iso: string): string {
-  return iso.slice(0, 10);
+  return indiaTodayDateInput(new Date(iso));
 }
 
 function intersectIso(
@@ -64,7 +62,6 @@ function withThisWeek(
   const weekEnd = now.toISOString();
   const overlap = intersectIso(base.fromIso, base.toIso, weekStart, weekEnd);
   if (!overlap) {
-    // Empty intersection: use inverted bounds so SQL COUNT returns 0
     return {
       ...base,
       thisWeekFromIso: base.toIso,
@@ -87,7 +84,7 @@ function parsePreset(raw: string | null | undefined): MetricsRangePreset | null 
 
 /**
  * Parse dashboard metrics date filter from URL search params.
- * Default: last 30 days. Invalid custom dates fall back to 30d.
+ * Default: last 30 days. Custom dates use India (Asia/Kolkata) day bounds.
  */
 export function parseMetricsRange(
   params: Record<string, string | string[] | undefined> | URLSearchParams,
@@ -115,8 +112,8 @@ export function parseMetricsRange(
     return withThisWeek(
       {
         preset: "custom",
-        fromIso: startOfUtcDay(fromDate),
-        toIso: endOfUtcDay(toDate),
+        fromIso: indiaDayStartToUtcIso(fromDate),
+        toIso: indiaDayEndToUtcIso(toDate),
         fromDate,
         toDate,
       },

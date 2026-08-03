@@ -11,6 +11,7 @@ import { PasteBackModal } from "@/components/paste-flow/paste-back-modal";
 import { PasteToGptDrawer } from "@/components/paste-flow/paste-to-gpt-drawer";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { formatAppDateTime } from "@/lib/datetime/india";
 
 export function DemoPromptFlow() {
   const [promptRunId, setPromptRunId] = useState<string | null>(null);
@@ -124,7 +125,7 @@ export function DemoPromptFlow() {
                 {run.kind} - <span className="font-mono text-xs">{run.status}</span>
               </span>
               <span className="text-xs text-zinc-500">
-                {new Date(run.exported_at).toLocaleString()}
+                {formatAppDateTime(run.exported_at)}
               </span>
             </li>
           ))}

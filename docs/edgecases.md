@@ -190,9 +190,9 @@ These bite everywhere — they must be handled in shared code, not per-phase.
 ### 1.5 Time & Timezones
 
 - **User travels across timezones between application and follow-up.**
-  - *Symptom:* Business-day math produces the "wrong" send date.
-  - *Mitigation:* Store `due_at` in UTC. Compute business days against `profiles.timezone`. Allow the user to override the timezone on their profile page.
-  - *Severity:* Low.
+  - *Symptom:* Local wall-clock differs from scheduled “business day” expectations.
+  - *Mitigation:* Store `due_at` in UTC. Compute business days and UI day bounds in **IST (`Asia/Kolkata`)** via `lib/datetime/india.ts` / `APP_TIMEZONE`. Profile timezone column defaults to India; there is no per-user timezone picker in the UI.
+  - *Severity:* Low (product is India-oriented).
 
 - **`due_at` scheduled for a public holiday.**
   - *Symptom:* Follow-up drops on a bank holiday.
@@ -288,7 +288,7 @@ These bite everywhere — they must be handled in shared code, not per-phase.
 
 - **User has zero master resume rows when they try to generate.**
   - *Symptom:* Prompt composer would produce garbage.
-  - *Mitigation:* Server action returns a `PRECONDITION_FAILED` with a UI redirect to `/onboarding/master-resume`.
+  - *Mitigation:* Server action returns a `PRECONDITION_FAILED` with a UI redirect to `/onboarding` (Profile).
   - *Severity:* Low.
 
 ### 2.3 Demo Prompt Round-Trip
@@ -611,8 +611,8 @@ These bite everywhere — they must be handled in shared code, not per-phase.
   - *Severity:* Medium.
 
 - **`profiles.timezone` unset for the user.**
-  - *Symptom:* Business-day math uses UTC → follow-ups scheduled at strange local times.
-  - *Mitigation:* Onboarding forces timezone selection (defaults to browser-detected). Cron falls back to UTC only if the column is null.
+  - *Symptom:* Follow-up scheduling might fall back incorrectly.
+  - *Mitigation:* Defaults to `Asia/Kolkata` in DB/profile helpers and `APP_TIMEZONE` in enqueue/business-day code. No UTC-only fallback for normal paid users.
   - *Severity:* Low.
 
 - **Two follow-ups for the same email hit "due" simultaneously.**

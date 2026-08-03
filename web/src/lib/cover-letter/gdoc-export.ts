@@ -88,6 +88,11 @@ export async function generateCoverLetterArtifacts(
     { original: input.layout.signoff.original, replacement: signoff },
   ];
 
+  const nameOriginal = input.layout.signoff.name_original?.trim();
+  if (nameOriginal) {
+    edits.push({ original: nameOriginal, replacement: input.fullName });
+  }
+
   await docs.batchUpdate(copiedDocId, buildReplaceRequests(edits));
 
   const docAfterReplace = await docs.getDocument(copiedDocId);

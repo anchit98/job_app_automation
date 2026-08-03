@@ -3,6 +3,7 @@
 import { useCallback, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { MetricsRange, MetricsRangePreset } from "@/lib/tracker/metrics-range";
+import { indiaTodayDateInput } from "@/lib/datetime/india";
 
 const PRESETS: { id: MetricsRangePreset; label: string }[] = [
   { id: "7d", label: "Last 7 days" },
@@ -37,10 +38,10 @@ export function MetricsDateFilter({ range }: MetricsDateFilterProps) {
 
   function onPresetChange(preset: MetricsRangePreset) {
     if (preset === "custom") {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = indiaTodayDateInput();
       const from =
         range.fromDate ??
-        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        indiaTodayDateInput(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
       const to = range.toDate ?? today;
       pushParams({ range: "custom", from, to });
       return;

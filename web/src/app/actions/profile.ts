@@ -13,6 +13,7 @@ import {
   setProfileAvatarRow,
   upsertProfileRow,
 } from "@/lib/db/queries";
+import { linkedinUrlSchema } from "@/lib/contacts/validate";
 import { resumeContentSchema } from "@/lib/resume/fabrication";
 import { requireUser } from "@/lib/auth/user";
 
@@ -22,30 +23,47 @@ const MAX_AVATAR_BYTES = 750_000;
 export interface ProfileInput {
   full_name: string;
   headline?: string;
-  location?: string;
-  timezone?: string;
+  location: string;
   preferred_tone?: string;
-  phone?: string;
-  linkedin_url?: string;
+  phone: string;
+  linkedin_url: string;
   github_url?: string;
   portfolio_url?: string;
 }
 
+function requireTrimmed(value: string | undefined, label: string): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) throw new Error(`${label} is required.`);
+  return trimmed;
+}
+
 export async function upsertProfile(input: ProfileInput) {
+  const full_name = requireTrimmed(input.full_name, "Full name");
+  const location = requireTrimmed(input.location, "Location");
+  const phone = requireTrimmed(input.phone, "Contact number");
+  const linkedinParsed = linkedinUrlSchema.safeParse(input.linkedin_url);
+  if (!linkedinParsed.success) {
+    throw new Error(
+      linkedinParsed.error.issues[0]?.message ?? "Enter a valid LinkedIn URL.",
+    );
+  }
+
+  const existing = await getProfileRow().catch(() => null);
+
   await upsertProfileRow({
-    full_name: input.full_name.trim(),
+    full_name,
     headline: input.headline?.trim() || null,
-    location: input.location?.trim() || null,
-    timezone: input.timezone?.trim() || "UTC",
+    location,
+    timezone: existing?.timezone ?? "Asia/Kolkata",
     preferred_tone: input.preferred_tone?.trim() || null,
-    phone: input.phone?.trim() || null,
-    linkedin_url: input.linkedin_url?.trim() || null,
+    phone,
+    linkedin_url: linkedinParsed.data,
     github_url: input.github_url?.trim() || null,
     portfolio_url: input.portfolio_url?.trim() || null,
   });
 
   await writeAuditLog("profile.upsert", "profiles", "local", {
-    full_name: input.full_name,
+    full_name,
   });
 
   revalidatePath("/dashboard");

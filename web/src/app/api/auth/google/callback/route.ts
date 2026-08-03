@@ -15,13 +15,13 @@ export async function GET(request: Request) {
   if (error) {
     const desc = searchParams.get("error_description") ?? error;
     return NextResponse.redirect(
-      `${env.appUrl()}/dashboard?google_error=${encodeURIComponent(desc)}`,
+      `${env.appUrl()}/onboarding?google_error=${encodeURIComponent(desc)}`,
     );
   }
 
   if (!code || !state) {
     return NextResponse.redirect(
-      `${env.appUrl()}/dashboard?google_error=missing_code`,
+      `${env.appUrl()}/onboarding?google_error=missing_code`,
     );
   }
 
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     await requireUser();
   } catch {
     return NextResponse.redirect(
-      `${env.appUrl()}/login?next=${encodeURIComponent("/settings")}`,
+      `${env.appUrl()}/login?next=${encodeURIComponent("/onboarding")}`,
     );
   }
 
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 
   if (!savedState || savedState !== state) {
     return NextResponse.redirect(
-      `${env.appUrl()}/dashboard?google_error=invalid_state`,
+      `${env.appUrl()}/onboarding?google_error=invalid_state`,
     );
   }
 
@@ -59,12 +59,12 @@ export async function GET(request: Request) {
     await writeAuditLog("google.connected", "google_tokens", "session");
 
     return NextResponse.redirect(
-      `${env.appUrl()}/dashboard?google_connected=1`,
+      `${env.appUrl()}/onboarding?google_connected=1`,
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : "oauth_failed";
     return NextResponse.redirect(
-      `${env.appUrl()}/dashboard?google_error=${encodeURIComponent(message)}`,
+      `${env.appUrl()}/onboarding?google_error=${encodeURIComponent(message)}`,
     );
   }
 }

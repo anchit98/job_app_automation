@@ -1,6 +1,6 @@
 # JobApp OS — Architecture
 
-> Companion to [`problemstatement.md`](problemstatement.md). Describes the **current shipped system** as of July 2026.
+> Companion to [`problemstatement.md`](problemstatement.md). Describes the **current shipped system** as of August 2026.
 
 ---
 
@@ -18,7 +18,9 @@
 2. **Structured contracts** — every LLM response is Zod-validated; malformed JSON gets a repair pass  
 3. **Grounded generation** — resume/cover anchored to master materials; fabrication checks  
 4. **Artifacts before drafts** — Drive PDFs for resume/cover must be ready before Gmail draft attachments  
-5. **Multi-tenant** — email/password signup; every row scoped to `user_id`
+5. **Multi-tenant** — email/password signup; every row scoped to `user_id`  
+6. **Setup gate** — paid users unlock Dashboard/Apply only after Google + required profile fields + master resume  
+7. **India time** — UI timestamps, metrics day bounds, and follow-up business days use **IST (`Asia/Kolkata`)**
 
 **Not in scope:** auto-submit to LinkedIn/ATS, auto-send outreach email, interview scheduling, salary tooling. Recruiter email discovery is **guided** (LinkedIn + [Mailmeteor LinkedIn Email Finder](https://mailmeteor.com/tools/linkedin-email-finder)), not scraped/automated inside the product.
 
@@ -107,7 +109,9 @@ flowchart LR
 | Forced reset | `users.must_reset_password` → `/reset-password-required` |
 | Admin | `users.is_admin`; first signup on empty DB is admin; `/admin-center` |
 | Paid access | `users.is_paid` / `paid_at`; unpaid users gated to `/billing` (admins treated as paid) |
-| Google OAuth | Separate — Drive + Gmail; tokens encrypted with `GOOGLE_TOKEN_ENCRYPTION_KEY` |
+| Setup readiness | `getSetupReadiness()` — Google connected + profile (name, location, phone, LinkedIn) + master resume; locks Dashboard/Apply until ready |
+| Google OAuth | Separate — Drive + Docs + Gmail; tokens encrypted with `GOOGLE_TOKEN_ENCRYPTION_KEY` |
+| App timezone | `Asia/Kolkata` (`web/src/lib/datetime/india.ts`) for display, metrics ranges, follow-up business days |
 
 ---
 
@@ -119,7 +123,7 @@ flowchart LR
 | `sessions` | FK `user_id` | Active sessions |
 | `password_reset_tokens` | FK `user_id` | One-time email reset links |
 | `payment_claims` | FK `user_id` | Manual UPI payment reviews |
-| `profiles` | PK `user_id` | Name, links, avatar, setup flags |
+| `profiles` | PK `user_id` | Name, location, phone, links, avatar; timezone defaults to `Asia/Kolkata` |
 | `master_resume` | PK `user_id` | Resume JSON + Doc sync |
 | `master_cover_letter` | PK `user_id` | Cover letter Doc sync |
 | `google_tokens` | PK `user_id` | Encrypted OAuth tokens |
@@ -165,6 +169,7 @@ Default engine: **`openai`** (`normalizePipelineLlmEngine` maps legacy `gemma` �
 ### Cover letter toggle
 
 - User can skip cover letter (`skip_cover_letter`) for a faster run.
+- **Default:** cover letter is **off** until a master cover letter is synced; enabling Yes without a synced template is blocked with an in-app hint.
 
 ### AI stage loop (OpenAI)
 
@@ -201,18 +206,24 @@ Before `gmail_drafts` creates drafts with attachments:
 
 ---
 
-## 6. Dashboard
+## 6. Dashboard & Profile setup
 
-### Setup guide
+### Setup gate (not a dashboard checklist)
 
-Interactive accordion (minimizable): Google Console → Connect Google → Profile & master docs → optional Bridge install.
+Paid users are redirected / locked out of Dashboard and Apply until setup readiness is true:
 
-### Layout (current)
+1. **Connect Google** (Drive + Docs + Gmail scopes)  
+2. **Profile fields** — full name, location, phone, LinkedIn  
+3. **Master resume** synced with content  
+
+UI lives on **`/onboarding` (Profile)** with a minimizable setup progress chip next to the Google account menu. Profile and master docs remain editable anytime after unlock.
+
+### Dashboard layout (current)
 
 1. **Profile hero** — Start Apply, Update Profile, status chips  
 2. **Fresh jobs banner** — LinkedIn last-hour filter hack (`f_TPR=r3600`); CTA opens LinkedIn Jobs  
-3. Setup guide / pending-prompts alerts when relevant  
-4. **Pipeline metrics** (date-filtered):
+3. Pending-prompts alerts when relevant  
+4. **Pipeline metrics** (date-filtered in **IST**):
    - Total applications  
    - This week  
    - Gmail drafts  
@@ -220,13 +231,15 @@ Interactive accordion (minimizable): Google Console → Connect Google → Profi
    - Presets: Last 7 days / 30 days (default) / 3 months / Custom  
 5. **Recent applications** + **Quick actions**
 
-Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`.
+Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`, `lib/datetime/india.ts`.
 
 ---
 
 ## 7. Marketing site (public `/`)
 
 - Landing sections: About, Features, Benefits, **Insider tips** (last-hour jobs + email finder), AI, Gallery, **Pricing**, **FAQ**  
+- Hero and page metadata describe JobApp OS as a **job application automation** product (resumes, cover letters, Google Drive/Docs, Gmail drafts, tracking)  
+- Header includes a **Privacy** link; footer links Privacy Policy + Terms (URLs must match OAuth consent screen for Google brand verification)  
 - **Launch offer messaging:** ₹299 for the **first 100 buyers** — **lifetime product access** + **60 applications included**; strike ₹699; DIY comparison callout under pricing  
 - FAQ covers drafts-only, Google scopes, fabrication, no user API keys, ATS-friendly PDFs, runtime, cold email norms, failed-stage repair  
 
@@ -251,14 +264,14 @@ Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`.
 | `/login`, `/signup` | Auth |
 | `/forgot-password`, `/reset-password` | Email password recovery |
 | `/reset-password-required` | Forced password change |
-| `/dashboard` | Metrics, fresh-jobs banner, recent apps, setup guide |
-| `/apply` | Quick Apply (+ contact finder guide) |
+| `/dashboard` | Metrics, fresh-jobs banner, recent apps (requires setup ready) |
+| `/apply` | Quick Apply (+ contact finder guide; requires setup ready) |
 | `/applications` | Jobs list + search |
 | `/applications/[id]` | Application workspace |
 | `/pipeline/[id]` | Live pipeline progress + PDF downloads |
-| `/onboarding` | Profile, avatar, master resume/cover |
+| `/onboarding` | **Profile** — Google connect, profile fields, master resume/cover |
 | `/prompts` | Prompts inbox |
-| `/settings` | Privacy & Settings |
+| `/settings` | Privacy & Settings (password / account; links to Profile) |
 | `/billing` | Manual UPI + QR paywall (launch offer copy) |
 | `/review-payment/[token]` | Signed mobile payment review |
 | `/admin-center` | Admin user + payment management |
@@ -296,7 +309,7 @@ Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`.
 
 ### OAuth
 
-Connect Google on Dashboard → consent (Gmail + Drive + Docs) → encrypted tokens in `google_tokens`. Refresh / `invalid_grant` → reconnect banner.
+Connect Google on **Profile** (`/onboarding`) → consent (Gmail + Drive + Docs) → encrypted tokens in `google_tokens`. Refresh / `invalid_grant` → reconnect via the Google account menu. Required for setup readiness.
 
 ### Drive layout
 
@@ -346,6 +359,7 @@ COGS note: OpenAI `gpt-4.1-mini` is ~₹2–₹2.5 per typical full Apply (promp
 
 ## 14. Change Log
 
+- **v1.7** — **Profile setup gate** (Google + profile fields + master resume) replaces dashboard setup guide; Profile page rename (editable anytime). App-wide **IST** for display, metrics, follow-ups. Cover letter Apply default **off** until master cover synced; cover sign-off sync hardened. Landing/legal copy for Google brand verification (purpose + Limited Use). Privacy Policy & Terms refreshed (August 2026).
 - **v1.6** — **OpenAI server Apply** as default (`gpt-4.1-mini`); Gemma/NVIDIA naming removed (legacy engine ids normalize to `openai`). **Wait for Drive PDFs** before Gmail drafts. Dashboard: four metrics + date filter, fresh-jobs banner, recent apps, quick actions. Apply: Mailmeteor contact guide. Landing: Insider tips, FAQ, launch pricing (₹299 / first 100 / 60 apps / lifetime access). Cover sign-off stripping + resume in-place keyword replace prompts.
 - **v1.5** — Follow-up threading; Gmail readonly for sent lookup; auto-advance `email_sent` on cold-email draft.
 - **v1.4** — Follow-up threading details (see prior).

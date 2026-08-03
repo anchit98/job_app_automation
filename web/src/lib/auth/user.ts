@@ -147,7 +147,7 @@ export async function claimOrphanedData(userId: string): Promise<void> {
           ${asText(p.full_name)},
           ${asText(p.headline)},
           ${asText(p.location)},
-          ${asText(p.timezone, "UTC") ?? "UTC"},
+          ${asText(p.timezone, "Asia/Kolkata") ?? "Asia/Kolkata"},
           ${asText(p.drive_root_id)},
           ${asText(p.preferred_tone)},
           ${asText(p.phone)},

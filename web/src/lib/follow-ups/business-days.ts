@@ -1,3 +1,5 @@
+import { APP_TIMEZONE } from "@/lib/datetime/india";
+
 const WEEKEND = new Set(["Sat", "Sun"]);
 
 function formatWeekday(date: Date, timeZone: string): string {
@@ -13,15 +15,15 @@ function addCalendarDays(date: Date, days: number): Date {
   return next;
 }
 
-export function isWeekend(date: Date, timeZone = "UTC"): boolean {
+export function isWeekend(date: Date, timeZone = APP_TIMEZONE): boolean {
   return WEEKEND.has(formatWeekday(date, timeZone));
 }
 
-/** Add N business days (Mon–Fri) in the given IANA timezone. */
+/** Add N business days (Mon–Fri) in India (Asia/Kolkata) by default. */
 export function addBusinessDays(
   start: Date,
   businessDays: number,
-  timeZone = "UTC",
+  timeZone = APP_TIMEZONE,
 ): Date {
   if (businessDays <= 0) return new Date(start.getTime());
 

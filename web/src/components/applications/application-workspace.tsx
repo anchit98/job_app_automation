@@ -24,6 +24,7 @@ import type {
   ResumeVersion,
 } from "@/lib/db/types";
 import type { ResumeContent } from "@/lib/resume/fabrication";
+import { formatAppDateTime } from "@/lib/datetime/india";
 import type { TimelineEvent } from "@/lib/tracker/timeline";
 
 interface ApplicationWorkspaceProps {
@@ -167,7 +168,7 @@ export function ApplicationWorkspace({
                       Date Created
                     </span>
                     <p className="text-[14px] text-on-surface mt-1">
-                      {new Date(application.created_at).toLocaleString()}
+                      {formatAppDateTime(application.created_at)}
                     </p>
                   </div>
                   {application.job_url && (

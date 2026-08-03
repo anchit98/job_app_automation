@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import type { CoverLetterVersion, ResumeVersion } from "@/lib/db/types";
+import { formatAppDateTime } from "@/lib/datetime/india";
 
 interface CoverLetterFlowProps {
   applicationId: string;
@@ -250,7 +251,7 @@ export function CoverLetterFlow({
             >
               {readyResumes.map((v) => (
                 <option key={v.id} value={v.version}>
-                  v{v.version} · {new Date(v.created_at).toLocaleString()}
+                  v{v.version} · {formatAppDateTime(v.created_at)}
                 </option>
               ))}
             </select>
@@ -374,7 +375,7 @@ export function CoverLetterFlow({
                       </span>
                     )}
                     <span className="ml-2 text-xs text-zinc-400">
-                      {new Date(v.created_at).toLocaleString()}
+                      {formatAppDateTime(v.created_at)}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">

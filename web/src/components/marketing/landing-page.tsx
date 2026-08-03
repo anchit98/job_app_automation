@@ -371,6 +371,12 @@ export function LandingPage() {
           </nav>
           <div className="hidden items-center gap-2 sm:flex">
             <Link
+              href="/privacy-policy"
+              className="rounded-lg px-3.5 py-2 text-[13px] font-semibold text-[var(--on-surface-variant)] no-underline transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--on-surface)]"
+            >
+              Privacy
+            </Link>
+            <Link
               href="/login"
               className="rounded-lg px-3.5 py-2 text-[13px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]"
             >
@@ -409,8 +415,10 @@ export function LandingPage() {
               </Reveal>
               <Reveal delay={180}>
                 <p className="mx-auto mt-5 max-w-xl text-[16px] leading-7 text-[var(--on-surface-variant)] sm:mx-0 sm:text-[18px] sm:leading-8">
-                  Tailor resumes, cover letters, and outreach for every role,
-                  then track the full pipeline in one place.
+                  JobApp OS is a job application automation web app: paste a
+                  job description, get tailored resumes and cover letters,
+                  prepare Gmail outreach drafts, and track every application
+                  in one place.
                 </p>
               </Reveal>
               <Reveal delay={260}>
@@ -799,8 +807,8 @@ export function LandingPage() {
               </span>
             </div>
             <p className="mt-4 text-[14px] leading-6 text-[var(--on-surface-variant)]">
-              Applications customized for you. A personalized job application AI
-              agent you can fully customize.
+              Job application automation for resumes, cover letters, Google
+              Drive/Docs storage, Gmail drafts, and application tracking.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-8 text-center sm:grid-cols-3 sm:text-left lg:col-span-7">

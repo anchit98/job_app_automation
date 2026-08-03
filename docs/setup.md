@@ -46,7 +46,7 @@ New signups land on `/billing` until an admin approves payment.
 | `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | Amount (default **`299`**) |
 | `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | Default: launch offer · 60 apps · lifetime access |
 
-**Commercial messaging (July 2026):** ₹299 for the **first 100 buyers**, **lifetime product access**, **60 Apply runs included**. Application-count **enforcement** is planned with tier infrastructure; until then access is binary `is_paid`.
+**Commercial messaging (August 2026):** ₹299 for the **first 100 buyers**, **lifetime product access**, **60 Apply runs included**. Application-count **enforcement** is planned with tier infrastructure; until then access is binary `is_paid`. After approval, complete **Profile** setup before Dashboard/Apply unlock.
 
 Payment-claim emails include a **Review on phone** link (`/review-payment/...`, 7-day JWT).
 
@@ -116,13 +116,18 @@ QR asset: `web/public/billing/upi-qr.png`.
 
 ## 5. First-run checklist (in the app)
 
-1. **Google Cloud / Connect Google**  
-2. **Profile & master docs**  
-3. **Optional:** Install JobApp Bridge (not required when OpenAI key is set)  
-4. Explore **Dashboard** — fresh-jobs banner, metrics date filter  
-5. **Apply** — optional contact finder guide (LinkedIn → Mailmeteor)  
+1. Sign up → complete **billing** if unpaid  
+2. Open **Profile** (`/onboarding`)  
+3. **Connect Google** (Drive + Docs + Gmail)  
+4. Save required **profile** fields (full name, location, phone, LinkedIn) and sync **master resume**  
+5. Optionally sync master cover letter (enables cover letter on Apply)  
+6. **Optional:** Install JobApp Bridge (not required when OpenAI key is set)  
+7. Explore **Dashboard** — fresh-jobs banner, metrics date filter (**IST**)  
+8. **Apply** — optional contact finder guide (LinkedIn → Mailmeteor)  
 
-Dashboard metrics (default last **30 days**): Total applications, This week, Gmail drafts, Companies contacted.
+Dashboard and Apply stay locked until Google + profile + master resume are ready. Profile settings remain editable anytime.
+
+Dashboard metrics (default last **30 days**, IST day bounds): Total applications, This week, Gmail drafts, Companies contacted.
 
 ### Master resume Google Doc
 
@@ -155,6 +160,12 @@ Details: [`extension/README.md`](../extension/README.md).
 2. Production env: pooler `DATABASE_URL`, OpenAI key, production `NEXT_PUBLIC_APP_URL` + Google redirect, UPI, `AUTH_SECRET`, `CRON_SECRET`  
 3. Confirm `/api/health`  
 4. Admin Connect Google with `gmail.send`  
+
+### Google brand verification notes
+
+- Homepage (`/`) must publicly describe what JobApp OS does (job application automation; Drive/Docs/Gmail drafts).  
+- Privacy Policy URL on the site must **exactly match** the OAuth consent screen URL.  
+- Privacy Policy includes Google Limited Use / API Services User Data Policy language.  
 
 ---
 

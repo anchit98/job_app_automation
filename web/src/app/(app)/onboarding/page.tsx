@@ -1,13 +1,36 @@
 import { getProfile, syncSignatureLinksFromResume } from "@/app/actions/profile";
 import { getMasterResume } from "@/app/actions/master-resume";
 import { getMasterCoverLetter } from "@/app/actions/cover-letter";
+import { getCurrentUser } from "@/lib/auth/user";
+import { isGoogleConnected } from "@/lib/google/tokens";
+import { getSetupReadiness } from "@/lib/setup/readiness";
 import { OnboardingForms } from "@/components/onboarding/onboarding-forms";
+import { GoogleConnectModal } from "@/components/onboarding/google-connect-modal";
 
-export default async function OnboardingPage() {
-  const [profile, masterResume, masterCoverLetter] = await Promise.all([
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const googleError =
+    typeof params.google_error === "string" ? params.google_error : null;
+  const justConnected = params.google_connected === "1";
+
+  const [
+    profile,
+    masterResume,
+    masterCoverLetter,
+    user,
+    googleConnected,
+    readiness,
+  ] = await Promise.all([
     getProfile().catch(() => null),
     getMasterResume().catch(() => null),
     getMasterCoverLetter().catch(() => null),
+    getCurrentUser().catch(() => null),
+    isGoogleConnected().catch(() => false),
+    getSetupReadiness().catch(() => null),
   ]);
 
   let resolvedProfile = profile;
@@ -23,18 +46,26 @@ export default async function OnboardingPage() {
     resolvedProfile = (await getProfile().catch(() => null)) ?? resolvedProfile;
   }
 
+  const connected = googleConnected || justConnected;
+  const setupReady = Boolean(readiness?.setupReady);
+
   return (
     <div className="space-y-3">
-      <div>
-        <h1 className="li-page-title">Profile &amp; master resume</h1>
-        <p className="text-[14px] text-on-surface-variant mt-1">
-          Master resume and cover letter templates sync from your Google Docs.
-        </p>
-      </div>
+      <GoogleConnectModal
+        open={!connected}
+        initialConnected={connected}
+        googleError={googleError}
+      />
+
       <OnboardingForms
         profile={resolvedProfile}
         masterResume={masterResume}
         masterCoverLetter={masterCoverLetter}
+        isAdmin={Boolean(user?.is_admin)}
+        googleConnected={connected}
+        setupReady={setupReady}
+        justConnected={justConnected}
+        googleError={googleError}
       />
     </div>
   );

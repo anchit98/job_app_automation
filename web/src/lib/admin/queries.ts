@@ -4,6 +4,7 @@ import {
   listOpenPasswordResetRequests,
 } from "@/lib/auth/password-reset";
 import { listPendingPaymentClaims } from "@/lib/billing/payment-claims";
+import { profileFieldsComplete } from "@/lib/setup/profile-complete";
 
 export type AdminUserSummary = {
   id: string;
@@ -14,10 +15,9 @@ export type AdminUserSummary = {
   is_paid: boolean;
   paid_at: string | null;
   created_at: string;
-  console_done: boolean;
   google_connected: boolean;
   profile_done: boolean;
-  extension_configured: boolean;
+  resume_done: boolean;
   setup_completed: boolean;
 };
 
@@ -26,16 +26,15 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
     `SELECT u.id, u.email, u.full_name, u.is_admin, u.must_reset_password,
             u.is_paid, u.paid_at, u.created_at,
             p.full_name AS profile_full_name,
-            p.setup_console_done_at,
+            p.location AS profile_location,
+            p.phone AS profile_phone,
+            p.linkedin_url AS profile_linkedin_url,
             mr.content AS resume_content,
-            gt.status AS google_status,
-            et.user_id AS extension_user_id,
-            et.revoked_at AS extension_revoked_at
+            gt.status AS google_status
        FROM users u
        LEFT JOIN profiles p ON p.user_id = u.id
        LEFT JOIN master_resume mr ON mr.user_id = u.id
        LEFT JOIN google_tokens gt ON gt.user_id = u.id
-       LEFT JOIN extension_tokens et ON et.user_id = u.id
       ORDER BY u.created_at DESC`,
   )) as Array<{
     id: string;
@@ -47,21 +46,24 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
     paid_at: string | null;
     created_at: string;
     profile_full_name: string | null;
-    setup_console_done_at: string | null;
+    profile_location: string | null;
+    profile_phone: string | null;
+    profile_linkedin_url: string | null;
     resume_content: string | null;
     google_status: string | null;
-    extension_user_id: string | null;
-    extension_revoked_at: string | null;
   }>;
 
   return rows.map((row) => {
-    const resume =
-      row.resume_content && row.resume_content !== "{}" ? row.resume_content : null;
-    const profileDone = Boolean((row.profile_full_name || row.full_name) && resume);
-    const consoleDone = Boolean(row.setup_console_done_at);
+    const resumeDone = Boolean(
+      row.resume_content && row.resume_content !== "{}",
+    );
+    const profileDone = profileFieldsComplete({
+      full_name: row.profile_full_name || row.full_name,
+      location: row.profile_location,
+      phone: row.profile_phone,
+      linkedin_url: row.profile_linkedin_url,
+    });
     const googleConnected = row.google_status === "active";
-    const extensionConfigured =
-      Boolean(row.extension_user_id) && row.extension_revoked_at == null;
     const isAdmin = Boolean(row.is_admin);
     return {
       id: row.id,
@@ -72,11 +74,10 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
       is_paid: isAdmin || Boolean(row.is_paid),
       paid_at: row.paid_at,
       created_at: row.created_at,
-      console_done: consoleDone,
       google_connected: googleConnected,
       profile_done: profileDone,
-      extension_configured: extensionConfigured,
-      setup_completed: consoleDone && googleConnected && profileDone,
+      resume_done: resumeDone,
+      setup_completed: googleConnected && profileDone && resumeDone,
     };
   });
 }

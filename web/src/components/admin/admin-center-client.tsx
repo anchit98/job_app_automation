@@ -12,6 +12,7 @@ import {
   adminSetUserPaid,
 } from "@/app/actions/admin";
 import type { AdminUserSummary } from "@/lib/admin/queries";
+import { formatAppDateTime } from "@/lib/datetime/india";
 import type { PaymentClaim } from "@/lib/billing/payment-claims";
 
 type ResetRequest = {
@@ -261,7 +262,7 @@ export function AdminCenterClient({
             <thead className="bg-surface-container-low text-on-surface-variant sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-2 font-semibold">User</th>
-                <th className="px-3 py-2 font-semibold hidden sm:table-cell">
+                <th className="px-3 py-2 font-semibold hidden sm:table-cell w-[11rem]">
                   Setup
                 </th>
                 <th className="px-3 py-2 font-semibold">Flags</th>
@@ -285,31 +286,35 @@ export function AdminCenterClient({
                       ) : null}
                     </div>
                     <div className="li-meta truncate">{user.email}</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1 sm:hidden">
+                    <div className="mt-1 flex items-center gap-2 sm:hidden">
                       <StatusPill
                         ok={user.setup_completed}
                         label={user.setup_completed ? "Done" : "Pending"}
                       />
-                      <SetupDot ok={user.console_done} title="Console" />
-                      <SetupDot ok={user.google_connected} title="Google" />
-                      <SetupDot ok={user.profile_done} title="Profile" />
+                      <SetupDots
+                        google={user.google_connected}
+                        profile={user.profile_done}
+                        resume={user.resume_done}
+                      />
                     </div>
                   </td>
                   <td className="px-3 py-2 hidden sm:table-cell">
-                    <div className="flex flex-wrap items-center gap-1">
+                    <div className="flex items-center gap-2">
                       <StatusPill
                         ok={user.setup_completed}
                         label={user.setup_completed ? "Done" : "Pending"}
                       />
-                      <SetupDot ok={user.console_done} title="Console" />
-                      <SetupDot ok={user.google_connected} title="Google" />
-                      <SetupDot ok={user.profile_done} title="Profile" />
+                      <SetupDots
+                        google={user.google_connected}
+                        profile={user.profile_done}
+                        resume={user.resume_done}
+                      />
                     </div>
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1">
                       {user.is_admin ? <SmallTag label="Admin" /> : null}
-                      <SmallTag label={user.is_paid ? "Paid" : "Unpaid"} />
+                      <PaidTag paid={user.is_paid} />
                       {user.must_reset_password ? (
                         <SmallTag label="Must reset" />
                       ) : null}
@@ -636,7 +641,7 @@ function IconBtn({
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+      className={`inline-flex w-[4.25rem] shrink-0 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
         ok
           ? "bg-success-container text-success"
           : "bg-status-waiting-container text-status-waiting"
@@ -647,14 +652,49 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
+function SetupDots({
+  google,
+  profile,
+  resume,
+}: {
+  google: boolean;
+  profile: boolean;
+  resume: boolean;
+}) {
+  return (
+    <span
+      className="inline-grid grid-cols-3 gap-1.5 items-center shrink-0"
+      aria-label={`Setup: Google ${google ? "done" : "pending"}, Profile ${profile ? "done" : "pending"}, Resume ${resume ? "done" : "pending"}`}
+    >
+      <SetupDot ok={google} title="Google connected" />
+      <SetupDot ok={profile} title="Profile saved" />
+      <SetupDot ok={resume} title="Master resume synced" />
+    </span>
+  );
+}
+
 function SetupDot({ ok, title }: { ok: boolean; title: string }) {
   return (
     <span
       title={title}
-      className={`inline-block h-2 w-2 rounded-full ${
+      className={`inline-block h-2.5 w-2.5 rounded-full justify-self-center ${
         ok ? "bg-success" : "bg-border-hairline"
       }`}
     />
+  );
+}
+
+function PaidTag({ paid }: { paid: boolean }) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+        paid
+          ? "bg-success-container text-success"
+          : "bg-error-container text-error"
+      }`}
+    >
+      {paid ? "Paid" : "Unpaid"}
+    </span>
   );
 }
 
@@ -667,5 +707,5 @@ function SmallTag({ label }: { label: string }) {
 }
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString();
+  return formatAppDateTime(value);
 }

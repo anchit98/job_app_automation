@@ -509,13 +509,15 @@ Product success will be measured by:
 - ✅ **Server-side OpenAI Apply** (`gpt-4.1-mini`) as default generation path
 - ✅ Gmail integration — drafts via Gmail API; wait for Drive PDFs before attach
 - ✅ Multi-user hosted deploy with email/password auth
+- ✅ **Profile setup gate** — Google + required profile fields + master resume before Dashboard/Apply
+- ✅ App-wide **IST** for display, metrics day bounds, and follow-up business days
 - ✅ Dashboard metrics with date filter + fresh-jobs / Apply contact guides
 - ✅ Marketing Insider tips, FAQ, launch pricing (₹299 / first 100 / 60 apps messaging)
 - ✅ Admin Center + email password recovery
 - ✅ JobApp OS branding
 - ✅ Manual UPI paywall + admin payment review (including phone review links)
 - ✅ Mobile-ready app shell
-- ✅ Privacy Policy + Terms of Service
+- ✅ Privacy Policy + Terms of Service (Google Limited Use / AI disclosure)
 
 **Still planned:**
 - Enforce application quotas / tiered packs with usage metering
