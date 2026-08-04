@@ -1,6 +1,7 @@
 import type { ResumeContent } from "@/lib/resume/fabrication";
 import {
   countWords,
+  ensureCompleteBullet,
   healTruncatedBullet,
   isIncompleteBullet,
   splitSentences,
@@ -91,6 +92,109 @@ function ensureTerminalPunctuation(text: string): string {
   return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
+/** Split a skill list on commas (items after an optional Category: prefix). */
+function splitSkillItems(list: string): string[] {
+  return list
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Case-insensitive de-dupe; keeps first spelling/order. */
+export function dedupeSkillItems(list: string): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of splitSkillItems(list)) {
+    const key = item.toLowerCase().replace(/\s+/g, " ");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out.join(", ");
+}
+
+/**
+ * Master skills are either:
+ * - Category lines: "Category: a, b, c"
+ * - Flat lists: "a, b, c" (no colon)
+ * Never invent a Category: prefix from a flat master line (that duplicates the whole list).
+ */
+export function enforceSkillPrefix(masterLine: string, genLine: string): string {
+  const master = masterLine.trim().replace(/[.\s]+$/g, "");
+  const generated = (genLine || master).trim().replace(/[.\s]+$/g, "");
+  if (!master) return dedupeSkillItems(generated);
+
+  const masterColon = master.indexOf(":");
+  if (masterColon < 0) {
+    // Flat master — keep a flat tailored list; strip a mistaken "prefix:" the model added.
+    const genColon = generated.indexOf(":");
+    if (genColon >= 0) {
+      const left = generated.slice(0, genColon).trim();
+      const right = generated.slice(genColon + 1).trim();
+      // Model echoed the whole master (or similar) as a fake category
+      if (
+        left.toLowerCase() === master.toLowerCase() ||
+        master.toLowerCase().startsWith(left.toLowerCase()) ||
+        left.toLowerCase().startsWith(master.toLowerCase().slice(0, 24))
+      ) {
+        return dedupeSkillItems(right || master);
+      }
+    }
+    return dedupeSkillItems(generated || master);
+  }
+
+  const masterPrefix = master.slice(0, masterColon).trim();
+  if (!masterPrefix) return dedupeSkillItems(generated || master);
+
+  const genColon = generated.indexOf(":");
+  let tail =
+    genColon >= 0
+      ? generated.slice(genColon + 1).trim()
+      : generated.trim();
+
+  // Drop echoed category tokens from the start of the item list
+  const prefixItems = splitSkillItems(masterPrefix);
+  if (prefixItems.length > 0) {
+    const tailItems = splitSkillItems(tail);
+    while (
+      tailItems.length > 0 &&
+      prefixItems.some(
+        (p) => p.toLowerCase() === tailItems[0].toLowerCase(),
+      )
+    ) {
+      // Only strip when the entire prefix was pasted into the tail start
+      const head = tailItems
+        .slice(0, prefixItems.length)
+        .map((s) => s.toLowerCase())
+        .join("|");
+      const pref = prefixItems.map((s) => s.toLowerCase()).join("|");
+      if (head === pref) {
+        tailItems.splice(0, prefixItems.length);
+        tail = tailItems.join(", ");
+      }
+      break;
+    }
+  }
+
+  tail = dedupeSkillItems(tail);
+  return tail ? `${masterPrefix}: ${tail}` : `${masterPrefix}:`;
+}
+
+/**
+ * Normalize every skill line against the master shape (prefix + de-dupe).
+ */
+export function normalizeResumeSkills(
+  generated: string[],
+  master: string[],
+): string[] {
+  if (master.length === 0) {
+    return generated.map((line) => dedupeSkillItems(line.trim())).filter(Boolean);
+  }
+  return master.map((masterLine, i) =>
+    enforceSkillPrefix(masterLine, generated[i] ?? masterLine),
+  );
+}
+
 /**
  * Shorten a line without leaving mid-sentence fragments.
  * Prefers dropping a trailing sentence, then master (if shorter), then a
@@ -122,6 +226,13 @@ function shortenLineKeepingComplete(
           : `${prefix}`;
         if (countWords(next) < currentWords) return next;
       }
+    } else {
+      const items = splitSkillItems(current);
+      if (items.length > 1) {
+        items.pop();
+        const next = items.join(", ");
+        if (countWords(next) < currentWords) return next;
+      }
     }
   }
 
@@ -145,7 +256,9 @@ function shortenLineKeepingComplete(
 
   const lastComma = current.lastIndexOf(",");
   if (lastComma > 24) {
-    let candidate = ensureTerminalPunctuation(current.slice(0, lastComma).trim());
+    const candidate = ensureTerminalPunctuation(
+      current.slice(0, lastComma).trim(),
+    );
     if (
       countWords(candidate) < currentWords &&
       !isIncompleteBullet(candidate)
@@ -163,28 +276,35 @@ function healAllLines(
   options?: { restorePrefixCuts?: boolean },
 ): void {
   for (const ref of collectLineRefs(content)) {
+    // Skills are list lines, not narrative sentences — skip sentence heal.
+    if (ref.kind === "skill") continue;
     const masterLine = getMasterLineText(master, ref);
     const current = getLineText(content, ref);
     if (!masterLine) continue;
     let healed = healTruncatedBullet(current, masterLine, options);
     if (isIncompleteBullet(healed)) {
-      healed = masterLine;
+      healed = ensureCompleteBullet(current, masterLine);
     }
     setLineText(content, ref, healed);
   }
 }
 
-function enforceSkillPrefix(masterLine: string, genLine: string): string {
-  const masterPrefix = masterLine.split(":")[0]?.trim();
-  if (!masterPrefix) return genLine;
-
-  const colonIdx = genLine.indexOf(":");
-  const tail =
-    colonIdx >= 0
-      ? genLine.slice(colonIdx + 1).trim()
-      : genLine.trim();
-
-  return tail ? `${masterPrefix}: ${tail}` : `${masterPrefix}:`;
+/** Final pass: every experience/project bullet must read as a finished sentence. */
+function ensureAllBulletsComplete(
+  content: ResumeContent,
+  master: ResumeContent,
+): void {
+  for (const ref of collectLineRefs(content)) {
+    if (ref.kind === "skill") continue;
+    const masterLine = getMasterLineText(master, ref);
+    const current = getLineText(content, ref);
+    if (!current && !masterLine) continue;
+    setLineText(
+      content,
+      ref,
+      ensureCompleteBullet(current, masterLine || current),
+    );
+  }
 }
 
 /** Trim bullets + skills when total exceeds the word ceiling. */
@@ -258,11 +378,9 @@ export function fitResumeToWordBudget(
   healAllLines(fitted, master, { restorePrefixCuts: false });
   shrinkPass();
   healAllLines(fitted, master, { restorePrefixCuts: false });
+  ensureAllBulletsComplete(fitted, master);
 
-  fitted.skills = master.skills.map((masterLine, i) => {
-    const genLine = fitted.skills[i] ?? masterLine;
-    return enforceSkillPrefix(masterLine, genLine);
-  });
+  fitted.skills = normalizeResumeSkills(fitted.skills, master.skills);
 
   return fitted;
 }

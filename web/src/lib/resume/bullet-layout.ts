@@ -257,8 +257,13 @@ export function sentenceTargetsForMasterBullets(
   );
 }
 
+/**
+ * True dangling endings only — function words / mid-clause cuts.
+ * Do NOT list content gerunds/nouns like "reporting", "leading", "managing":
+ * those often finish a valid participial phrase ("…performance reporting.").
+ */
 const INCOMPLETE_BULLET_ENDING =
-  /\b(and|or|while|by|to|the|a|an|for|with|in|on|of|from|into|onto|upon|about|over|under|between|within|without|toward|towards|against|among|during|before|after|above|below|per|vs|via|than|as|at|up|out|off|down|across|through|that|which|who|whom|whose|what|when|where|how|why|if|unless|until|although|though|because|since|whether|their|its|this|these|those|such|so|not|no|nor|also|just|only|both|either|neither|each|every|all|any|some|few|many|much|other|another|prioritizing|prioritising|achieving|generating|enabling|delivering|resulting|including|using|monitoring|improving|reducing|building|implementing|navigating|contributing|recommending|analyzing|aggregating|automating|retrieving|addressing|eliminating|owning|managing|spearheading|supervising|tracking|conducting|informing|boosting|introducing|suggesting|directing|integrating|reporting|leading|&|,|;|:|-|–|—)$/i;
+  /\b(and|or|while|by|to|the|a|an|for|with|in|on|of|from|into|onto|upon|about|over|under|between|within|without|toward|towards|against|among|during|before|after|above|below|per|vs|via|than|as|at|up|out|off|down|across|through|that|which|who|whom|whose|what|when|where|how|why|if|unless|until|although|though|because|since|whether|their|its|this|these|those|such|so|not|no|nor|also|just|only|both|either|neither|each|every|all|any|some|few|many|much|other|another|including|using|&|,|;|:|-|–|—)$/i;
 
 function normalizeBulletWord(word: string): string {
   return word.toLowerCase().replace(/[^\w%+₹$]/g, "");
@@ -383,6 +388,70 @@ export function isIncompleteBullet(text: string): boolean {
   if (!core) return true;
   if (INCOMPLETE_BULLET_ENDING.test(core)) return true;
   return false;
+}
+
+/**
+ * Guarantee a complete finished sentence for a bullet slot.
+ * Prefer the generated line when it already reads complete; otherwise heal
+ * from master or fall back to master so Apply does not fail on truncation.
+ */
+export function ensureCompleteBullet(
+  generated: string,
+  master: string,
+): string {
+  const masterText = master.trim();
+  const generatedText = generated.trim();
+
+  if (generatedText && !isIncompleteBullet(generatedText)) {
+    return generatedText;
+  }
+
+  const healed = healTruncatedBullet(generatedText || masterText, masterText, {
+    restorePrefixCuts: true,
+  });
+  if (healed && !isIncompleteBullet(healed)) {
+    const genW = countWords(generatedText);
+    const masterW = countWords(masterText);
+    const healedW = countWords(healed);
+    // Accept heal when it is the master, or gen was substantial (not a 3-word stub).
+    if (
+      healed === masterText ||
+      genW === 0 ||
+      (masterW > 0 && genW >= Math.max(6, Math.floor(masterW * 0.45))) ||
+      (healedW <= masterW + 2 && genW >= 6)
+    ) {
+      return healed;
+    }
+  }
+
+  if (masterText && !isIncompleteBullet(masterText)) {
+    return masterText;
+  }
+
+  // Unusual master — force a finished shorter clause.
+  const source = (healed || generatedText || masterText).trim();
+  if (!source) return "Delivered measurable outcomes.";
+
+  if (!/[.!?]$/.test(source)) {
+    const withPeriod = `${source.replace(/[,:;–—-]+$/u, "").trim()}.`;
+    if (!isIncompleteBullet(withPeriod)) return withPeriod;
+  }
+
+  const core = bulletCore(source);
+  const lastComma = core.lastIndexOf(",");
+  if (lastComma > 24) {
+    const clause = `${core.slice(0, lastComma).trim().replace(/[,:;–—-]+$/u, "")}.`;
+    if (!isIncompleteBullet(clause)) return clause;
+  }
+
+  const words = core.split(/\s+/).filter(Boolean);
+  while (words.length > 4) {
+    words.pop();
+    const candidate = `${words.join(" ").replace(/[,:;–—-]+$/u, "")}.`;
+    if (!isIncompleteBullet(candidate)) return candidate;
+  }
+
+  return masterText || `${words.join(" ")}.`;
 }
 
 export function formatBulletLayoutRules(layout: BulletLayoutSpec): string {

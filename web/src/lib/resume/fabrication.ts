@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { buildResumeStructuralGuide } from "@/lib/resume/prompt-anchors";
-import { isIncompleteBullet } from "@/lib/resume/bullet-layout";
+import { ensureCompleteBullet, isIncompleteBullet } from "@/lib/resume/bullet-layout";
 import {
   countTailorableWords,
   parseResumeWordBudget,
@@ -173,6 +173,12 @@ function checkBullets(
     const bulletPath = `${basePath}.bullets[${j}]`;
 
     if (isIncompleteBullet(bullet)) {
+      const repaired = ensureCompleteBullet(bullet, masterBullet);
+      // Prefer auto-complete over failing the run when meaning can be preserved.
+      if (!isIncompleteBullet(repaired)) {
+        bullets[j] = repaired;
+        continue;
+      }
       structural_errors.push({
         id: flagId(bulletPath, "structural_drift"),
         path: bulletPath,
