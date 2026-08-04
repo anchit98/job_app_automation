@@ -62,3 +62,19 @@ export function estimateTextWidth(text: string): number {
   }
   return Math.round(width * 100) / 100;
 }
+
+/**
+ * Approx Doc wrap capacity per visual line (em units).
+ * Calibrated so 2-line ceiling ≈ 196 (BULLET_MAX_WIDTH) → ~98/line.
+ */
+export const DOC_WRAP_LINE_WIDTH = 98;
+
+/**
+ * Estimated Google Doc wrap line count for a bullet (1, 2, 3…).
+ * Used to keep tailored bullets on the same visual line count as MASTER.
+ */
+export function estimateWrapLineCount(text: string): number {
+  const width = estimateTextWidth(text);
+  if (width <= 0) return 1;
+  return Math.max(1, Math.ceil(width / DOC_WRAP_LINE_WIDTH));
+}

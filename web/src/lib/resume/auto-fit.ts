@@ -12,6 +12,10 @@ import {
   parseResumeWordBudget,
   TAILORABLE_WORD_CEILING,
 } from "@/lib/resume/word-budget";
+import {
+  estimateTextWidth,
+  estimateWrapLineCount,
+} from "@/lib/resume/text-width";
 
 type MutableLineRef =
   | { kind: "experience"; expIndex: number; bulletIndex: number }
@@ -34,6 +38,10 @@ function collectLineRefs(content: ResumeContent): MutableLineRef[] {
     refs.push({ kind: "skill", skillIndex });
   });
   return refs;
+}
+
+function collectBulletRefs(content: ResumeContent): MutableLineRef[] {
+  return collectLineRefs(content).filter((ref) => ref.kind !== "skill");
 }
 
 function getLineText(content: ResumeContent, ref: MutableLineRef): string {
@@ -307,6 +315,64 @@ function ensureAllBulletsComplete(
   }
 }
 
+/**
+ * Keep each experience/project bullet on the same Doc wrap line count as MASTER.
+ * Too long → shorten; too short / unfixable → restore MASTER text.
+ */
+export function fitBulletToMasterWrapLines(
+  generated: string,
+  master: string,
+): string {
+  const masterText = master.trim();
+  if (!masterText) return (generated || "").trim();
+
+  const targetLines = estimateWrapLineCount(masterText);
+  const masterWidth = estimateTextWidth(masterText);
+  let text = (generated || masterText).trim() || masterText;
+
+  let guard = 0;
+  while (
+    (estimateWrapLineCount(text) > targetLines ||
+      estimateTextWidth(text) > masterWidth + 0.5) &&
+    guard < 40
+  ) {
+    guard++;
+    const shortened = shortenLineKeepingComplete(text, masterText, "experience");
+    if (
+      !shortened ||
+      shortened === text ||
+      countWords(shortened) >= countWords(text) ||
+      isIncompleteBullet(shortened)
+    ) {
+      return masterText;
+    }
+    // Never shorten into fewer wrap lines than master.
+    if (estimateWrapLineCount(shortened) < targetLines) {
+      return masterText;
+    }
+    text = shortened;
+  }
+
+  if (estimateWrapLineCount(text) !== targetLines) {
+    return masterText;
+  }
+
+  return ensureCompleteBullet(text, masterText);
+}
+
+function enforceMasterWrapLineCounts(
+  content: ResumeContent,
+  master: ResumeContent,
+): void {
+  for (const ref of collectBulletRefs(content)) {
+    const masterLine = getMasterLineText(master, ref);
+    if (!masterLine.trim()) continue;
+    const current = getLineText(content, ref);
+    const fitted = fitBulletToMasterWrapLines(current, masterLine);
+    if (fitted !== current) setLineText(content, ref, fitted);
+  }
+}
+
 /** Trim bullets + skills when total exceeds the word ceiling. */
 export function fitResumeToWordBudget(
   generated: ResumeContent,
@@ -369,6 +435,14 @@ export function fitResumeToWordBudget(
         unsinkable.add(refKey(longest.ref));
         continue;
       }
+      // Bullets must keep MASTER Doc wrap line count — never shrink below it.
+      if (longest.ref.kind !== "skill") {
+        const masterLines = estimateWrapLineCount(masterLine);
+        if (estimateWrapLineCount(shortened) < masterLines) {
+          unsinkable.add(refKey(longest.ref));
+          continue;
+        }
+      }
       setLineText(fitted, longest.ref, shortened);
     }
   };
@@ -381,6 +455,10 @@ export function fitResumeToWordBudget(
   ensureAllBulletsComplete(fitted, master);
 
   fitted.skills = normalizeResumeSkills(fitted.skills, master.skills);
+
+  // Strict: every experience/project bullet keeps MASTER wrap line count.
+  enforceMasterWrapLineCounts(fitted, master);
+  ensureAllBulletsComplete(fitted, master);
 
   return fitted;
 }

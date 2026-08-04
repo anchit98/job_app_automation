@@ -38,7 +38,7 @@ See [`docs/setup.md`](../docs/setup.md) for env vars: `DATABASE_URL`, `AUTH_SECR
 - Metrics: Total applications, This week, Gmail drafts, Companies contacted (URL date range; default 30d; **IST**)  
 - Launch offer messaging: first 100 buyers, lifetime access, 60 apps included (metering TBD)  
 - Cover letters: default off until master cover synced; no AI greeting/sign-off (template owns those)  
-- Resumes: JD keywords via in-place replace; preserve line counts  
+- Resumes: JD-framed rewrite; **≥70% grounded JD keyword coverage** required; **same Doc wrap line count** per bullet; skills reorder within master shape  
 - Follow-ups: IST business days; drafts only  
 
 ## Build & Deploy

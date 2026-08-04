@@ -185,7 +185,7 @@ function checkBullets(
         bullet,
         reason: "structural_drift",
         message:
-          "Bullet ends mid-sentence. Rewrite as a complete finished sentence at or under the master line length.",
+          "Bullet ends mid-sentence. Rewrite as a complete finished sentence that keeps the same Doc wrap line count as the master bullet.",
         suggested_source: masterBullet || undefined,
       });
     }

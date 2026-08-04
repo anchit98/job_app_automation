@@ -53,15 +53,25 @@ Each edge case includes an example test case where practical, so QA has somethin
   - *Mitigation:* Prompt forbids them; `normalize` / `validate` strip residual sign-offs.
   - *Severity:* Low–Medium (quality).
 
-- **Resume grows past one page after JD keyword stuffing.**
-  - *Symptom:* Two-page PDF / wrapped lines.
-  - *Mitigation:* Prompt requires in-place replace without lengthening lines; layout/word-budget helpers.
-  - *Severity:* Medium (quality).
+- **Resume grows past one page / wrap line count drifts after JD keyword rewrite.**
+  - *Symptom:* Two-page PDF or bullets wrapping to more/fewer visual lines than master.
+  - *Mitigation:* Prompt requires same Doc wrap line count per bullet; `estimateWrapLineCount` + `fitBulletToMasterWrapLines` restore master when over/under; word-budget shrink cannot drop below master wrap lines. Keyword placement must swap similar-length phrases or move to another line.
+  - *Severity:* Medium (quality / layout).
+
+- **Resume accepted with low JD keyword coverage.**
+  - *Symptom:* Tailored resume barely matches JD ATS terms.
+  - *Mitigation:* Hard floor `JD_KEYWORD_COVERAGE_MIN = 0.7` on must-have + tech (capped by terms grounded in master). Below floor → structural reject + repair prompt; resume stage allows up to 2 repair rounds.
+  - *Severity:* Medium (ATS quality).
 
 - **Legacy `llm_engine = gemma` rows in DB.**
   - *Symptom:* Confusion in UI/logs.
   - *Mitigation:* `normalizePipelineLlmEngine` maps `gemma` → `openai` when reading.
   - *Severity:* Low.
+
+- **Cover letter PDF upload blocks Gmail while DOCX is still exporting.**
+  - *Symptom:* Long “Uploading cover letter PDF…” wait.
+  - *Mitigation:* Export PDF+DOCX in parallel; mark version `ready` as soon as PDF uploads (`onPdfReady`); DOCX finishes after.
+  - *Severity:* Low (latency).
 
 ---
 

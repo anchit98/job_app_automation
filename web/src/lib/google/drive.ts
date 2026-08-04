@@ -12,13 +12,24 @@ const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 type GoogleAuthClient = InstanceType<typeof google.auth.OAuth2>;
 
 export class DriveClient {
+  private rootFolderId: string | null = null;
+  private folderCache = new Map<string, string>();
+
   constructor(private auth: GoogleAuthClient) {}
 
   private drive() {
     return google.drive({ version: "v3", auth: this.auth });
   }
 
+  private folderCacheKey(name: string, parentId?: string): string {
+    return `${parentId ?? "root"}::${name}`;
+  }
+
   async ensureFolder(name: string, parentId?: string): Promise<string> {
+    const cacheKey = this.folderCacheKey(name, parentId);
+    const cached = this.folderCache.get(cacheKey);
+    if (cached) return cached;
+
     const drive = this.drive();
     const q = [
       `mimeType='${FOLDER_MIME}'`,
@@ -37,7 +48,10 @@ export class DriveClient {
     });
 
     const found = existing.data.files?.[0]?.id;
-    if (found) return found;
+    if (found) {
+      this.folderCache.set(cacheKey, found);
+      return found;
+    }
 
     const created = await drive.files.create({
       requestBody: {
@@ -51,17 +65,22 @@ export class DriveClient {
     if (!created.data.id) {
       throw new Error(`Failed to create Drive folder: ${name}`);
     }
+    this.folderCache.set(cacheKey, created.data.id);
     return created.data.id;
   }
 
   async ensureRootFolder(): Promise<string> {
+    if (this.rootFolderId) return this.rootFolderId;
+
     const profile = await getProfileRow();
     if (profile?.drive_root_id) {
-      return profile.drive_root_id;
+      this.rootFolderId = profile.drive_root_id;
+      return this.rootFolderId;
     }
 
     const rootId = await this.ensureFolder(DRIVE_ROOT_FOLDER_NAME);
     await setDriveRootId(rootId);
+    this.rootFolderId = rootId;
     return rootId;
   }
 

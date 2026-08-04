@@ -928,8 +928,8 @@ async function runAiStageWithOpenAI(
 
   let promptText = exported.prompt_text;
   let lastError = "This step failed. Please retry.";
-  // Schema repair only — never used for API timeouts/500s (those already retry inside generateWithOpenAI).
-  const maxSchemaRepairRounds = 1;
+  // Schema/content repair (e.g. <70% JD keywords, wrap/structure) — not for API timeouts.
+  const maxSchemaRepairRounds = stageId === "resume" ? 2 : 1;
 
   for (let attempt = 0; attempt <= maxSchemaRepairRounds; attempt++) {
     try {

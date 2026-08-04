@@ -518,6 +518,7 @@ Product success will be measured by:
 - ✅ Manual UPI paywall + admin payment review (including phone review links)
 - ✅ Mobile-ready app shell
 - ✅ Privacy Policy + Terms of Service (Google Limited Use / AI disclosure)
+- ✅ Resume **≥70% grounded JD keyword coverage** + **same Doc wrap line count** per bullet (v1.8)
 
 **Still planned:**
 - Enforce application quotas / tiered packs with usage metering

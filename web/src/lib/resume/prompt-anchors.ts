@@ -2,27 +2,42 @@ import type { ResumeContent } from "@/lib/resume/fabrication";
 import {
   parseResumeWordBudget,
 } from "@/lib/resume/word-budget";
+import { estimateWrapLineCount } from "@/lib/resume/text-width";
 
 /**
- * Prompt guide: maximize JD keyword coverage via in-place word swaps only.
- * Never grow line count — one-page PDF is mandatory.
+ * Prompt guide: maximize grounded JD keywords while locking Doc wrap line counts.
  */
 export function buildResumeStructuralGuide(
   content: ResumeContent,
-  rules?: Record<string, unknown> | null,
+  _rules?: Record<string, unknown> | null,
   docLayout?: Record<string, unknown> | null,
 ): string {
   const budget = parseResumeWordBudget(docLayout, content);
   const lines: string[] = [
-    "EDIT MODE — REPLACE WORDS, DO NOT ADD (ONE PAGE):",
-    "- Copy each MASTER line below as the starting text",
-    "- REPLACE existing words/phrases with JD keywords where the fact is already true",
-    "- Do NOT append, stack, or insert extra clauses — that increases line wrap and breaks one page",
+    "PRIMARY GOAL — MAXIMIZE JD KEYWORD COVERAGE (≥70% REQUIRED):",
+    "- Pack as many JD must-have / tech keywords as possible into headline, bullets, and skills",
+    "- Hard floor: at least 70% of JD target keywords (must-have + tech) that are grounded in MASTER must appear in the tailored resume",
+    "- Prefer JD phrasing of facts already true in MASTER (or clearly implied by MASTER tools/domains)",
+    "- Two different jobs must not look almost identical — rewrite in this JD's language",
+    "- Skip only keywords with no grounding in MASTER (never invent employers, tools, certs, or metrics)",
+    "",
+    "HARD CONSTRAINT — SAME WRAP LINE COUNTS (never break this for keywords):",
     "- Same bullet count as MASTER; same skill line count as MASTER",
-    "- Each output line character length must be ≤ the corresponding MASTER line (prefer shorter)",
-    "- Subheader (headline): replace words inside the master line only; never add titles or keyword stacks",
-    "- If a JD keyword cannot fit by replacing words without inventing or lengthening, skip it or swap it into skills by replacing an existing skill item",
+    "- Each experience/project bullet must keep the SAME Google Doc wrap line count as its MASTER bullet (neither more nor fewer visual lines)",
+    "- Never longer than MASTER rendered width; never shorten enough to drop a wrap line",
+    "- If a keyword cannot fit without changing wrap line count, place it in another bullet/skills line that still has room — do not grow or shrink that bullet's lines",
     `- Maximum ${budget.tailorable_words} words total across bullets + skills (never grow past master)`,
+    "",
+    "HOW TO HIT ≥70% WITHOUT CHANGING LINE COUNTS:",
+    "- Swap weaker words/phrases for JD terms of similar length inside the same bullet",
+    "- Lead with the JD-relevant angle when MASTER supports it",
+    "- Reorder skills: JD-relevant items first within each Category line; swap weaker items for grounded JD tools",
+    "- Keep each skill line's Category meaning intact — do not move Product items into Analytics/AI lines or vice versa",
+    "- Do not invent tools absent from MASTER; do not add or remove whole skill lines",
+    "",
+    "VISIBLE CUSTOMIZATION (required):",
+    "- Headline MUST change to target role from JD + 2–3 grounded domain/must-have terms",
+    "- Rewrite most experience/project bullets so they read for this JD (same metrics/outcomes)",
     "",
     "SECTIONS TO TAILOR (only these):",
     "- Headline (if present)",
@@ -31,16 +46,15 @@ export function buildResumeStructuralGuide(
     "- Skills lines",
     "- Do NOT rewrite Education, contact, or fixed employer/title header lines",
     "",
-    "LINE COUNT / ONE PAGE (non-negotiable):",
-    "- One page only. Growing any line past MASTER length risks a second page — forbidden",
-    "- Prefer a shorter complete sentence over a longer keyword-stuffed line",
+    "ONE PAGE + COMPLETENESS:",
+    "- One page only — wrap line lock protects layout",
     "- NEVER end a bullet mid-sentence or mid-clause",
-    "- Completeness + same-or-shorter length beats keyword coverage",
+    "- ≥70% grounded JD keyword coverage is required; wrap line count is the hard stop on how you fit them",
     "",
     "ATS STRATEGY:",
-    "- Synonym/phrase REPLACE only — not new sentences",
+    "- Cover must-haves first, then tech stack, then nice-to-haves — all within wrap-line limits until ≥70% is met",
     "- Keep every metric and outcome from MASTER - never invent numbers",
-    "- Skills: match MASTER shape — if MASTER has `Category: a, b`, keep that Category: prefix and REPLACE items after the colon; if MASTER is a flat list (`a, b, c`), keep a flat list (never invent `Category:` or repeat the list before a colon)",
+    "- Skills: match MASTER shape — if MASTER has `Category: a, b`, keep that Category: prefix and REPLACE/REORDER items after the colon; if MASTER is a flat list (`a, b, c`), keep a flat list (never invent `Category:` or repeat the list before a colon)",
     "- Skills: never duplicate the same skill token in one line",
     "",
     "JSON OUTPUT:",
@@ -60,7 +74,10 @@ export function buildResumeStructuralGuide(
   content.experience.forEach((exp, i) => {
     lines.push(`## experience[${i}] ${exp.company} (${exp.bullets.length} bullets)`);
     exp.bullets.forEach((bullet, j) => {
-      lines.push(`  [${j}]: ${JSON.stringify(bullet)}`);
+      const wrapLines = estimateWrapLineCount(bullet);
+      lines.push(
+        `  [${j}] (keep ${wrapLines} Doc wrap line${wrapLines === 1 ? "" : "s"}): ${JSON.stringify(bullet)}`,
+      );
     });
   });
 
@@ -69,7 +86,10 @@ export function buildResumeStructuralGuide(
       `## projects[${i}] ${project.name} (Projects / Case Studies)`,
     );
     project.bullets.forEach((bullet, j) => {
-      lines.push(`  [${j}]: ${JSON.stringify(bullet)}`);
+      const wrapLines = estimateWrapLineCount(bullet);
+      lines.push(
+        `  [${j}] (keep ${wrapLines} Doc wrap line${wrapLines === 1 ? "" : "s"}): ${JSON.stringify(bullet)}`,
+      );
     });
   });
 

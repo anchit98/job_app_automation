@@ -160,14 +160,29 @@ async function persistCoverLetterArtifacts(
       const drive = new DriveClient(auth);
       const docs = new DocsClient(auth);
 
-      const result = await generateCoverLetterArtifacts(drive, docs, {
-        masterDocId: masterRow!.doc_id!,
-        layout: masterRow!.doc_layout as unknown as CoverLetterLayoutMap,
-        content,
-        application,
-        version,
-        fullName,
-      });
+      const result = await generateCoverLetterArtifacts(
+        drive,
+        docs,
+        {
+          masterDocId: masterRow!.doc_id!,
+          layout: masterRow!.doc_layout as unknown as CoverLetterLayoutMap,
+          content,
+          application,
+          version,
+          fullName,
+        },
+        {
+          onPdfReady: async (partial) => {
+            // Unblock Gmail drafts as soon as the PDF exists; DOCX can finish after.
+            await updateCoverLetterVersionDriveIds(
+              coverLetterVersionId,
+              partial.drive_pdf_id,
+              null,
+              partial.drive_doc_id,
+            );
+          },
+        },
+      );
 
       await updateCoverLetterVersionDriveIds(
         coverLetterVersionId,
@@ -713,14 +728,28 @@ export async function retryCoverLetterUpload(coverLetterVersionId: string) {
     const drive = new DriveClient(auth);
     const docs = new DocsClient(auth);
 
-    const result = await generateCoverLetterArtifacts(drive, docs, {
-      masterDocId: masterRow!.doc_id!,
-      layout: masterRow!.doc_layout as unknown as CoverLetterLayoutMap,
-      content: versionRow.content,
-      application,
-      version: versionRow.version,
-      fullName,
-    });
+    const result = await generateCoverLetterArtifacts(
+      drive,
+      docs,
+      {
+        masterDocId: masterRow!.doc_id!,
+        layout: masterRow!.doc_layout as unknown as CoverLetterLayoutMap,
+        content: versionRow.content,
+        application,
+        version: versionRow.version,
+        fullName,
+      },
+      {
+        onPdfReady: async (partial) => {
+          await updateCoverLetterVersionDriveIds(
+            versionRow.id,
+            partial.drive_pdf_id,
+            null,
+            partial.drive_doc_id,
+          );
+        },
+      },
+    );
 
     await updateCoverLetterVersionDriveIds(
       versionRow.id,

@@ -29,6 +29,12 @@ export interface CoverLetterExportResult {
   pdf_name: string;
 }
 
+export type CoverLetterPdfReady = {
+  drive_doc_id: string;
+  drive_pdf_id: string;
+  pdf_name: string;
+};
+
 function sanitizeFilename(name: string): string {
   return name
     .replace(/[\\/:*?"<>|]/g, "-")
@@ -50,11 +56,15 @@ function buildFileBaseName(
 
 /**
  * Copy master cover letter Google Doc → replace greeting/body/sign-off slots → export PDF + DOCX.
+ * Marks PDF ready first (via onPdfReady) so Gmail drafts are not blocked on DOCX.
  */
 export async function generateCoverLetterArtifacts(
   drive: DriveClient,
   docs: DocsClient,
   input: CoverLetterExportInput,
+  options?: {
+    onPdfReady?: (partial: CoverLetterPdfReady) => Promise<void>;
+  },
 ): Promise<CoverLetterExportResult> {
   const applicationFolderId = await drive.ensureApplicationFolder(input.application);
   const base = buildFileBaseName(input.fullName, input.application);
@@ -93,7 +103,10 @@ export async function generateCoverLetterArtifacts(
     edits.push({ original: nameOriginal, replacement: input.fullName });
   }
 
-  await docs.batchUpdate(copiedDocId, buildReplaceRequests(edits));
+  const replaceRequests = buildReplaceRequests(edits);
+  if (replaceRequests.length > 0) {
+    await docs.batchUpdate(copiedDocId, replaceRequests);
+  }
 
   const docAfterReplace = await docs.getDocument(copiedDocId);
   const boldRequests = buildMetricBoldRequests(docAfterReplace);
@@ -101,21 +114,35 @@ export async function generateCoverLetterArtifacts(
     await docs.batchUpdate(copiedDocId, boldRequests);
   }
 
-  const pdfBuffer = await drive.exportAsPdf(copiedDocId);
-  const drivePdfId = await drive.uploadFile(
+  // Export PDF + DOCX in parallel, then upload in parallel.
+  const [pdfBuffer, docxBuffer] = await Promise.all([
+    drive.exportAsPdf(copiedDocId),
+    drive.exportAsDocx(copiedDocId),
+  ]);
+
+  const pdfUpload = drive.uploadFile(
     pdfBuffer,
     pdfName,
     "application/pdf",
     applicationFolderId,
   );
-
-  const docxBuffer = await drive.exportAsDocx(copiedDocId);
-  const driveDocxId = await drive.uploadFile(
+  const docxUpload = drive.uploadFile(
     docxBuffer,
     docxName,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     applicationFolderId,
   );
+
+  const drivePdfId = await pdfUpload;
+  if (options?.onPdfReady) {
+    await options.onPdfReady({
+      drive_doc_id: copiedDocId,
+      drive_pdf_id: drivePdfId,
+      pdf_name: pdfName,
+    });
+  }
+
+  const driveDocxId = await docxUpload;
 
   return {
     drive_doc_id: copiedDocId,

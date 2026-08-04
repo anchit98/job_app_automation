@@ -31,8 +31,11 @@ import { isGoogleReconnectError } from "@/lib/google/reconnect";
 import { getRequestUserId, runAsUser } from "@/lib/auth/request-user";
 import { requireUser } from "@/lib/auth/user";
 import { buildJdContent, condenseMasterResume } from "@/lib/resume/context";
-import { fitResumeToMasterLayout } from "@/lib/resume/auto-fit";
-import { buildJdKeywordBrief } from "@/lib/resume/jd-keywords";
+import { fitResumeToMasterLayout, normalizeResumeSkills } from "@/lib/resume/auto-fit";
+import {
+  buildJdKeywordBrief,
+  checkJdKeywordCoverage,
+} from "@/lib/resume/jd-keywords";
 import {
   checkResumeFabrication,
   normalizeBulletsToMasterShape,
@@ -472,7 +475,7 @@ export async function submitResumeResponse(
     };
   }
 
-  // Fabrication / JD-keyword flags are advisory only - auto-approved (no checkbox gate).
+  // Fabrication flags (metrics etc.) are advisory; keyword floor + structure block accept.
   const fabrication = checkResumeFabrication(
     masterParsed.data,
     schemaResult.data,
@@ -480,10 +483,20 @@ export async function submitResumeResponse(
     masterRow.doc_layout as Record<string, unknown> | null,
   );
 
-  if (fabrication.structural_errors.length > 0) {
+  const keywordErrors = checkJdKeywordCoverage(
+    application,
+    schemaResult.data,
+    masterParsed.data,
+  );
+  const structuralErrors = [
+    ...fabrication.structural_errors,
+    ...keywordErrors,
+  ];
+
+  if (structuralErrors.length > 0) {
     await updatePromptRunValidationErrors(
       promptRunId,
-      fabrication.structural_errors.map((f) => ({
+      structuralErrors.map((f) => ({
         path: f.path,
         message: f.message,
       })),
@@ -491,12 +504,14 @@ export async function submitResumeResponse(
     );
     return {
       ok: false as const,
-      error: fabrication.structural_errors.some((f) => f.path === "tailorable")
-        ? "Word count exceeds the budget for bullets + skills. See the repair prompt."
-        : "Structural validation failed. See the repair prompt.",
-      structural_errors: fabrication.structural_errors,
+      error: structuralErrors.some((f) => f.path === "jd_keywords")
+        ? "JD keyword coverage is below 70%. See the repair prompt."
+        : structuralErrors.some((f) => f.path === "tailorable")
+          ? "Word count exceeds the budget for bullets + skills. See the repair prompt."
+          : "Structural validation failed. See the repair prompt.",
+      structural_errors: structuralErrors,
       repair_prompt: buildResumeRepairPrompt(
-        fabrication.structural_errors.map((f) => ({
+        structuralErrors.map((f) => ({
           path: f.path,
           message: f.message,
           bullet: f.bullet,
@@ -637,10 +652,10 @@ function mergeTailoredWithMaster(
         tailored.projects?.[i]?.bullets,
       ),
     })),
-    skills:
-      tailored.skills && tailored.skills.length === master.skills.length
-        ? tailored.skills
-        : master.skills.map((line) => line),
+    skills: normalizeResumeSkills(
+      Array.isArray(tailored.skills) ? tailored.skills : [],
+      master.skills,
+    ),
     education: master.education,
   };
 }

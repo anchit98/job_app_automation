@@ -15,11 +15,12 @@ Hosted multi-user app: **Next.js 16** + **Supabase Postgres** + **Google Drive/G
 3. **Profile setup gate** — after payment, Dashboard & Apply stay locked until Google is connected, required profile fields are saved (name, location, phone, LinkedIn), and master resume is synced (`/onboarding`). Settings can be changed anytime.  
 4. **Dashboard** — date-filtered metrics (IST day bounds), fresh LinkedIn jobs banner, recent applications, quick actions  
 5. **Quick Apply** — paste JD + company + role (contacts optional) → OpenAI pipeline; cover letter optional (defaults off until master cover is synced); in-app guide to find emails via LinkedIn + [Mailmeteor](https://mailmeteor.com/tools/linkedin-email-finder)  
-6. **Tracker (Jobs)** — applications, contacts, versions, notes  
-7. **Gmail drafts** — created only after Drive PDFs are ready (attachments included); never auto-send  
-8. **Follow-ups** — enqueue draft prompts on **IST** business days (never auto-send)  
-9. **Admin Center** — users, paid access, payment claims  
-10. **Marketing site** — Insider tips, FAQ, launch pricing, Privacy / Terms
+6. **Tailored resume quality** — JD-framed rewrite of master facts; **≥70% grounded JD keyword coverage** (must-have + tech); each bullet keeps the **same Doc wrap line count** as master (one-page lock); skills reorder/swap within master shape  
+7. **Tracker (Jobs)** — applications, contacts, versions, notes  
+8. **Gmail drafts** — created only after Drive PDFs are ready (attachments included); never auto-send  
+9. **Follow-ups** — enqueue draft prompts on **IST** business days (never auto-send)  
+10. **Admin Center** — users, paid access, payment claims  
+11. **Marketing site** — Insider tips, FAQ, launch pricing, Privacy / Terms
 
 ### Quick Apply pipeline
 

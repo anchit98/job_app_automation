@@ -16,11 +16,12 @@
 
 1. **Draft-only outbound** — Gmail drafts for outreach; never auto-send cold email  
 2. **Structured contracts** — every LLM response is Zod-validated; malformed JSON gets a repair pass  
-3. **Grounded generation** — resume/cover anchored to master materials; fabrication checks  
-4. **Artifacts before drafts** — Drive PDFs for resume/cover must be ready before Gmail draft attachments  
-5. **Multi-tenant** — email/password signup; every row scoped to `user_id`  
-6. **Setup gate** — paid users unlock Dashboard/Apply only after Google + required profile fields + master resume  
-7. **India time** — UI timestamps, metrics day bounds, and follow-up business days use **IST (`Asia/Kolkata`)**
+3. **Grounded generation** — resume/cover anchored to master materials; fabrication checks; **≥70% grounded JD keyword coverage** required on resume accept  
+4. **Layout lock** — each experience/project bullet keeps the **same Google Doc wrap line count** as master (estimator + auto-fit); one-page PDF  
+5. **Artifacts before drafts** — Drive PDFs for resume/cover must be ready before Gmail draft attachments  
+6. **Multi-tenant** — email/password signup; every row scoped to `user_id`  
+7. **Setup gate** — paid users unlock Dashboard/Apply only after Google + required profile fields + master resume  
+8. **India time** — UI timestamps, metrics day bounds, and follow-up business days use **IST (`Asia/Kolkata`)**
 
 **Not in scope:** auto-submit to LinkedIn/ATS, auto-send outreach email, interview scheduling, salary tooling. Recruiter email discovery is **guided** (LinkedIn + [Mailmeteor LinkedIn Email Finder](https://mailmeteor.com/tools/linkedin-email-finder)), not scraped/automated inside the product.
 
@@ -176,8 +177,8 @@ Default engine: **`openai`** (`normalizePipelineLlmEngine` maps legacy `gemma` �
 1. Prompt Composer builds the prompt from active template + context  
 2. `generateWithOpenAI` calls Chat Completions (retries on transient API errors)  
 3. Response Zod-validated → artifact saved  
-4. On schema failure → repair prompt → limited repair rounds  
-5. Resume/cover also run Docs/Drive export in parallel where applicable  
+4. On schema / keyword-floor failure → repair prompt → limited repair rounds (resume up to **2** keyword/structure repairs)  
+5. Resume/cover Docs export runs deferred (`after()`); cover marks PDF ready before DOCX finishes so Gmail is not blocked on Word export  
 
 ### Drive PDFs before Gmail drafts
 
@@ -186,6 +187,7 @@ Before `gmail_drafts` creates drafts with attachments:
 1. Pipeline waits until resume (and cover, if not skipped) PDFs are **uploaded and ready** in Drive  
 2. Progress surfaces messages such as waiting for Drive PDFs / upload delays  
 3. If uploads fail or time out, the drafts stage fails with a clear error rather than sending drafts without attachments  
+4. Export path: copy master Doc → replace slots → optional style pass → `exportAsPdf` → upload PDF (cover also exports DOCX in parallel; PDF readiness unblocks drafts early). Folder lookups are cached per request.
 
 ### Stage statuses
 
@@ -199,9 +201,11 @@ Before `gmail_drafts` creates drafts with attachments:
 - Atomic stage claims prevent double-runs  
 - `PipelineKeeper` polls; backs off when the tab is idle  
 
-### Content rules (prompts)
+### Content rules (prompts + validators)
 
-- **Resume:** in-place keyword **replace** from JD; do not grow line counts (one-page constraint)  
+- **Resume primary goal:** maximize **grounded** JD keywords (must-have + tech) by rewriting master points in JD language — **≥70% coverage required** before accept (`JD_KEYWORD_COVERAGE_MIN`; required count capped by keywords already present in master so unfamiliar tools are not invented)  
+- **Resume hard constraint:** each experience/project bullet must keep the **same Doc wrap line count** as its master bullet (neither more nor fewer). Enforced in prompts and post-process (`estimateWrapLineCount` + `fitBulletToMasterWrapLines`); word-budget shrink cannot drop below master wrap lines  
+- **Skills:** same line count as master; reorder/swap within Category (or flat) shape; no invented Category prefixes  
 - **Cover letter:** JSON body sections only — **no greeting / sign-off** (template provides both); validators strip residual sign-offs  
 
 ---
@@ -351,6 +355,7 @@ COGS note: OpenAI `gpt-4.1-mini` is ~₹2–₹2.5 per typical full Apply (promp
 | `supabase/schema.sql` | Full schema |
 | `web/scripts/migrate-*.mjs` | Incremental auth, setup, avatar, admin, payments |
 | `web/scripts/seed-prompt-templates.mjs` | Load templates |
+| `web/scripts/activate-resume-v30.mjs` | Activate resume prompt v30 (JD rewrite + ≥70% keywords + wrap lock) |
 | `web/scripts/pack-extension-zip.mjs` | Bridge zip for downloads |
 | `web/db/migrations/*.sql` | Prompt / feature SQL migrations (e.g. cover sign-off, resume replace) |
 | `web/scripts/ab-pdf-bench.ts` | A/B Docs export vs server `pdf-lib` timing (ops/research) |
@@ -359,6 +364,7 @@ COGS note: OpenAI `gpt-4.1-mini` is ~₹2–₹2.5 per typical full Apply (promp
 
 ## 14. Change Log
 
+- **v1.8** — Resume quality: **JD-framed rewrite** (not timid token swaps); hard **≥70% grounded JD keyword coverage** on accept with repair loops; **strict same Doc wrap line count** per bullet (width estimator + auto-fit); skills merge/normalize fixes; faster Drive PDF path (parallel cover export, PDF-ready before DOCX, folder cache, skip unused skill style pass). Active template `resume_v30_gdoc`.
 - **v1.7** — **Profile setup gate** (Google + profile fields + master resume) replaces dashboard setup guide; Profile page rename (editable anytime). App-wide **IST** for display, metrics, follow-ups. Cover letter Apply default **off** until master cover synced; cover sign-off sync hardened. Landing/legal copy for Google brand verification (purpose + Limited Use). Privacy Policy & Terms refreshed (August 2026).
 - **v1.6** — **OpenAI server Apply** as default (`gpt-4.1-mini`); Gemma/NVIDIA naming removed (legacy engine ids normalize to `openai`). **Wait for Drive PDFs** before Gmail drafts. Dashboard: four metrics + date filter, fresh-jobs banner, recent apps, quick actions. Apply: Mailmeteor contact guide. Landing: Insider tips, FAQ, launch pricing (₹299 / first 100 / 60 apps / lifetime access). Cover sign-off stripping + resume in-place keyword replace prompts.
 - **v1.5** — Follow-up threading; Gmail readonly for sent lookup; auto-advance `email_sent` on cold-email draft.

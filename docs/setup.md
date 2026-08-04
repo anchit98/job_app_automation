@@ -176,8 +176,10 @@ Details: [`extension/README.md`](../extension/README.md).
 | Apply fails: API key missing | Set `CHATGPT_API_KEY` / `OPENAI_API_KEY` |
 | OpenAI 429 / quota | Check OpenAI billing & rate limits |
 | Gmail drafts without PDFs | Ensure Drive upload completed; pipeline waits then fails clearly if not |
+| Resume fails: keyword coverage below 70% | Master must contain those JD tools/terms; repair rewrites bullets/skills without changing wrap lines |
+| Resume layout / second page | Master bullets define wrap line counts; do not pad past master width |
+| `No active template` | `node scripts/seed-prompt-templates.mjs` (resume: `activate-resume-v30.mjs` if needed) |
 | `Missing DATABASE_URL` / `AUTH_SECRET` | Add to `.env.local` / Vercel |
-| `No active template` | `node scripts/seed-prompt-templates.mjs` |
 | `redirect_uri_mismatch` | Match Google redirect to production URL |
 | Bridge 401 | Rotate token; reload extension |
 | DB timeout on Vercel | Use Transaction pooler `:6543` |

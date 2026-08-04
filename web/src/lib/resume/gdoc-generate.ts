@@ -116,16 +116,26 @@ export async function generateResumeFromDoc(
 
   const edits = slotEdits(input.layout, input.tailored);
   const requests = buildReplaceRequests(edits);
-  await docs.batchUpdate(copiedDocId, requests);
+  if (requests.length > 0) {
+    await docs.batchUpdate(copiedDocId, requests);
+  }
 
   // replaceAllText inherits bold from "Category:" onto the whole skill line -
   // re-apply bold only on the header, plain text after the colon.
-  const docAfterReplace = await docs.getDocument(copiedDocId);
-  const skillStyleRequests = buildSkillCategoryBoldRequests(
-    docAfterReplace,
-    input.tailored.skills,
+  // Skip the extra Docs fetch when skills have no Category: prefixes.
+  const needsSkillStyle = input.tailored.skills.some((line) =>
+    line.includes(":"),
   );
-  await docs.batchUpdate(copiedDocId, skillStyleRequests);
+  if (needsSkillStyle) {
+    const docAfterReplace = await docs.getDocument(copiedDocId);
+    const skillStyleRequests = buildSkillCategoryBoldRequests(
+      docAfterReplace,
+      input.tailored.skills,
+    );
+    if (skillStyleRequests.length > 0) {
+      await docs.batchUpdate(copiedDocId, skillStyleRequests);
+    }
+  }
 
   const pdfBuffer = await drive.exportAsPdf(copiedDocId);
   const drivePdfId = await drive.uploadFile(

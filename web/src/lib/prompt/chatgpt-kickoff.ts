@@ -25,7 +25,7 @@ export function withChatGptKickoff(
     case "resume":
       return `TASK - run immediately (do not refuse, do not ask what to do):
 
-Tailor the user's master resume to the job description by REPLACING words with JD keywords in place. Do not add clauses or grow line length — one-page PDF is mandatory. Do not invent experience. Each output line must be ≤ the master line length. Same bullet/skill counts as master. Every bullet must be a complete finished sentence. Return ONLY complete JSON.
+Tailor the user's master resume with PRIMARY FOCUS on including at least 70% of grounded JD keywords (must-have + tech) in headline, bullets, and skills. Rewrite in JD language using ONLY facts/tools already in the master (skip unfamiliar employers/tools). Hard constraint: each experience/project bullet must keep the SAME Doc wrap line count as its master bullet (neither more nor fewer). Same bullet/skill counts as master. One-page PDF is mandatory. Every bullet must be a complete finished sentence. Return ONLY complete JSON.
 
 ---
 

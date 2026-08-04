@@ -44,11 +44,12 @@ Failing items:
 ${lines.join("\n")}
 
 Rules:
-- Surgical REPLACE only — swap JD keywords into existing words; do not insert new clauses that grow the line.
-- Each fixed line must stay at or under the master line length (one-page PDF is mandatory).
-- Every bullet must end as a complete finished sentence - never truncate mid-phrase or leave dangling words (and/that/prioritizing/across/etc.). Prefer a shorter complete sentence over an incomplete longer one.
-- Skills: keep "Category:" prefix exact; REPLACE items after the colon; remove items if over the word ceiling.
-- Total across ALL experience bullets + project bullets + skills: stay within the master word budget (shorter OK). Never truncate mid-sentence to hit the cap.
+- PRIMARY GOAL: reach at least 70% grounded JD keyword coverage (must-have + tech) while fixing the listed issues.
+- HARD CONSTRAINT: each experience/project bullet must keep the SAME Google Doc wrap line count as its MASTER bullet (neither more nor fewer visual lines). Stay near MASTER length — never longer; never shorten enough to drop a wrap line.
+- JD-framed rewrite of MASTER facts only — never invent unfamiliar tools/employers.
+- Every bullet must end as a complete finished sentence - never truncate mid-phrase or leave dangling words (and/that/prioritizing/across/etc.). Prefer restoring MASTER wording over an incomplete or wrong-length rewrite.
+- Skills: keep MASTER shape (Category: prefix if present, else flat list); REORDER/REPLACE items after the colon to surface JD tools; remove items if over the word ceiling.
+- Total across ALL experience bullets + project bullets + skills: stay within the master word budget without dropping any bullet's wrap line count. Never truncate mid-sentence to hit the cap.
 - Keep all master metrics; no fabrication.
 - Change ONLY listed items - leave everything else identical.
 
