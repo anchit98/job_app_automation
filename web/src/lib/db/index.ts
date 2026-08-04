@@ -65,13 +65,39 @@ export async function dbRun(
   return { changes };
 }
 
-export function parseJson<T>(text: string | null | undefined, fallback: T): T {
-  if (!text) return fallback;
+export function parseJson<T>(
+  text: string | null | undefined | object,
+  fallback: T,
+): T {
+  if (text == null || text === "") return fallback;
+  // postgres.js may already return jsonb as an object
+  if (typeof text === "object") return text as T;
+  // Object accidentally written via String(obj) / param coercion
+  if (text === "[object Object]") return fallback;
   try {
-    return JSON.parse(text) as T;
+    const parsed = JSON.parse(text) as unknown;
+    // Some rows were double-encoded (jsonb string scalar containing JSON text)
+    if (typeof parsed === "string") {
+      try {
+        return JSON.parse(parsed) as T;
+      } catch {
+        return parsed as T;
+      }
+    }
+    return parsed as T;
   } catch {
     return fallback;
   }
+}
+
+/** Serialize objects for text columns (master_resume / master_cover_letter). */
+export function toJsonText(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") {
+    if (value === "[object Object]") return null;
+    return value;
+  }
+  return JSON.stringify(value);
 }
 
 /** Normalize PG timestamptz / Date / string to ISO-ish string for existing mappers */

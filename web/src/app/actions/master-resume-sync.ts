@@ -20,6 +20,8 @@ interface SyncResult {
   education: number;
   synced_at: string;
   content: Record<string, unknown>;
+  /** heuristic = fast local parse; smart_agent = OpenAI template mapper */
+  sync_mode?: "heuristic" | "smart_agent";
 }
 
 /**
@@ -44,7 +46,8 @@ export async function syncMasterFromGoogleDoc(
   const auth = await getGoogleAuthClient();
   const docs = new DocsClient(auth);
   const drive = new DriveClient(auth);
-  const { content, layout } = await syncMasterResumeFromDoc(docs, docId);
+  const synced = await syncMasterResumeFromDoc(docs, docId);
+  const { content, layout, sync_mode } = synced;
   const templateDocId = await drive.ensureMasterTemplateCopy(docId);
 
   const syncedAt = new Date().toISOString();
@@ -59,6 +62,7 @@ export async function syncMasterFromGoogleDoc(
     source_doc_id: docId,
     template_doc_id: templateDocId,
     slot_count: layout.slots.length,
+    sync_mode: sync_mode ?? "heuristic",
   });
 
   const { syncSignatureLinksFromResume } = await import("@/app/actions/profile");
@@ -77,5 +81,6 @@ export async function syncMasterFromGoogleDoc(
     education: content.education.length,
     synced_at: syncedAt,
     content: content as unknown as Record<string, unknown>,
+    sync_mode: sync_mode ?? "heuristic",
   };
 }

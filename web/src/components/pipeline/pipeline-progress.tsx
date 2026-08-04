@@ -55,6 +55,18 @@ function friendlyMessage(raw: string | null | undefined): string {
   if (/^working/i.test(msg) || /^running/i.test(msg)) return "Working…";
 
   // Failures
+  if (/master resume/i.test(msg)) {
+    if (/not synced/i.test(msg)) {
+      return "Master resume isn’t synced yet. Sync it on Profile, then retry.";
+    }
+    if (/layout map missing/i.test(msg)) {
+      return "Master resume layout is missing. Re-sync from Google Doc, then retry.";
+    }
+    if (/invalid/i.test(msg)) {
+      return "Master resume needs a re-sync from Google Doc, then retry.";
+    }
+    return msg.length <= 120 ? msg : "Master resume needs attention. Re-sync on Profile.";
+  }
   if (
     /reconnect|invalid_grant|revoked|insufficient|not connected|drive export|failed to upload to drive|upload to drive is taking/i.test(
       msg,

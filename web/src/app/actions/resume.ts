@@ -61,6 +61,69 @@ import {
   zodErrorsToList,
 } from "@/lib/prompt/repair";
 
+function normalizeMasterResumeContent(
+  raw: Record<string, unknown> | null | undefined,
+): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const experience = Array.isArray(raw.experience) ? raw.experience : [];
+  const cleanedExperience = experience
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const r = row as Record<string, unknown>;
+      const company = String(r.company ?? "").trim();
+      const title = String(r.title ?? "").trim();
+      const bullets = Array.isArray(r.bullets)
+        ? r.bullets.map((b) => String(b ?? "").trim()).filter(Boolean)
+        : [];
+      if (!company || company === "-" || !title || bullets.length === 0) {
+        return null;
+      }
+      return { ...r, company, title, bullets };
+    })
+    .filter(Boolean);
+
+  const education = Array.isArray(raw.education) ? raw.education : [];
+  const cleanedEducation = education
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const r = row as Record<string, unknown>;
+      const institution_line = String(r.institution_line ?? "").trim();
+      if (!institution_line) return null;
+      return {
+        ...r,
+        institution_line,
+        dates: String(r.dates ?? "").trim(),
+      };
+    })
+    .filter(Boolean);
+
+  const projects = Array.isArray(raw.projects) ? raw.projects : [];
+  const cleanedProjects = projects
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const r = row as Record<string, unknown>;
+      const name = String(r.name ?? "").trim();
+      if (!name) return null;
+      const bullets = Array.isArray(r.bullets)
+        ? r.bullets.map((b) => String(b ?? "").trim()).filter(Boolean)
+        : [];
+      return { ...r, name, bullets };
+    })
+    .filter(Boolean);
+
+  const skills = Array.isArray(raw.skills)
+    ? raw.skills.map((s) => String(s ?? "").trim()).filter(Boolean)
+    : [];
+
+  return {
+    ...raw,
+    experience: cleanedExperience,
+    projects: cleanedProjects,
+    skills,
+    education: cleanedEducation,
+  };
+}
+
 function getLockedMasterResumeRules(
   stored?: Record<string, unknown> | null,
 ): Record<string, unknown> {
@@ -125,10 +188,12 @@ export async function exportResumePrompt(
   const masterRow = await getMasterResumeRow();
   assertMasterDocReady(masterRow);
 
-  const masterParsed = resumeContentSchema.safeParse(masterRow!.content);
+  const masterParsed = resumeContentSchema.safeParse(
+    normalizeMasterResumeContent(masterRow!.content),
+  );
   if (!masterParsed.success) {
     throw new Error(
-      "Master resume JSON is invalid. Re-sync from Google Doc to fix.",
+      "Master resume could not be read. Re-sync from Google Doc on Profile (any Doc layout is fine), then retry.",
     );
   }
 
@@ -334,7 +399,9 @@ export async function submitResumeResponse(
   if (!masterRow) {
     return { ok: false as const, error: "Master resume not found." };
   }
-  const masterParsed = resumeContentSchema.safeParse(masterRow.content);
+  const masterParsed = resumeContentSchema.safeParse(
+    normalizeMasterResumeContent(masterRow.content),
+  );
   if (!masterParsed.success) {
     return { ok: false as const, error: "Master resume schema is invalid." };
   }

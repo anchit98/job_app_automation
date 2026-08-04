@@ -24,6 +24,13 @@ export function buildResumeStructuralGuide(
     "- If a JD keyword cannot fit by replacing words without inventing or lengthening, skip it or swap it into skills by replacing an existing skill item",
     `- Maximum ${budget.tailorable_words} words total across bullets + skills (never grow past master)`,
     "",
+    "SECTIONS TO TAILOR (only these):",
+    "- Headline (if present)",
+    "- Work Experience / Experience bullets",
+    "- Projects and Case Studies bullets (both appear under projects[] here)",
+    "- Skills lines",
+    "- Do NOT rewrite Education, contact, or fixed employer/title header lines",
+    "",
     "LINE COUNT / ONE PAGE (non-negotiable):",
     "- One page only. Growing any line past MASTER length risks a second page — forbidden",
     "- Prefer a shorter complete sentence over a longer keyword-stuffed line",
@@ -38,6 +45,7 @@ export function buildResumeStructuralGuide(
     "JSON OUTPUT:",
     '- { "headline", "experience": [{ "bullets": [...] }, ...], "projects": [...], "skills": [...] }',
     "- experience/projects: ONLY bullets arrays (same lengths as MASTER)",
+    "- projects[] includes Projects and Case Studies from the master Doc",
     "- Every bullet must be a finished sentence ending in . ! or ?",
     "- Complete full JSON in one reply",
     "",
@@ -56,7 +64,9 @@ export function buildResumeStructuralGuide(
   });
 
   content.projects.forEach((project, i) => {
-    lines.push(`## projects[${i}] ${project.name}`);
+    lines.push(
+      `## projects[${i}] ${project.name} (Projects / Case Studies)`,
+    );
     project.bullets.forEach((bullet, j) => {
       lines.push(`  [${j}]: ${JSON.stringify(bullet)}`);
     });

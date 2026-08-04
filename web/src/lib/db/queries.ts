@@ -24,7 +24,7 @@ import type {
   EmailSource,
   VerificationStatus,
 } from "@/lib/db/types";
-import { dbGet, dbAll, dbRun, getSql, parseJson } from "@/lib/db/index";
+import { dbGet, dbAll, dbRun, getSql, parseJson, toJsonText } from "@/lib/db/index";
 import { getRequestUserId } from "@/lib/auth/request-user";
 import { requireUser } from "@/lib/auth/user";
 
@@ -264,7 +264,7 @@ export async function upsertMasterCoverLetterRow(input: {
          doc_layout = excluded.doc_layout,
          doc_synced_at = excluded.doc_synced_at`, uid,
       doc_id,
-      doc_layout ? JSON.stringify(doc_layout) : null,
+      toJsonText(doc_layout),
       doc_synced_at,);
 }
 
@@ -300,10 +300,10 @@ export async function upsertMasterResumeRow(input: {
          doc_id = excluded.doc_id,
          doc_layout = excluded.doc_layout,
          doc_synced_at = excluded.doc_synced_at`, uid,
-      JSON.stringify(input.content),
-      JSON.stringify(input.rules ?? { never_fabricate: true }),
+      toJsonText(input.content) ?? "{}",
+      toJsonText(input.rules ?? { never_fabricate: true }) ?? "{}",
       doc_id,
-      doc_layout ? JSON.stringify(doc_layout) : null,
+      toJsonText(doc_layout),
       doc_synced_at,);
 }
 

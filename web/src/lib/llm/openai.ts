@@ -25,6 +25,7 @@ const MAX_TOKENS_BY_KIND: Record<string, number> = {
   resume: 8192,
   cover_letter: 4096,
   cold_email: 4096,
+  master_resume_sync: 8192,
 };
 
 const CURL_MAX_TIME_BY_KIND: Record<string, number> = {
@@ -32,6 +33,7 @@ const CURL_MAX_TIME_BY_KIND: Record<string, number> = {
   resume: 180,
   cover_letter: 150,
   cold_email: 120,
+  master_resume_sync: 180,
 };
 const DEFAULT_CURL_MAX_TIME_SEC = 120;
 

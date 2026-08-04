@@ -90,7 +90,7 @@ export function buildJdKeywordBrief(application: Application): string {
     `Nice-to-have (${keywords.nice_to_have.length}) — only if a clean REPLACE fits without adding words:`,
     ...keywords.nice_to_have.map((keyword) => `- ${keyword}`),
     "",
-    `Tech stack (${keywords.tech_stack.length}) — REPLACE into bullets/projects/skills; drop a less-relevant skill item if needed to keep length ≤ master:`,
+    `Tech stack (${keywords.tech_stack.length}) — REPLACE into experience / projects / case-studies / skills; drop a less-relevant skill item if needed to keep length ≤ master:`,
     ...keywords.tech_stack.map((tool) => `- ${tool}`),
   ];
 

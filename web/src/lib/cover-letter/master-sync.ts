@@ -1,5 +1,6 @@
 import { DocsClient, extractParagraphText } from "@/lib/google/docs";
 import type { CoverLetterContent } from "@/lib/cover-letter/validate";
+import { assertCoverLetterAtsReady } from "@/lib/cover-letter/ats-sync";
 
 export interface CoverLetterBodySlot {
   key: string;
@@ -20,26 +21,17 @@ export interface CoverLetterLayoutMap {
   signoff: { original: string; name_original?: string };
 }
 
-const EXPECTED_BODY_PARAGRAPHS = 5;
-
 const CLOSING_PHRASE_ONLY =
   /^(?:Sincerely|Warm\s+regards|Best\s+regards|Kind\s+regards|With\s+regards|Yours\s+truly|Yours\s+sincerely|Regards|Thank\s+you|Thanks),?\s*$/i;
 
 const CLOSING_PHRASE_START =
   /^(?:Sincerely|Warm\s+regards|Best\s+regards|Kind\s+regards|With\s+regards|Yours\s+truly|Yours\s+sincerely|Regards|Thank\s+you|Thanks)\b/i;
 
-function isLikelyNameLine(text: string): boolean {
-  const t = text.trim();
-  if (!t || t.length > 60 || /[.!?]/.test(t)) return false;
-  return /^[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,4}$/.test(t);
-}
-
 function isSignoffParagraph(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
   if (CLOSING_PHRASE_ONLY.test(t)) return true;
   if (CLOSING_PHRASE_START.test(t) && t.length <= 80) return true;
-  // Soft line-break: "Warm regards," + name in one Docs paragraph
   if (t.includes("\u000b") && CLOSING_PHRASE_START.test(t.split("\u000b")[0] ?? "")) {
     return true;
   }
@@ -50,8 +42,7 @@ function isSignoffParagraph(text: string): boolean {
 }
 
 /**
- * Locate the real template sign-off near the end (Warm regards / Sincerely…),
- * not the last body/CTA sample paragraph.
+ * Locate greeting / body / sign-off with ATS readiness checks (1-line reasons).
  */
 export function splitCoverLetterTemplateParagraphs(paragraphs: string[]): {
   greeting: string;
@@ -59,56 +50,7 @@ export function splitCoverLetterTemplateParagraphs(paragraphs: string[]): {
   signoff: string;
   nameParagraph: string | null;
 } {
-  if (paragraphs.length < EXPECTED_BODY_PARAGRAPHS + 2) {
-    throw new Error(
-      `Cover letter template must have a greeting, ${EXPECTED_BODY_PARAGRAPHS} body paragraphs, and a sign-off. Found ${paragraphs.length} non-empty paragraphs.`,
-    );
-  }
-
-  let signoffIndex = -1;
-  for (let i = paragraphs.length - 1; i >= 1; i--) {
-    if (isSignoffParagraph(paragraphs[i])) {
-      signoffIndex = i;
-      break;
-    }
-    // Name line immediately after a closing phrase
-    if (
-      isLikelyNameLine(paragraphs[i]) &&
-      i - 1 >= 1 &&
-      isSignoffParagraph(paragraphs[i - 1])
-    ) {
-      signoffIndex = i - 1;
-      break;
-    }
-  }
-
-  if (signoffIndex < 0) {
-    throw new Error(
-      'Cover letter template must end with a sign-off such as "Warm regards," (optionally followed by your name). Re-sync after fixing the Doc.',
-    );
-  }
-
-  const greeting = paragraphs[0];
-  const between = paragraphs.slice(1, signoffIndex);
-  if (between.length !== EXPECTED_BODY_PARAGRAPHS) {
-    throw new Error(
-      `Cover letter template needs exactly ${EXPECTED_BODY_PARAGRAPHS} body paragraphs between the greeting and sign-off. Found ${between.length}.`,
-    );
-  }
-  const bodyParagraphs = between;
-
-  const signoff = paragraphs[signoffIndex];
-  const after = paragraphs.slice(signoffIndex + 1);
-  const nameParagraph =
-    after.length === 1 && isLikelyNameLine(after[0]) ? after[0] : null;
-
-  if (after.length > 1 || (after.length === 1 && !nameParagraph)) {
-    throw new Error(
-      "Unexpected paragraphs after the cover letter sign-off. Keep only Warm regards (and optional name) at the end.",
-    );
-  }
-
-  return { greeting, bodyParagraphs, signoff, nameParagraph };
+  return assertCoverLetterAtsReady(paragraphs);
 }
 
 export async function syncMasterCoverLetterFromDoc(
@@ -121,21 +63,6 @@ export async function syncMasterCoverLetterFromDoc(
 
   const { greeting, bodyParagraphs, signoff, nameParagraph } =
     splitCoverLetterTemplateParagraphs(paragraphs);
-
-  const originals = new Set<string>();
-  for (const text of [
-    greeting,
-    ...bodyParagraphs,
-    signoff,
-    ...(nameParagraph ? [nameParagraph] : []),
-  ]) {
-    if (originals.has(text)) {
-      throw new Error(
-        "Duplicate paragraph text in cover letter template - each slot must be unique for replaceAllText.",
-      );
-    }
-    originals.add(text);
-  }
 
   const body_slots: CoverLetterBodySlot[] = bodyParagraphs.map(
     (original, index) => ({

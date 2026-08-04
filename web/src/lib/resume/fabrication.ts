@@ -26,7 +26,8 @@ export const resumeProjectSchema = z.object({
 
 export const resumeEducationSchema = z.object({
   institution_line: z.string().min(1),
-  dates: z.string().min(1),
+  /** Dates are nice-to-have; missing/blank must not block Apply. */
+  dates: z.string().optional().default(""),
 });
 
 export const resumeContentSchema = z.object({
@@ -229,7 +230,11 @@ export function checkResumeFabrication(
         message: "Education institution line must not change.",
       });
     }
-    if (masterEdu.dates.trim() !== genEdu.dates.trim()) {
+    if (
+      (masterEdu.dates ?? "").trim() !== (genEdu.dates ?? "").trim() &&
+      // Only enforce date lock when master actually had dates.
+      (masterEdu.dates ?? "").trim().length > 0
+    ) {
       structural_errors.push({
         id: flagId(`education[${i}].dates`, "structural_drift"),
         path: `education[${i}].dates`,

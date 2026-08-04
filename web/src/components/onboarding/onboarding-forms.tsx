@@ -589,10 +589,12 @@ export function OnboardingForms({
               <strong className="text-on-surface">How to do it</strong>
             </p>
             <ol className="list-decimal pl-4 space-y-1.5">
-              <li>Open the resume reference → File → Make a copy</li>
-              <li>Replace the sample content with your real experience</li>
-              <li>Keep the same section headers and bullet layout</li>
-              <li>Paste your Doc URL into “Master resume Doc” and Sync</li>
+              <li>Open the resume reference → File → Make a copy (recommended)</li>
+              <li>Or use any clear Google Docs resume you already have</li>
+              <li>
+                Paste your Doc URL into “Master resume Doc” and Sync — we adapt to
+                your layout and keep your formatting on Apply
+              </li>
             </ol>
           </div>
           <p className="li-meta mt-auto rounded-md border border-border-hairline bg-surface-container-low px-3 py-2">
@@ -616,8 +618,8 @@ export function OnboardingForms({
               </div>
             </div>
             <p className="li-meta">
-              Required. Paste the Google Doc URL of the resume you built from
-              the structure reference, then sync.
+              Required. Paste your Google Doc URL, then Sync. Sync flags ATS
+              issues (e.g. missing Experience bullets) before saving.
             </p>
             <div>
               <Label>Google Docs URL</Label>
@@ -662,7 +664,11 @@ export function OnboardingForms({
                         setResumeSynced(Object.keys(res.content).length > 0);
                       }
                       setMessage(
-                        `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects).`,
+                        `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects, ${res.skills} skills)${
+                          res.sync_mode === "smart_agent"
+                            ? " · adapted to your Doc layout"
+                            : ""
+                        }.`,
                       );
                       router.refresh();
                     } catch (e) {
@@ -683,7 +689,8 @@ export function OnboardingForms({
               <h2 className="li-section-title">Cover letter Doc</h2>
             </div>
             <p className="li-meta">
-              Recommended. Greeting + body + sign-off template for Apply.
+              Recommended. Greeting + exactly 5 body paragraphs + Warm regards.
+              Sync flags ATS readiness before saving.
             </p>
             <div>
               <Label>Google Docs URL</Label>
@@ -765,7 +772,7 @@ export function OnboardingForms({
         </div>
       )}
       {error && (
-        <div className="fixed bottom-4 right-4 z-50 bg-error-container text-on-error-container border border-error/20 px-4 py-3 rounded-lg shadow-[var(--shadow-card)] text-sm">
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm bg-error-container text-on-error-container border border-error/20 px-4 py-3 rounded-lg shadow-[var(--shadow-card)] text-sm whitespace-pre-line">
           {error}
         </div>
       )}
