@@ -19,6 +19,9 @@ const PUBLIC_PREFIXES = [
   "/api/cron",
   "/api/health",
   "/api/billing/razorpay/webhook",
+  // Must stay public: Razorpay redirect can drop the session cookie; unlock
+  // still runs from signed callback params / API reconcile.
+  "/billing/razorpay/return",
 ];
 
 function isPublic(pathname: string) {
@@ -78,7 +81,9 @@ export async function middleware(request: NextRequest) {
 
   if (!token || !process.env.AUTH_SECRET) {
     const login = new URL("/login", request.url);
-    login.searchParams.set("next", pathname);
+    // Preserve query string (Razorpay callback params) through login.
+    const nextTarget = `${pathname}${request.nextUrl.search}`;
+    login.searchParams.set("next", nextTarget);
     return NextResponse.redirect(login);
   }
 
@@ -101,7 +106,8 @@ export async function middleware(request: NextRequest) {
     });
   } catch {
     const login = new URL("/login", request.url);
-    login.searchParams.set("next", pathname);
+    const nextTarget = `${pathname}${request.nextUrl.search}`;
+    login.searchParams.set("next", nextTarget);
     const res = NextResponse.redirect(login);
     res.cookies.delete(SESSION_COOKIE);
     return res;

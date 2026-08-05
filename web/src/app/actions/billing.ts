@@ -11,9 +11,14 @@ import {
 } from "@/lib/billing/payment-claims";
 import { notifyAdminsOfPaymentClaim } from "@/lib/billing/payment-claim-email";
 import { createPaymentLink } from "@/lib/billing/razorpay";
-import { insertRazorpayPaymentLink } from "@/lib/billing/razorpay-payment-links";
+import {
+  getLatestOpenRazorpayPaymentLinkForUser,
+  insertRazorpayPaymentLink,
+} from "@/lib/billing/razorpay-payment-links";
+import { reconcilePaidPaymentLink } from "@/lib/billing/razorpay-unlock";
 import { requireUser, userHasPaidAccess } from "@/lib/auth/user";
 import { env, hasRazorpayConfig } from "@/lib/env";
+import { headers } from "next/headers";
 
 const claimSchema = z.object({
   upi_reference: z
@@ -127,7 +132,8 @@ export async function startRazorpayPaymentLink(): Promise<
     }
 
     const referenceId = buildPaymentLinkReferenceId(user.id);
-    const appUrl = env.appUrl().replace(/\/$/, "");
+    const headerStore = await headers();
+    const appUrl = env.publicAppUrlFromHeaders(headerStore);
     const callbackUrl = `${appUrl}/billing/razorpay/return`;
 
     const link = await createPaymentLink({
@@ -173,4 +179,50 @@ export async function startRazorpayPaymentLink(): Promise<
   }
 
   redirect(shortUrl);
+}
+
+/**
+ * Called from the payment return poller — confirms paid status via Razorpay API
+ * when the webhook has not unlocked the account yet.
+ */
+export async function reconcileRazorpayPaymentReturn(input?: {
+  paymentLinkId?: string;
+  referenceId?: string;
+}): Promise<{ ok: true; paid: boolean } | { ok: false; error: string }> {
+  try {
+    const user = await requireUser();
+    if (userHasPaidAccess(user)) {
+      return { ok: true as const, paid: true };
+    }
+
+    let paymentLinkId = input?.paymentLinkId?.trim() || "";
+    let referenceId = input?.referenceId?.trim() || "";
+
+    if (!paymentLinkId && !referenceId) {
+      const open = await getLatestOpenRazorpayPaymentLinkForUser(user.id);
+      if (open) {
+        paymentLinkId = open.razorpay_payment_link_id;
+        referenceId = open.reference_id ?? "";
+      }
+    }
+
+    if (!paymentLinkId && !referenceId) {
+      return { ok: true as const, paid: false };
+    }
+
+    const result = await reconcilePaidPaymentLink({
+      paymentLinkId,
+      referenceId,
+      expectedUserId: user.id,
+      via: "return_poller_reconcile",
+    });
+
+    return { ok: true as const, paid: result.unlocked };
+  } catch (error) {
+    console.error("[billing] reconcileRazorpayPaymentReturn failed:", error);
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Something went wrong.",
+    };
+  }
 }

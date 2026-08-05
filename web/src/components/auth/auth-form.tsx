@@ -35,12 +35,23 @@ export function AuthForm({
         router.replace(
           result.user?.must_reset_password
             ? "/reset-password-required"
-            : result.user &&
-                "is_paid" in result.user &&
-                result.user.is_paid === false &&
-                !result.user.is_admin
-              ? "/billing"
-              : nextPath || "/dashboard",
+            : (() => {
+                const next = nextPath || "/dashboard";
+                const isPaymentReturn = next.startsWith(
+                  "/billing/razorpay/return",
+                );
+                // Let Razorpay return finish unlock even if still unpaid in JWT/DB.
+                if (isPaymentReturn) return next;
+                if (
+                  result.user &&
+                  "is_paid" in result.user &&
+                  result.user.is_paid === false &&
+                  !result.user.is_admin
+                ) {
+                  return "/billing";
+                }
+                return next;
+              })(),
         );
         router.refresh();
       } catch {

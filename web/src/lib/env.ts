@@ -12,6 +12,33 @@ function optional(name: string, fallback = ""): string {
 
 export const env = {
   appUrl: () => optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000"),
+  /**
+   * Prefer the request Host so Razorpay callback returns to the same origin
+   * the user is browsing (avoids localhost / apex / www cookie mismatches).
+   */
+  publicAppUrlFromHeaders: (headerStore: Headers): string => {
+    const configured = optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000").replace(
+      /\/$/,
+      "",
+    );
+    const host = (
+      headerStore.get("x-forwarded-host") ||
+      headerStore.get("host") ||
+      ""
+    )
+      .split(",")[0]
+      ?.trim();
+    if (!host || host.startsWith("localhost") || host.startsWith("127.0.0.1")) {
+      return configured;
+    }
+    const proto = (
+      headerStore.get("x-forwarded-proto") ||
+      (configured.startsWith("http://") ? "http" : "https")
+    )
+      .split(",")[0]
+      ?.trim();
+    return `${proto}://${host}`.replace(/\/$/, "");
+  },
   databaseUrl: () => required("DATABASE_URL"),
   /** Used to sign session cookies - generate with: openssl rand -base64 32 */
   authSecret: () => required("AUTH_SECRET"),

@@ -47,14 +47,20 @@ export default async function AppLayout({
   if (user && !isPaid && pathname && !unpaidAllowed(pathname)) {
     redirect("/billing");
   }
-  // Paid users leave the entire billing tree (offer page + Razorpay return).
+  // Paid users leave billing; after payment always prefer onboarding.
   if (
     user &&
     isPaid &&
     pathname &&
     (pathname === "/billing" || pathname.startsWith("/billing/"))
   ) {
-    redirect(readiness.setupReady ? "/dashboard" : "/onboarding");
+    redirect(
+      pathname.startsWith("/billing/razorpay/return")
+        ? "/onboarding"
+        : readiness.setupReady
+          ? "/dashboard"
+          : "/onboarding",
+    );
   }
   if (
     user &&

@@ -3,31 +3,62 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { reconcileRazorpayPaymentReturn } from "@/app/actions/billing";
 
-const POLL_INTERVAL_MS = 3000;
-const MAX_ATTEMPTS = 10;
+const POLL_INTERVAL_MS = 2500;
+const MAX_ATTEMPTS = 12;
 
 /**
- * Shown while we wait for the Razorpay webhook to confirm the payment.
- * Refreshes the server page on an interval; the page redirects once paid.
+ * Shown while we wait for payment confirmation.
+ * Polls Razorpay via a server action (not only webhook lag).
  */
-export function PaymentReturnPoller() {
+export function PaymentReturnPoller({
+  paymentLinkId,
+  referenceId,
+}: {
+  paymentLinkId?: string;
+  referenceId?: string;
+}) {
   const router = useRouter();
   const [attempts, setAttempts] = useState(0);
   const attemptsRef = useRef(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (attemptsRef.current >= MAX_ATTEMPTS) {
-        clearInterval(timer);
-        return;
-      }
+    let cancelled = false;
+
+    async function tick() {
+      if (attemptsRef.current >= MAX_ATTEMPTS) return;
       attemptsRef.current += 1;
       setAttempts(attemptsRef.current);
+
+      const result = await reconcileRazorpayPaymentReturn({
+        paymentLinkId,
+        referenceId,
+      });
+      if (cancelled) return;
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      if (result.paid) {
+        router.replace("/onboarding");
+        router.refresh();
+        return;
+      }
       router.refresh();
+    }
+
+    void tick();
+    const timer = setInterval(() => {
+      void tick();
     }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [router]);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [paymentLinkId, referenceId, router]);
 
   const stillWaiting = attempts >= MAX_ATTEMPTS;
 
@@ -51,13 +82,27 @@ export function PaymentReturnPoller() {
               the payment, your account will unlock automatically — you can
               check back in a minute.
             </p>
+            {error ? (
+              <p className="mt-2 text-[12px] text-error">{error}</p>
+            ) : null}
             <div className="mt-5 flex flex-col items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
                   attemptsRef.current = 0;
                   setAttempts(0);
-                  router.refresh();
+                  setError(null);
+                  void reconcileRazorpayPaymentReturn({
+                    paymentLinkId,
+                    referenceId,
+                  }).then((result) => {
+                    if (result.ok && result.paid) {
+                      router.replace("/onboarding");
+                      router.refresh();
+                      return;
+                    }
+                    router.refresh();
+                  });
                 }}
                 className="li-btn-primary bp-cta w-full max-w-xs justify-center gap-2"
               >

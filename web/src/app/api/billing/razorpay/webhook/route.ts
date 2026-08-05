@@ -1,20 +1,23 @@
 import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
-import { writeAuditLog } from "@/lib/audit";
-import { setUserPaid } from "@/lib/auth/user";
 import { verifyWebhookSignature } from "@/lib/billing/razorpay";
 import {
   getRazorpayPaymentLinkByRazorpayId,
   getRazorpayPaymentLinkByReferenceId,
-  markRazorpayPaymentLinkPaid,
-  type RazorpayPaymentLinkRow,
 } from "@/lib/billing/razorpay-payment-links";
+import {
+  reconcilePaidPaymentLink,
+  unlockFromPaymentLinkRow,
+  unlockUserById,
+} from "@/lib/billing/razorpay-unlock";
+
+export const runtime = "nodejs";
 
 type WebhookEntity = {
   id?: string;
   reference_id?: string;
   status?: string;
-  notes?: Record<string, unknown> | null;
+  notes?: Record<string, unknown> | unknown[] | null;
+  description?: string | null;
 };
 
 function entityFrom(
@@ -26,40 +29,10 @@ function entityFrom(
 }
 
 function noteUserId(entity: WebhookEntity | null): string {
-  const value = entity?.notes?.user_id;
+  const notes = entity?.notes;
+  if (!notes || typeof notes !== "object" || Array.isArray(notes)) return "";
+  const value = (notes as Record<string, unknown>).user_id;
   return typeof value === "string" ? value : "";
-}
-
-function revalidateAfterPaid() {
-  revalidatePath("/billing");
-  revalidatePath("/onboarding");
-  revalidatePath("/dashboard");
-  revalidatePath("/", "layout");
-}
-
-async function unlockFromPaymentLink(
-  link: RazorpayPaymentLinkRow,
-  paymentId: string,
-  event: string,
-): Promise<void> {
-  const alreadyPaid = link.status === "paid";
-  if (!alreadyPaid) {
-    await markRazorpayPaymentLinkPaid(link.razorpay_payment_link_id, paymentId);
-  }
-  await setUserPaid(link.user_id, true);
-  if (!alreadyPaid) {
-    await writeAuditLog(
-      "payment.razorpay_link_paid",
-      "razorpay_payment_links",
-      link.id,
-      {
-        razorpay_payment_link_id: link.razorpay_payment_link_id,
-        razorpay_payment_id: paymentId,
-        via: event,
-      },
-    );
-  }
-  revalidateAfterPaid();
 }
 
 export async function POST(request: Request) {
@@ -67,6 +40,7 @@ export async function POST(request: Request) {
   const signature = request.headers.get("x-razorpay-signature");
 
   if (!verifyWebhookSignature(rawBody, signature)) {
+    console.error("[razorpay webhook] invalid signature");
     return NextResponse.json({ error: "Invalid signature." }, { status: 401 });
   }
 
@@ -98,33 +72,42 @@ export async function POST(request: Request) {
       }
 
       if (link) {
-        await unlockFromPaymentLink(link, paymentId, event);
+        await unlockFromPaymentLinkRow(link, paymentId, event);
       } else {
-        // Row missing (e.g. created from dashboard) — fall back to notes.user_id.
         const userId = noteUserId(linkEntity);
         if (userId) {
-          await setUserPaid(userId, true);
-          await writeAuditLog("payment.razorpay_link_paid", "users", userId, {
+          await unlockUserById(userId, `${event} (notes.user_id fallback)`, {
             razorpay_payment_link_id: linkEntity?.id ?? null,
-            razorpay_payment_id: paymentId,
-            via: `${event} (notes.user_id fallback)`,
+            razorpay_payment_id: paymentId || null,
           });
-          revalidateAfterPaid();
+        } else if (linkEntity?.id) {
+          // Last resort: confirm via Razorpay API fetch.
+          await reconcilePaidPaymentLink({
+            paymentLinkId: linkEntity.id,
+            referenceId: linkEntity.reference_id,
+            via: `${event} (api reconcile)`,
+          });
+        } else {
+          console.error("[razorpay webhook] payment_link.paid unmatched", {
+            linkId: linkEntity?.id ?? null,
+            referenceId: linkEntity?.reference_id ?? null,
+          });
         }
       }
     } else if (event === "payment.captured") {
       const paymentEntity = entityFrom(body.payload, "payment");
       const userId = noteUserId(paymentEntity);
       if (userId) {
-        await setUserPaid(userId, true);
-        await writeAuditLog("payment.razorpay_captured", "users", userId, {
+        await unlockUserById(userId, event, {
           razorpay_payment_id: paymentEntity?.id ?? null,
-          via: event,
         });
-        revalidateAfterPaid();
+      } else {
+        // Payment notes are often empty for Payment Links — ignore quietly.
+        console.info(
+          "[razorpay webhook] payment.captured without notes.user_id; waiting for payment_link.paid",
+        );
       }
     }
-    // Unknown events: acknowledge so Razorpay stops retrying.
   } catch (error) {
     console.error("[razorpay webhook] processing failed:", error);
     return NextResponse.json({ error: "Processing failed." }, { status: 500 });

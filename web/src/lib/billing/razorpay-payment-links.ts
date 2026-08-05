@@ -94,6 +94,19 @@ export async function getRazorpayPaymentLinkByReferenceId(
   return row ? mapRow(row) : null;
 }
 
+export async function getLatestOpenRazorpayPaymentLinkForUser(
+  userId: string,
+): Promise<RazorpayPaymentLinkRow | null> {
+  const row = (await dbGet(
+    `SELECT * FROM razorpay_payment_links
+      WHERE user_id = ? AND status = 'created'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    userId,
+  )) as Record<string, unknown> | undefined;
+  return row ? mapRow(row) : null;
+}
+
 export async function markRazorpayPaymentLinkPaid(
   razorpayPaymentLinkId: string,
   razorpayPaymentId: string,
