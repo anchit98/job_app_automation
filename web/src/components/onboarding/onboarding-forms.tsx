@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { upsertProfile, syncSignatureLinksFromResume } from "@/app/actions/profile";
 import { upsertMasterResume } from "@/app/actions/master-resume";
 import { syncMasterFromGoogleDoc } from "@/app/actions/master-resume-sync";
 import { syncCoverLetterFromGoogleDoc } from "@/app/actions/cover-letter-sync";
-import { setSetupGuideCollapsed } from "@/app/actions/setup";
+import { setSetupGuideCollapsed, resetSetupAll, resetSetupCoverLetter, resetSetupMasterResume, resetSetupProfile } from "@/app/actions/setup";
 import { ProfileAvatarUploader } from "@/components/profile/profile-avatar-uploader";
 import { GoogleAccountMenu } from "@/components/google/google-account-menu";
 import { Button } from "@/components/ui/button";
@@ -85,10 +85,18 @@ export function OnboardingForms({
   const [resumeSynced, setResumeSynced] = useState(
     hasMasterResumeContent(masterResume?.content),
   );
-  const [minimized, setMinimized] = useState(
-    Boolean(profile?.setup_guide_collapsed),
+  // Incomplete setup always starts expanded so post-payment onboarding is clear.
+  // Collapsed preference only applies after setup is finished.
+  const [minimized, setMinimized] = useState(() =>
+    setupReady ? Boolean(profile?.setup_guide_collapsed) : false,
   );
   const [panelOpen, setPanelOpen] = useState(false);
+
+  useEffect(() => {
+    if (!setupReady && profile?.setup_guide_collapsed) {
+      void setSetupGuideCollapsed(false).catch(() => {});
+    }
+  }, [setupReady, profile?.setup_guide_collapsed]);
 
   const profileDone = profileFieldsComplete({
     full_name: fullName,
@@ -125,6 +133,66 @@ export function OnboardingForms({
     if (next) setPanelOpen(false);
     void setSetupGuideCollapsed(next).catch(() => {
       setMinimized(!next);
+    });
+  }
+
+  function clearProfileFieldsLocal() {
+    setFullName("");
+    setHeadline("");
+    setLocation("");
+    setPhone("");
+    setLinkedinUrl("");
+    setGithubUrl("");
+    setPortfolioUrl("");
+  }
+
+  function clearResumeFieldsLocal() {
+    setDocId("");
+    setResumeJson(blankMasterResumeJson());
+    setResumeSynced(false);
+  }
+
+  function clearCoverLetterFieldsLocal() {
+    setCoverLetterDocId("");
+  }
+
+  function runReset(
+    kind: "profile" | "resume" | "cover" | "all",
+    confirmMessage: string,
+  ) {
+    if (!window.confirm(confirmMessage)) return;
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        if (kind === "all") {
+          await resetSetupAll();
+          clearProfileFieldsLocal();
+          clearResumeFieldsLocal();
+          clearCoverLetterFieldsLocal();
+        } else if (kind === "profile") {
+          await resetSetupProfile();
+          clearProfileFieldsLocal();
+        } else if (kind === "resume") {
+          await resetSetupMasterResume();
+          clearResumeFieldsLocal();
+        } else {
+          await resetSetupCoverLetter();
+          clearCoverLetterFieldsLocal();
+        }
+        setMessage(
+          kind === "all"
+            ? "Profile, resume, and cover letter values were reset."
+            : kind === "profile"
+              ? "Profile values were reset."
+              : kind === "resume"
+                ? "Master resume sync was reset."
+                : "Cover letter sync was reset.",
+        );
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Reset failed");
+      }
     });
   }
 
@@ -222,6 +290,23 @@ export function OnboardingForms({
       <div className="flex items-center justify-between gap-3">
         <h1 className="li-page-title">Profile</h1>
         <div className="relative flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                runReset(
+                  "all",
+                  "Reset all setup values (profile, resume Doc, and cover letter Doc)? This cannot be undone.",
+                )
+              }
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border-hairline px-3 text-[13px] font-semibold text-on-surface-variant transition-colors hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
+              title="Reset profile, resume, and cover letter"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">
+                restart_alt
+              </span>
+              <span className="leading-none hidden sm:inline">Reset all</span>
+            </button>
             {minimized ? (
               <div className="relative">
                 {panelOpen ? (
@@ -422,9 +507,28 @@ export function OnboardingForms({
         {/* Profile */}
         <div className="lg:col-span-4 li-card p-4 space-y-4">
           <div className="space-y-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
-              Step 2
-            </span>
+            <div className="flex items-start justify-between gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
+                Step 2
+              </span>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  runReset(
+                    "profile",
+                    "Reset all profile fields and remove your avatar?",
+                  )
+                }
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-on-surface-variant hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
+                title="Reset profile"
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  restart_alt
+                </span>
+                Reset
+              </button>
+            </div>
             <h2 className="li-section-title">Your profile</h2>
             <p className="li-meta">
               Full name, location, contact number, and LinkedIn are required.
@@ -607,9 +711,28 @@ export function OnboardingForms({
         <div className="lg:col-span-4 flex flex-col gap-3">
           <div className="li-card p-4 space-y-3">
             <div className="space-y-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
-                Step 3 · sync
-              </span>
+              <div className="flex items-start justify-between gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
+                  Step 3 · sync
+                </span>
+                <button
+                  type="button"
+                  disabled={pending || syncing}
+                  onClick={() =>
+                    runReset(
+                      "resume",
+                      "Clear the master resume Doc URL and synced resume data?",
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-on-surface-variant hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
+                  title="Reset master resume"
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    restart_alt
+                  </span>
+                  Reset
+                </button>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">
                   description
@@ -684,9 +807,28 @@ export function OnboardingForms({
           </div>
 
           <div className="li-card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">mail</span>
-              <h2 className="li-section-title">Cover letter Doc</h2>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="material-symbols-outlined text-primary">mail</span>
+                <h2 className="li-section-title">Cover letter Doc</h2>
+              </div>
+              <button
+                type="button"
+                disabled={pending || syncingCoverLetter}
+                onClick={() =>
+                  runReset(
+                    "cover",
+                    "Clear the cover letter Doc URL and synced template?",
+                  )
+                }
+                className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-on-surface-variant hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
+                title="Reset cover letter"
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  restart_alt
+                </span>
+                Reset
+              </button>
             </div>
             <p className="li-meta">
               Recommended. Greeting + exactly 5 body paragraphs + Warm regards.
