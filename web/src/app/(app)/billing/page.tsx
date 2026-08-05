@@ -1,17 +1,31 @@
 import { redirect } from "next/navigation";
 import { requireUser, userHasPaidAccess } from "@/lib/auth/user";
-import { getLatestPaymentClaim } from "@/lib/billing/payment-claims";
-import { env } from "@/lib/env";
+import { env, hasRazorpayConfig } from "@/lib/env";
 import { getSetupReadiness } from "@/lib/setup/readiness";
-import { PaymentClaimForm } from "@/components/billing/payment-claim-form";
-import { CopyUpiButton } from "@/components/billing/copy-upi-button";
-import { ShowUpiQrButton } from "@/components/billing/show-upi-qr-button";
+import { RazorpayPayButton } from "@/components/billing/razorpay-pay-button";
 
 const includedFeatures = [
-  { icon: "all_inclusive", label: "Lifetime access" },
-  { icon: "confirmation_number", label: "60 applications included" },
-  { icon: "account_tree", label: "Full Apply pipeline" },
-  { icon: "support_agent", label: "One-time setup support" },
+  { label: "60 applications" },
+  { label: "Full Apply pipeline" },
+  { label: "Setup support" },
+];
+
+const trustPoints = [
+  {
+    icon: "lock",
+    title: "Secure checkout",
+    detail: "Payments are processed by Razorpay. We never see your card or UPI details.",
+  },
+  {
+    icon: "bolt",
+    title: "Instant activation",
+    detail: "Your account unlocks automatically within moments of a successful payment.",
+  },
+  {
+    icon: "receipt_long",
+    title: "One-time payment",
+    detail: "No subscriptions, auto-renewals, or hidden charges — pay once, keep access.",
+  },
 ];
 
 export default async function BillingPage() {
@@ -21,33 +35,60 @@ export default async function BillingPage() {
     redirect(readiness?.setupReady ? "/dashboard" : "/onboarding");
   }
 
-  const claim = await getLatestPaymentClaim(user.id);
-  const upiId = env.upiId();
   const amount = env.paymentAmountInr();
   const planLabel = env.paymentPlanLabel();
-  const hasPending = claim?.status === "pending";
+  const razorpayReady = hasRazorpayConfig();
 
   return (
-    <div className="mx-auto max-w-xl space-y-4 py-1 sm:py-2">
-      {/* Offer hero */}
-      <section className="bp-hero overflow-hidden rounded-2xl px-5 pb-6 pt-7 text-center sm:px-8">
+    <>
+      {/* Ambient animated background spanning the whole main area */}
+      <div className="bp-ambient" aria-hidden>
+        <span className="bp-orb bp-orb--1" />
+        <span className="bp-orb bp-orb--2" />
+        <span className="bp-orb bp-orb--3" />
+        <span className="bp-ring bp-ring--1" />
+        <span className="bp-ring bp-ring--2" />
+        <span className="bp-float-dot bp-float-dot--1" />
+        <span className="bp-float-dot bp-float-dot--2" />
+        <span className="bp-float-dot bp-float-dot--3" />
+      </div>
+
+      <div className="relative z-[1] mx-auto flex w-full max-w-xl flex-1 flex-col justify-center pb-6 md:pb-10">
+      <section className="bp-hero bp-rise overflow-hidden rounded-2xl px-5 pb-6 pt-6 text-center sm:px-8 sm:pb-7 sm:pt-7">
         <div className="bp-hero-grid" aria-hidden />
+
+        {/* Floating decorative icons */}
+        <span
+          className="bp-spark material-symbols-outlined left-5 top-16 text-[22px] sm:left-8"
+          aria-hidden
+        >
+          workspace_premium
+        </span>
+        <span
+          className="bp-spark bp-spark--slow material-symbols-outlined right-5 top-24 hidden text-[20px] sm:right-9 sm:block"
+          aria-hidden
+        >
+          rocket_launch
+        </span>
+
         <div className="relative">
-          <p className="inline-flex items-center gap-1.5 rounded-full border border-border-hairline bg-surface px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-primary">
+          <p className="bp-rise inline-flex items-center gap-1.5 rounded-full border border-border-hairline bg-surface px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary">
             <span className="material-symbols-outlined text-[14px]">bolt</span>
             Launch offer · first 100 buyers
           </p>
-          <h1 className="mt-4 text-[22px] font-semibold leading-tight tracking-[-0.01em] text-on-surface sm:text-[24px]">
+          <h1 className="bp-rise bp-d1 mt-3 text-[21px] font-semibold leading-tight tracking-[-0.01em] text-on-surface sm:text-[24px]">
             Activate JobApp OS
           </h1>
-          <p className="mt-1 text-[13px] text-on-surface-variant">{planLabel}</p>
-          <p className="bp-price mt-3 text-[56px] font-bold leading-none">
+          <p className="bp-rise bp-d1 mt-1 text-[13px] text-on-surface-variant">
+            {planLabel}
+          </p>
+          <p className="bp-price bp-price-animated bp-rise bp-d2 mt-2 text-[48px] font-bold leading-none sm:text-[54px]">
             ₹{amount}
           </p>
-          <p className="mt-2 text-[13px] text-on-surface-variant">
+          <p className="bp-rise bp-d2 mt-1.5 text-[12px] text-on-surface-variant">
             Lifetime access. 60 applications included.
           </p>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <div className="bp-rise bp-d3 mt-4 flex flex-wrap items-center justify-center gap-1.5">
             {includedFeatures.map((feature) => (
               <span key={feature.label} className="bp-chip">
                 <span className="material-symbols-outlined" aria-hidden>
@@ -57,81 +98,40 @@ export default async function BillingPage() {
               </span>
             ))}
           </div>
+
+          {razorpayReady ? (
+            <RazorpayPayButton
+              amountInr={amount}
+              className="bp-rise bp-d4 mx-auto mt-5 max-w-sm space-y-2"
+            />
+          ) : null}
         </div>
       </section>
 
-      {/* Step 1 — pay */}
-      <section className="li-card space-y-4 p-4 sm:p-5">
-        <div className="flex items-center gap-3">
-          <span className="bp-step-badge">1</span>
-          <div className="min-w-0">
-            <h2 className="li-section-title">Pay ₹{amount} with UPI</h2>
-            <p className="li-meta mt-0.5">
-              Scan the QR or pay directly to the UPI ID below.
-            </p>
-          </div>
-        </div>
-
-        {upiId ? (
-          <>
-            <code className="bp-upi-code">{upiId}</code>
-            <div className="mobile-action-row md:flex md:flex-wrap md:items-center">
-              <CopyUpiButton upiId={upiId} />
-              <ShowUpiQrButton
-                upiId={upiId}
-                amountInr={amount}
-                planLabel={planLabel}
-              />
-            </div>
-            <a
-              href={`upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent("JobApp OS")}&am=${encodeURIComponent(amount)}&cu=INR&tn=${encodeURIComponent(planLabel)}`}
-              className="li-btn-primary inline-flex w-full justify-center gap-2 text-[13px] no-underline"
-            >
-              <span className="material-symbols-outlined text-[18px]" aria-hidden>
-                currency_rupee
+      {/* Trust strip between the offer card and the footer */}
+      <div className="relative grid shrink-0 gap-2 pb-2 pt-3 sm:grid-cols-3">
+        {trustPoints.map((point, i) => (
+          <div
+            key={point.title}
+            className={`li-card-flat bp-trust bp-rise bp-d${4 + i} flex items-start gap-2.5 p-3 text-left`}
+          >
+            <span className="bp-trust-icon" aria-hidden>
+              <span className="material-symbols-outlined text-[17px]">
+                {point.icon}
               </span>
-              Open UPI app
-            </a>
-            <p className="li-meta leading-relaxed">
-              Works with GPay, PhonePe, Paytm, and every other UPI app. Use your
-              account email ({user.email}) in the payment note if asked.
-            </p>
-          </>
-        ) : (
-          <p className="li-meta">
-            UPI payment is not configured yet. Ask the admin to set the UPI ID.
-          </p>
-        )}
-      </section>
-
-      {/* Step 2 — confirm */}
-      <section className="li-card space-y-4 p-4 sm:p-5">
-        <div className="flex items-center gap-3">
-          <span className="bp-step-badge">2</span>
-          <div className="min-w-0">
-            <h2 className="li-section-title">Submit your payment reference</h2>
-            <p className="li-meta mt-0.5">
-              Paste the UTR / transaction ID from your UPI app.
-            </p>
+            </span>
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold text-on-surface">
+                {point.title}
+              </p>
+              <p className="li-meta mt-0.5 text-[11px] leading-snug">
+                {point.detail}
+              </p>
+            </div>
           </div>
-        </div>
-        <PaymentClaimForm hasPendingClaim={hasPending} />
-      </section>
-
-      {/* What happens next */}
-      <section className="li-card-flat flex items-start gap-3 p-4">
-        <span
-          className="material-symbols-outlined mt-0.5 text-[20px] text-primary"
-          aria-hidden
-        >
-          verified_user
-        </span>
-        <p className="text-[13px] leading-relaxed text-on-surface-variant">
-          An admin verifies your transfer and unlocks your account — usually
-          within a few hours. You&apos;ll continue to one-time setup (Connect
-          Google + profile), then Dashboard and Apply unlock.
-        </p>
-      </section>
-    </div>
+        ))}
+      </div>
+      </div>
+    </>
   );
 }

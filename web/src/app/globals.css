@@ -262,6 +262,13 @@ html {
     overflow: hidden;
   }
 
+  /* Billing: normal document flow on mobile (footer scrolls with content) */
+  .app-shell--flow {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
   .li-page-title {
     font-size: 20px;
     line-height: 28px;
@@ -914,6 +921,332 @@ html {
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bp-chip:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border-hairline));
+  box-shadow: 0 6px 16px -10px color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
+/* ---- Billing page ambience + motion ---- */
+
+/* Ambient background for the billing main area (applied via .app-shell--flow) */
+.app-shell--flow > main {
+  position: relative;
+  isolation: isolate;
+  background-image:
+    radial-gradient(
+      circle at 12% 18%,
+      color-mix(in srgb, var(--primary) 9%, transparent),
+      transparent 40%
+    ),
+    radial-gradient(
+      circle at 88% 80%,
+      color-mix(in srgb, #2f8dff 9%, transparent),
+      transparent 42%
+    ),
+    radial-gradient(
+      color-mix(in srgb, var(--on-surface) 6%, transparent) 1px,
+      transparent 1px
+    );
+  background-size:
+    auto,
+    auto,
+    24px 24px;
+}
+
+/* Ambient animated layer (rendered by the billing page, spans main) */
+.bp-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bp-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(42px);
+}
+
+.bp-orb--1 {
+  width: 340px;
+  height: 340px;
+  top: -100px;
+  left: -70px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--primary) 40%, transparent),
+    transparent 70%
+  );
+  animation: bp-orb-1 12s ease-in-out infinite alternate;
+}
+
+.bp-orb--2 {
+  width: 320px;
+  height: 320px;
+  bottom: -90px;
+  right: -60px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #2f8dff 36%, transparent),
+    transparent 70%
+  );
+  animation: bp-orb-2 15s ease-in-out infinite alternate;
+}
+
+.bp-orb--3 {
+  width: 220px;
+  height: 220px;
+  top: 42%;
+  left: 4%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #7c5cff 26%, transparent),
+    transparent 70%
+  );
+  animation: bp-orb-3 18s ease-in-out infinite alternate;
+}
+
+.bp-ring {
+  position: absolute;
+  border-radius: 999px;
+}
+
+.bp-ring--1 {
+  width: 150px;
+  height: 150px;
+  top: 14%;
+  right: 10%;
+  border: 1.5px dashed color-mix(in srgb, var(--primary) 38%, transparent);
+  animation: bp-spin 28s linear infinite;
+}
+
+.bp-ring--2 {
+  width: 90px;
+  height: 90px;
+  bottom: 18%;
+  left: 12%;
+  border: 1.5px dashed color-mix(in srgb, #2f8dff 34%, transparent);
+  animation: bp-spin 20s linear infinite reverse;
+}
+
+.bp-float-dot {
+  position: absolute;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.bp-float-dot--1 {
+  width: 10px;
+  height: 10px;
+  top: 26%;
+  left: 16%;
+  animation: bp-dot-drift 7s ease-in-out infinite alternate;
+}
+
+.bp-float-dot--2 {
+  width: 7px;
+  height: 7px;
+  top: 62%;
+  right: 18%;
+  background: color-mix(in srgb, #2f8dff 45%, transparent);
+  animation: bp-dot-drift 9s ease-in-out infinite alternate-reverse;
+}
+
+.bp-float-dot--3 {
+  width: 5px;
+  height: 5px;
+  top: 12%;
+  right: 30%;
+  background: color-mix(in srgb, #7c5cff 45%, transparent);
+  animation: bp-dot-drift 11s ease-in-out infinite alternate;
+}
+
+/* Staggered entrance */
+.bp-rise {
+  animation: bp-rise 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.bp-d1 { animation-delay: 0.08s; }
+.bp-d2 { animation-delay: 0.16s; }
+.bp-d3 { animation-delay: 0.24s; }
+.bp-d4 { animation-delay: 0.32s; }
+.bp-d5 { animation-delay: 0.4s; }
+.bp-d6 { animation-delay: 0.48s; }
+
+/* Price shine sweep */
+.bp-price-animated {
+  background-size: 200% auto;
+  animation: bp-shine 3.6s linear infinite;
+}
+
+/* Floating decorative icons inside the hero */
+.bp-spark {
+  position: absolute;
+  pointer-events: none;
+  color: color-mix(in srgb, var(--primary) 60%, transparent);
+  opacity: 0.55;
+  animation: bp-bob 5.5s ease-in-out infinite;
+}
+
+.bp-spark--slow {
+  animation-duration: 7.5s;
+  animation-delay: 1.2s;
+}
+
+/* Hero sheen sweep */
+.bp-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    color-mix(in srgb, var(--primary) 9%, transparent) 50%,
+    transparent 60%
+  );
+  background-size: 250% 100%;
+  animation: bp-sheen 6s ease-in-out infinite;
+}
+
+/* CTA glow */
+.bp-cta {
+  box-shadow: 0 12px 30px -12px color-mix(in srgb, var(--primary) 75%, transparent);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bp-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 38px -12px color-mix(in srgb, var(--primary) 90%, transparent);
+}
+
+.bp-cta:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Trust tiles */
+.bp-trust {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.bp-trust:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border-hairline));
+  box-shadow: 0 14px 28px -18px color-mix(in srgb, var(--primary) 55%, rgba(0, 0, 0, 0.4));
+}
+
+.bp-trust .bp-trust-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 11%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, transparent);
+  color: var(--primary);
+}
+
+@keyframes bp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bp-shine {
+  to {
+    background-position: 200% center;
+  }
+}
+
+@keyframes bp-sheen {
+  0%,
+  55% {
+    background-position: 210% 0;
+  }
+  100% {
+    background-position: -60% 0;
+  }
+}
+
+@keyframes bp-orb-1 {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(90px, 70px, 0) scale(1.15);
+  }
+}
+
+@keyframes bp-orb-2 {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(-110px, -70px, 0) scale(0.9);
+  }
+}
+
+@keyframes bp-orb-3 {
+  from {
+    transform: translate3d(0, -40px, 0);
+  }
+  to {
+    transform: translate3d(70px, 50px, 0);
+  }
+}
+
+@keyframes bp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bp-dot-drift {
+  from {
+    transform: translate3d(0, -18px, 0);
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(24px, 18px, 0);
+    opacity: 0.6;
+  }
+}
+
+@keyframes bp-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(-9px) rotate(5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-rise,
+  .bp-price-animated,
+  .bp-spark,
+  .bp-hero::after,
+  .bp-orb,
+  .bp-ring,
+  .bp-float-dot {
+    animation: none;
+  }
 }
 
 .bp-chip .material-symbols-outlined {

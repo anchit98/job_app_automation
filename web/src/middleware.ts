@@ -18,6 +18,7 @@ const PUBLIC_PREFIXES = [
   "/api/extension",
   "/api/cron",
   "/api/health",
+  "/api/billing/razorpay/webhook",
 ];
 
 function isPublic(pathname: string) {

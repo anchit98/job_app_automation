@@ -253,6 +253,43 @@ These bite everywhere — they must be handled in shared code, not per-phase.
   - *Mitigation:* Zod schema rejects unknown fields. The HTML renderer escapes all string content by default. DOCX generation uses parameterized library APIs — no string concatenation into XML.
   - *Severity:* High if unaddressed.
 
+### 1.8 Billing (Razorpay Payment Links)
+
+- **Webhook arrives twice (`payment_link.paid` replay).**
+  - *Symptom:* Duplicate unlock attempts / duplicate audit noise.
+  - *Mitigation:* `markRazorpayPaymentLinkPaid` + `setUserPaid` are idempotent; already-paid links skip re-audit and still return `200` so Razorpay stops retrying.
+  - *Severity:* Low.
+
+- **User cancels or abandons the Razorpay hosted page.**
+  - *Symptom:* Link stays `created`; user remains unpaid.
+  - *Mitigation:* Expected. `/billing` can create a fresh link on the next Pay click. No unlock without webhook / verified callback.
+  - *Severity:* Low.
+
+- **User already paid, hits Pay or `/billing` again.**
+  - *Symptom:* Confusing double-pay UX.
+  - *Mitigation:* `startRazorpayPaymentLink` rejects already-paid users; app layout redirects paid users off the entire `/billing` tree to onboarding/dashboard.
+  - *Severity:* Low (blocked).
+
+- **Return URL arrives before the webhook (lag).**
+  - *Symptom:* Brief “Confirming payment…” state.
+  - *Mitigation:* Optional callback signature fast path unlocks when params verify; otherwise `PaymentReturnPoller` refreshes until `is_paid` is true (soft timeout, never a hard permanent error).
+  - *Severity:* Low.
+
+- **Return query params forged without a valid signature.**
+  - *Symptom:* Attempted free unlock.
+  - *Mitigation:* Unlock from return params only after `validatePaymentVerification` with the key secret; webhook remains source of truth.
+  - *Severity:* High if skipped; mitigated in code.
+
+- **Webhook signature invalid / secret mismatch.**
+  - *Symptom:* Payments succeed on Razorpay but app stays unpaid.
+  - *Mitigation:* Route returns `401`; check `RAZORPAY_WEBHOOK_SECRET` matches dashboard; never unlock without verify. Admin **Mark paid** is the support override.
+  - *Severity:* High until fixed.
+
+- **Payment link row missing (e.g. link created outside the app).**
+  - *Symptom:* Webhook cannot map by Razorpay id.
+  - *Mitigation:* `payment_link.paid` falls back to `notes.user_id` when present; Admin Mark paid otherwise.
+  - *Severity:* Medium.
+
 ---
 
 ## 2. Phase 0 — Foundations
@@ -749,5 +786,6 @@ For every phase's exit criterion (in `architecture.md` §6), add these smoke-tes
 
 ## 13. Change Log
 
+- **v0.3** — Razorpay Payment Links billing edge cases (§1.8): webhook replay, abandon/cancel, already paid, return lag, forged callback, bad webhook secret, missing link row.
 - **v0.2** — Tracks `architecture.md` v0.4. Removed Upstash Redis from all concurrency-control mitigations; replaced with Postgres-native patterns (atomic UPDATE-with-WHERE, unique constraints, `pg_advisory_xact_lock`). Dropped the "Upstash Redis is down" cross-cutting case in favour of a "cron + user retry collision" case handled by atomic status transitions.
 - **v0.1** — Initial edge-case catalogue derived from `architecture.md` v0.3. Organized by phase with cross-cutting concerns pulled to §1 and adversarial cases pulled to §11.

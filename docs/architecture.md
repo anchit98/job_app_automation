@@ -123,7 +123,8 @@ flowchart LR
 | `users` | PK `id` | Accounts (`is_admin`, `must_reset_password`, `is_paid`, `paid_at`) |
 | `sessions` | FK `user_id` | Active sessions |
 | `password_reset_tokens` | FK `user_id` | One-time email reset links |
-| `payment_claims` | FK `user_id` | Manual UPI payment reviews |
+| `payment_claims` | FK `user_id` | Legacy manual UPI payment reviews |
+| `razorpay_payment_links` | FK `user_id` | Razorpay Payment Link rows (`created` / `paid` / …) |
 | `profiles` | PK `user_id` | Name, location, phone, links, avatar; timezone defaults to `Asia/Kolkata` |
 | `master_resume` | PK `user_id` | Resume JSON + Doc sync |
 | `master_cover_letter` | PK `user_id` | Cover letter Doc sync |
@@ -256,7 +257,7 @@ Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`, `li
 - Light + dark + system theme (`applyforge_theme`)  
 - Desktop nav: Dashboard · Apply · Jobs (+ Admin) + Me  
 - Mobile: bottom tabs + compact header  
-- Billing QR / UPI; Admin Center payment claims  
+- Billing: Razorpay Payment Links + webhook unlock; Admin Center recent links + Mark paid  
 
 ---
 
@@ -276,14 +277,16 @@ Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`, `li
 | `/onboarding` | **Profile** — Google connect, profile fields, master resume/cover |
 | `/prompts` | Prompts inbox |
 | `/settings` | Privacy & Settings (password / account; links to Profile) |
-| `/billing` | Manual UPI + QR paywall (launch offer copy) |
-| `/review-payment/[token]` | Signed mobile payment review |
-| `/admin-center` | Admin user + payment management |
+| `/billing` | Razorpay Payment Link paywall (launch offer) |
+| `/billing/razorpay/return` | Post-payment confirm / poll until unlocked |
+| `/review-payment/[token]` | Legacy signed mobile UPI claim review |
+| `/admin-center` | Admin users, Mark paid, Razorpay links, legacy UPI claims |
 | `/privacy-policy`, `/terms` | Legal |
 | `/health` | Google / prompt / DB health |
 | `/demo` | Paste-flow sandbox |
 | `/api/health` | Public readiness |
 | `/api/auth/google/*` | Google OAuth |
+| `/api/billing/razorpay/webhook` | Razorpay webhook (public; signature verified) |
 | `/api/extension/*` | Bridge pending / paste-back / report-error |
 | `/api/pipeline/[id]/status` | Pipeline status polling |
 | `/api/cron/*` | Tick pipelines, enqueue follow-ups |
@@ -300,10 +303,12 @@ Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`, `li
 | `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | Yes | OAuth |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypts Google tokens |
 | `CHATGPT_API_KEY` or `OPENAI_API_KEY` | Yes (Apply) | OpenAI server generations |
-| `NEXT_PUBLIC_UPI_ID` | Yes (paywall) | UPI VPA |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Yes (billing) | Payment Links API |
+| `RAZORPAY_WEBHOOK_SECRET` | Yes (billing) | Webhook HMAC |
 | `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | No | Default `299` |
 | `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | No | Default launch-offer label (60 apps · lifetime access) |
-| `ADMIN_NOTIFY_EMAIL` | No | Payment alert recipients |
+| `NEXT_PUBLIC_UPI_ID` | No | Legacy UPI fallback VPA |
+| `ADMIN_NOTIFY_EMAIL` | No | Legacy payment-claim alert recipients |
 | `CRON_SECRET` | No | Bearer for `/api/cron/*` |
 | `RESUME_MASTER_DOC_ID` / `COVER_LETTER_MASTER_DOC_ID` | No | Default master Docs |
 
@@ -339,10 +344,15 @@ Job Application Automation/
 |---|---|
 | Launch price | **₹299** one-time |
 | Audience | First **100** buyers (messaging) |
-| Access | **Lifetime** product access after admin approval |
+| Access | **Lifetime** product access after successful payment (auto-unlock) |
 | Included Apply volume | **60** applications (messaging; metering TBD) |
-| Payment | Manual UPI → `payment_claims` → admin approve |
+| Payment (primary) | Razorpay **Payment Link** → redirect → webhook `payment_link.paid` / `payment.captured` → `setUserPaid` |
+| Return UX | `/billing/razorpay/return` (optional callback signature fast path + poll) |
+| Support override | Admin **Mark paid / unpaid** |
+| Legacy | Collapsed manual UPI + `payment_claims` |
 | Future | Tiered packs / top-ups after usage data |
+
+Implementation guide: [`razorpay-payment-links.md`](razorpay-payment-links.md).
 
 COGS note: OpenAI `gpt-4.1-mini` is ~₹2–₹2.5 per typical full Apply (prompt-heavy). Cap exists to protect margin under unlimited power use.
 
@@ -364,6 +374,7 @@ COGS note: OpenAI `gpt-4.1-mini` is ~₹2–₹2.5 per typical full Apply (promp
 
 ## 14. Change Log
 
+- **v1.9** — **Razorpay Payment Links** as primary billing (redirect + signed webhook → `is_paid`); return poller; Admin recent links; manual UPI nested as legacy. Guide: `docs/razorpay-payment-links.md`.
 - **v1.8** — Resume quality: **JD-framed rewrite** (not timid token swaps); hard **≥70% grounded JD keyword coverage** on accept with repair loops; **strict same Doc wrap line count** per bullet (width estimator + auto-fit); skills merge/normalize fixes; faster Drive PDF path (parallel cover export, PDF-ready before DOCX, folder cache, skip unused skill style pass). Active template `resume_v30_gdoc`.
 - **v1.7** — **Profile setup gate** (Google + profile fields + master resume) replaces dashboard setup guide; Profile page rename (editable anytime). App-wide **IST** for display, metrics, follow-ups. Cover letter Apply default **off** until master cover synced; cover sign-off sync hardened. Landing/legal copy for Google brand verification (purpose + Limited Use). Privacy Policy & Terms refreshed (August 2026).
 - **v1.6** — **OpenAI server Apply** as default (`gpt-4.1-mini`); Gemma/NVIDIA naming removed (legacy engine ids normalize to `openai`). **Wait for Drive PDFs** before Gmail drafts. Dashboard: four metrics + date filter, fresh-jobs banner, recent apps, quick actions. Apply: Mailmeteor contact guide. Landing: Insider tips, FAQ, launch pricing (₹299 / first 100 / 60 apps / lifetime access). Cover sign-off stripping + resume in-place keyword replace prompts.

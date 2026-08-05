@@ -36,19 +36,39 @@ Prefer full [`supabase/schema.sql`](../supabase/schema.sql) for new projects. Pr
 
 **Admin:** first signup on an empty `users` table becomes admin. Promote later with `node scripts/promote-admin-user.mjs <email>`.
 
-### Manual UPI paywall (launch offer)
+### Razorpay Payment Links (primary billing)
 
-New signups land on `/billing` until an admin approves payment.
+New signups land on `/billing` until payment succeeds. Primary path: create a Razorpay Payment Link → redirect to Razorpay hosted checkout → signed webhook unlocks `users.is_paid`.
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_UPI_ID` | Your UPI VPA |
-| `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | Amount (default **`299`**) |
+| `RAZORPAY_KEY_ID` | Razorpay Key ID (server; test `rzp_test_…` or live) |
+| `RAZORPAY_KEY_SECRET` | Razorpay Key Secret (server only) |
+| `RAZORPAY_WEBHOOK_SECRET` | Webhook HMAC secret (server only) |
+| `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | Amount in INR (default **`299`**) |
 | `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | Default: launch offer · 60 apps · lifetime access |
+| `NEXT_PUBLIC_UPI_ID` | Optional legacy UPI fallback VPA |
 
-**Commercial messaging (August 2026):** ₹299 for the **first 100 buyers**, **lifetime product access**, **60 Apply runs included**. Application-count **enforcement** is planned with tier infrastructure; until then access is binary `is_paid`. After approval, complete **Profile** setup before Dashboard/Apply unlock.
+**Webhook (required for auto-unlock)**
 
-Payment-claim emails include a **Review on phone** link (`/review-payment/...`, 7-day JWT).
+1. Razorpay Dashboard → **Settings → Webhooks → Add**.
+2. URL:
+   - Local: tunnel to `https://<tunnel>/api/billing/razorpay/webhook`
+   - Prod: `https://<YOUR_DOMAIN>/api/billing/razorpay/webhook`
+3. Events (minimum): `payment_link.paid`, `payment.captured`.
+4. Copy the webhook secret into `RAZORPAY_WEBHOOK_SECRET`.
+
+DB: apply `razorpay_payment_links` via `supabase/schema.sql` or `cd web && node scripts/migrate-razorpay-payment-links.mjs`.
+
+Full phased guide: [`razorpay-payment-links.md`](razorpay-payment-links.md).
+
+**Commercial messaging (August 2026):** ₹299 for the **first 100 buyers**, **lifetime product access**, **60 Apply runs included**. Application-count **enforcement** is planned with tier infrastructure; until then access is binary `is_paid`. After unlock, complete **Profile** setup before Dashboard/Apply unlock.
+
+**Legacy / support**
+
+- Manual UPI + UTR claim remains a collapsed fallback on `/billing` when configured.
+- Admin **Mark paid / unpaid** on Admin Center is the support override.
+- Optional `ADMIN_NOTIFY_EMAIL` still used for legacy payment-claim alerts.
 
 ---
 
@@ -104,13 +124,15 @@ Open [http://localhost:3000](http://localhost:3000) → **Create an account**.
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypt Google tokens |
 | `CHATGPT_API_KEY` or `OPENAI_API_KEY` | Yes for Apply | OpenAI |
 | `RESUME_MASTER_DOC_ID` / `COVER_LETTER_MASTER_DOC_ID` | No | Default master Docs |
-| `NEXT_PUBLIC_UPI_ID` | Yes for paywall | UPI VPA |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Yes for auto billing | Payment Links API |
+| `RAZORPAY_WEBHOOK_SECRET` | Yes for auto unlock | Webhook HMAC |
 | `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | No | Default `299` |
 | `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | No | Launch offer label |
-| `ADMIN_NOTIFY_EMAIL` | No | Payment alerts |
+| `NEXT_PUBLIC_UPI_ID` | No | Legacy UPI fallback |
+| `ADMIN_NOTIFY_EMAIL` | No | Legacy payment-claim alerts |
 | `CRON_SECRET` | Recommended in prod | Cron auth |
 
-QR asset: `web/public/billing/upi-qr.png`.
+Migrate payment links if needed: `cd web && node scripts/migrate-razorpay-payment-links.mjs`.
 
 ---
 
@@ -157,7 +179,7 @@ Details: [`extension/README.md`](../extension/README.md).
 ## 8. Hosting (Vercel)
 
 1. Deploy `web/`  
-2. Production env: pooler `DATABASE_URL`, OpenAI key, production `NEXT_PUBLIC_APP_URL` + Google redirect, UPI, `AUTH_SECRET`, `CRON_SECRET`  
+2. Production env: pooler `DATABASE_URL`, OpenAI key, production `NEXT_PUBLIC_APP_URL` + Google redirect, Razorpay live keys + webhook URL/secret, `AUTH_SECRET`, `CRON_SECRET`  
 3. Confirm `/api/health`  
 4. Admin Connect Google with `gmail.send`  
 

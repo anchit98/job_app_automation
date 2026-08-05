@@ -45,7 +45,8 @@ export function PaidAccessGate({
         <div>
           <h1 className="li-page-title">Access locked</h1>
           <p className="text-[14px] text-on-surface-variant mt-2">
-            Complete UPI payment and wait for admin approval to unlock JobApp OS.
+            Complete payment to unlock JobApp OS. Access activates automatically
+            after a successful Razorpay payment.
           </p>
         </div>
         <Link

@@ -14,6 +14,7 @@ import {
 import type { AdminUserSummary } from "@/lib/admin/queries";
 import { formatAppDateTime } from "@/lib/datetime/india";
 import type { PaymentClaim } from "@/lib/billing/payment-claims";
+import type { RazorpayPaymentLinkAdminRow } from "@/lib/billing/razorpay-payment-links";
 
 type ResetRequest = {
   id: string;
@@ -39,12 +40,14 @@ export function AdminCenterClient({
   resetRequests,
   activeResetLinks,
   pendingPaymentClaims,
+  recentRazorpayPaymentLinks,
 }: {
   currentUserId: string;
   users: AdminUserSummary[];
   resetRequests: ResetRequest[];
   activeResetLinks: ActiveResetLink[];
   pendingPaymentClaims: PaymentClaim[];
+  recentRazorpayPaymentLinks: RazorpayPaymentLinkAdminRow[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -130,76 +133,128 @@ export function AdminCenterClient({
       </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-3 shrink-0">
-        <div className="li-card p-3 space-y-2 min-h-0">
+        <div className="li-card p-3 space-y-2 min-h-0 lg:col-span-1">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-[14px] font-semibold text-on-surface">
-              Pending UPI payments
+              Recent Razorpay links
             </h2>
-            <span className="li-meta">{pendingPaymentClaims.length}</span>
+            <span className="li-meta">{recentRazorpayPaymentLinks.length}</span>
           </div>
-          {pendingPaymentClaims.length === 0 ? (
-            <p className="li-meta">None pending.</p>
+          {recentRazorpayPaymentLinks.length === 0 ? (
+            <p className="li-meta">No payment links yet.</p>
           ) : (
-            <ul className="space-y-2 max-h-36 overflow-y-auto">
-              {pendingPaymentClaims.map((claim) => (
+            <ul className="space-y-2 max-h-44 overflow-y-auto">
+              {recentRazorpayPaymentLinks.map((link) => (
                 <li
-                  key={claim.id}
-                  className="rounded-md border border-border-hairline px-2.5 py-2.5 flex items-center gap-2"
+                  key={link.id}
+                  className="rounded-md border border-border-hairline px-2.5 py-2"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-semibold text-on-surface truncate">
-                      {claim.full_name || claim.email}
-                    </p>
-                    <p className="li-meta truncate">
-                      UTR <code className="text-primary">{claim.upi_reference}</code>
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <IconBtn
-                      title="Approve & unlock"
-                      icon="check_circle"
-                      disabled={pending}
-                      tone="primary"
-                      onClick={() => {
-                        clearFeedback();
-                        startTransition(async () => {
-                          const result = await adminApprovePaymentClaim({
-                            claimId: claim.id,
-                          });
-                          if (!result.ok) {
-                            setError(result.error);
-                            return;
-                          }
-                          setMessage(`Approved payment for ${claim.email}.`);
-                          router.refresh();
-                        });
-                      }}
-                    />
-                    <IconBtn
-                      title="Reject"
-                      icon="cancel"
-                      disabled={pending}
-                      tone="danger"
-                      onClick={() => {
-                        clearFeedback();
-                        startTransition(async () => {
-                          const result = await adminRejectPaymentClaim({
-                            claimId: claim.id,
-                          });
-                          if (!result.ok) {
-                            setError(result.error);
-                            return;
-                          }
-                          setMessage(`Rejected payment for ${claim.email}.`);
-                          router.refresh();
-                        });
-                      }}
-                    />
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-semibold text-on-surface truncate">
+                        {link.full_name || link.email}
+                      </p>
+                      <p className="li-meta truncate">
+                        ₹{(link.amount_paise / 100).toFixed(0)} ·{" "}
+                        {link.reference_id || link.razorpay_payment_link_id}
+                      </p>
+                      <p className="li-meta">
+                        {formatAppDateTime(link.created_at)}
+                        {link.paid_at
+                          ? ` · paid ${formatAppDateTime(link.paid_at)}`
+                          : ""}
+                      </p>
+                    </div>
+                    <PaymentLinkStatusBadge status={link.status} />
                   </div>
                 </li>
               ))}
             </ul>
           )}
+          <details
+            className="group border-t border-border-hairline pt-2"
+            open={pendingPaymentClaims.length > 0}
+          >
+            <summary className="cursor-pointer list-none text-[12px] font-semibold text-on-surface-variant outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+              <span className="inline-flex items-center gap-1.5">
+                Manual UPI claims (legacy)
+                <span className="li-meta font-normal">
+                  {pendingPaymentClaims.length} pending
+                </span>
+                <span className="material-symbols-outlined text-[16px] transition-transform group-open:rotate-180">
+                  expand_more
+                </span>
+              </span>
+            </summary>
+            <div className="mt-2 space-y-2">
+              {pendingPaymentClaims.length === 0 ? (
+                <p className="li-meta">None pending.</p>
+              ) : (
+                <ul className="space-y-2 max-h-36 overflow-y-auto">
+                  {pendingPaymentClaims.map((claim) => (
+                    <li
+                      key={claim.id}
+                      className="rounded-md border border-border-hairline px-2.5 py-2.5 flex items-center gap-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-semibold text-on-surface truncate">
+                          {claim.full_name || claim.email}
+                        </p>
+                        <p className="li-meta truncate">
+                          UTR{" "}
+                          <code className="text-primary">
+                            {claim.upi_reference}
+                          </code>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <IconBtn
+                          title="Approve & unlock"
+                          icon="check_circle"
+                          disabled={pending}
+                          tone="primary"
+                          onClick={() => {
+                            clearFeedback();
+                            startTransition(async () => {
+                              const result = await adminApprovePaymentClaim({
+                                claimId: claim.id,
+                              });
+                              if (!result.ok) {
+                                setError(result.error);
+                                return;
+                              }
+                              setMessage(`Approved payment for ${claim.email}.`);
+                              router.refresh();
+                            });
+                          }}
+                        />
+                        <IconBtn
+                          title="Reject"
+                          icon="cancel"
+                          disabled={pending}
+                          tone="danger"
+                          onClick={() => {
+                            clearFeedback();
+                            startTransition(async () => {
+                              const result = await adminRejectPaymentClaim({
+                                claimId: claim.id,
+                              });
+                              if (!result.ok) {
+                                setError(result.error);
+                                return;
+                              }
+                              setMessage(`Rejected payment for ${claim.email}.`);
+                              router.refresh();
+                            });
+                          }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </details>
         </div>
 
         <div className="li-card p-3 space-y-2">
@@ -261,12 +316,34 @@ export function AdminCenterClient({
           <table className="w-full text-left text-[13px]">
             <thead className="bg-surface-container-low text-on-surface-variant sticky top-0 z-10">
               <tr>
-                <th className="px-3 py-2 font-semibold">User</th>
+                <th className="px-2 sm:px-3 py-2 font-semibold">User</th>
                 <th className="px-3 py-2 font-semibold hidden sm:table-cell w-[11rem]">
                   Setup
                 </th>
-                <th className="px-3 py-2 font-semibold">Flags</th>
-                <th className="px-3 py-2 font-semibold text-right w-12">
+                <th className="px-1.5 sm:px-3 py-2 font-semibold">Flags</th>
+                <th
+                  className="px-1.5 sm:px-3 py-2 font-semibold text-center sm:text-right w-8 sm:w-[4.5rem]"
+                  title="Applications whose latest pipeline completed"
+                >
+                  <span className="sr-only">Passed</span>
+                  <span
+                    aria-hidden
+                    className="mx-auto inline-block h-2.5 w-2.5 rounded-full bg-success sm:hidden"
+                  />
+                  <span className="hidden sm:inline">Passed</span>
+                </th>
+                <th
+                  className="px-1.5 sm:px-3 py-2 font-semibold text-center sm:text-right w-8 sm:w-[4.5rem]"
+                  title="Applications whose latest pipeline failed or needs manual"
+                >
+                  <span className="sr-only">Failed</span>
+                  <span
+                    aria-hidden
+                    className="mx-auto inline-block h-2.5 w-2.5 rounded-full bg-error sm:hidden"
+                  />
+                  <span className="hidden sm:inline">Failed</span>
+                </th>
+                <th className="px-1 sm:px-3 py-2 font-semibold text-right w-10 sm:w-12">
                   <span className="absolute h-px w-px overflow-hidden whitespace-nowrap p-0 [clip:rect(0,0,0,0)]">
                     Actions
                   </span>
@@ -276,7 +353,7 @@ export function AdminCenterClient({
             <tbody className="divide-y divide-border-muted">
               {users.map((user) => (
                 <tr key={user.id} className="align-middle hover:bg-[var(--ghost-hover)]">
-                  <td className="px-3 py-2 min-w-0">
+                  <td className="px-2 sm:px-3 py-2 min-w-0">
                     <div className="font-semibold text-on-surface leading-tight">
                       {user.full_name || "Unnamed user"}
                       {user.id === currentUserId ? (
@@ -311,7 +388,7 @@ export function AdminCenterClient({
                       />
                     </div>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-1.5 sm:px-3 py-2">
                     <div className="flex flex-wrap gap-1">
                       {user.is_admin ? <SmallTag label="Admin" /> : null}
                       <PaidTag paid={user.is_paid} />
@@ -323,7 +400,17 @@ export function AdminCenterClient({
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-2 py-2 text-right align-middle">
+                  <td className="px-1.5 sm:px-3 py-2 text-center sm:text-right tabular-nums text-on-surface">
+                    {user.apps_passed}
+                  </td>
+                  <td
+                    className={`px-1.5 sm:px-3 py-2 text-center sm:text-right tabular-nums ${
+                      user.apps_failed > 0 ? "text-error" : "text-on-surface"
+                    }`}
+                  >
+                    {user.apps_failed}
+                  </td>
+                  <td className="px-1 sm:px-2 py-2 text-right align-middle">
                     <UserActionsMenu
                       open={openMenuUserId === user.id}
                       onOpenChange={(next) =>
@@ -515,7 +602,7 @@ export function AdminCenterClient({
               ))}
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-3 py-4 li-meta">
+                  <td colSpan={6} className="px-3 py-4 li-meta">
                     No users yet.
                   </td>
                 </tr>
@@ -702,6 +789,26 @@ function SmallTag({ label }: { label: string }) {
   return (
     <span className="inline-flex rounded-full bg-surface-container-low px-1.5 py-0.5 text-[10px] font-semibold text-on-surface-variant">
       {label}
+    </span>
+  );
+}
+
+function PaymentLinkStatusBadge({
+  status,
+}: {
+  status: RazorpayPaymentLinkAdminRow["status"];
+}) {
+  const tone =
+    status === "paid"
+      ? "border-success/30 bg-success-container/40 text-success"
+      : status === "created"
+        ? "border-status-waiting/30 bg-status-waiting-container text-status-waiting"
+        : "border-border-hairline bg-surface-container-low text-on-surface-variant";
+  return (
+    <span
+      className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${tone}`}
+    >
+      {status}
     </span>
   );
 }

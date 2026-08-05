@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
-import { SiteFooter } from "@/components/layout/site-footer";
+import { RootChrome } from "@/components/layout/site-footer";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import "./globals.css";
 
@@ -66,10 +66,7 @@ export default function RootLayout({
       </head>
       <body className="bg-canvas text-on-surface min-h-screen w-full font-sans">
         <ThemeProvider>
-          <div className="flex min-h-[100dvh] flex-col">
-            <div className="flex min-h-0 flex-1 flex-col">{children}</div>
-            <SiteFooter />
-          </div>
+          <RootChrome>{children}</RootChrome>
         </ThemeProvider>
       </body>
     </html>

@@ -58,6 +58,8 @@ export function AppShell({
   }, [pathname]);
 
   const activePath = optimisticPath ?? pathname;
+  const onBilling =
+    pathname === "/billing" || pathname.startsWith("/billing/");
   const showApplicationSearch = isPaid && setupReady && activePath === "/applications";
   const homeHref = !isPaid
     ? "/billing"
@@ -83,8 +85,15 @@ export function AppShell({
       ];
 
   return (
-    <div className="app-shell bg-canvas flex flex-col max-md:overflow-hidden md:min-h-[100dvh]">
-      {isPaid ? <PipelineKeeper /> : null}
+    <div
+      className={`app-shell bg-canvas flex flex-col ${
+        onBilling
+          ? "app-shell--flow min-h-0 flex-1 md:min-h-0 md:overflow-hidden"
+          : isPaid
+            ? "max-md:overflow-hidden md:min-h-[100dvh]"
+            : "max-md:overflow-hidden"
+      }`}
+    >      {isPaid ? <PipelineKeeper /> : null}
       <header className="z-50 shrink-0 bg-surface border-b border-border-hairline pt-[env(safe-area-inset-top,0px)] md:pt-0">
         <div className="mx-auto h-nav-height max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-2 md:gap-4">
           <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
@@ -242,17 +251,22 @@ export function AppShell({
 
       <main
         className={`
-          flex-1 w-full min-w-0
+          w-full min-w-0
           ${
             isWorkspace && isPaid
-              ? "overflow-hidden min-h-0"
-              : "mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-4 md:py-5 pb-8 max-md:min-h-0 max-md:overflow-y-auto max-md:py-3 max-md:pb-3"
+              ? "flex-1 overflow-hidden min-h-0"
+              : onBilling
+                ? "relative flex flex-col w-full px-margin-mobile md:px-margin-desktop py-3 md:py-4 pb-3 md:flex-1 md:min-h-0 md:overflow-y-auto"
+                : isPaid
+                  ? "flex-1 mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-4 md:py-5 pb-8 max-md:min-h-0 max-md:overflow-y-auto max-md:py-3 max-md:pb-3"
+                  : "mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-3 md:py-4 pb-3"
           }
         `}
       >
         {children}
       </main>
 
+      {!onBilling ? (
       <nav
         className="md:hidden shrink-0 z-50 border-t border-border-hairline bg-surface pb-[env(safe-area-inset-bottom,0px)]"
         aria-label="Primary"
@@ -302,6 +316,7 @@ export function AppShell({
           })}
         </div>
       </nav>
+      ) : null}
     </div>
   );
 }

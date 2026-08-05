@@ -71,6 +71,47 @@ CREATE INDEX IF NOT EXISTS payment_claims_user_idx
 CREATE INDEX IF NOT EXISTS payment_claims_status_idx
   ON payment_claims (status, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS razorpay_orders (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  razorpay_order_id TEXT NOT NULL UNIQUE,
+  amount_paise INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'INR',
+  status TEXT NOT NULL DEFAULT 'created'
+    CHECK (status IN ('created', 'paid', 'failed')),
+  razorpay_payment_id TEXT,
+  receipt TEXT,
+  created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
+  paid_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS razorpay_orders_user_idx
+  ON razorpay_orders (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS razorpay_orders_status_idx
+  ON razorpay_orders (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS razorpay_payment_links (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  razorpay_payment_link_id TEXT NOT NULL UNIQUE,
+  short_url TEXT,
+  amount_paise INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'INR',
+  status TEXT NOT NULL DEFAULT 'created'
+    CHECK (status IN ('created', 'paid', 'expired', 'cancelled')),
+  razorpay_payment_id TEXT,
+  reference_id TEXT,
+  created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
+  paid_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS razorpay_payment_links_user_idx
+  ON razorpay_payment_links (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS razorpay_payment_links_status_idx
+  ON razorpay_payment_links (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS razorpay_payment_links_reference_idx
+  ON razorpay_payment_links (reference_id);
+
 CREATE TABLE IF NOT EXISTS profiles (
   user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   full_name TEXT,

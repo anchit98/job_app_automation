@@ -15,8 +15,8 @@ export default async function AdminCenterPage() {
       <div>
         <h1 className="li-page-title">Admin Center</h1>
         <p className="text-[14px] text-on-surface-variant mt-1">
-          Manage users, UPI payment approvals, setup completion, and password
-          recovery.
+          Manage users, Razorpay payments, setup completion, and password
+          recovery. Mark paid / unpaid remains the support override.
         </p>
       </div>
       <AdminCenterClient
@@ -25,6 +25,7 @@ export default async function AdminCenterPage() {
         resetRequests={data.resetRequests}
         activeResetLinks={data.activeResetLinks}
         pendingPaymentClaims={data.pendingPaymentClaims}
+        recentRazorpayPaymentLinks={data.recentRazorpayPaymentLinks}
       />
     </div>
   );

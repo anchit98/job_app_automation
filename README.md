@@ -11,7 +11,7 @@ Hosted multi-user app: **Next.js 16** + **Supabase Postgres** + **Google Drive/G
 ## What it does
 
 1. **Sign up / sign in** — email + password; sessions scoped per user  
-2. **Manual UPI billing** — unpaid users land on `/billing`; launch offer **₹299** (first 100 buyers messaging): **lifetime access** + **60 applications included**  
+2. **Razorpay billing** — unpaid users land on `/billing`; **₹299** launch offer (first 100 buyers messaging): **lifetime access** + **60 applications included**. Pay via Razorpay Payment Link; access unlocks automatically after webhook confirmation. Admin **Mark paid** remains the support override; manual UPI is a collapsed legacy fallback.  
 3. **Profile setup gate** — after payment, Dashboard & Apply stay locked until Google is connected, required profile fields are saved (name, location, phone, LinkedIn), and master resume is synced (`/onboarding`). Settings can be changed anytime.  
 4. **Dashboard** — date-filtered metrics (IST day bounds), fresh LinkedIn jobs banner, recent applications, quick actions  
 5. **Quick Apply** — paste JD + company + role (contacts optional) → OpenAI pipeline; cover letter optional (defaults off until master cover is synced); in-app guide to find emails via LinkedIn + [Mailmeteor](https://mailmeteor.com/tools/linkedin-email-finder)  
@@ -19,7 +19,7 @@ Hosted multi-user app: **Next.js 16** + **Supabase Postgres** + **Google Drive/G
 7. **Tracker (Jobs)** — applications, contacts, versions, notes  
 8. **Gmail drafts** — created only after Drive PDFs are ready (attachments included); never auto-send  
 9. **Follow-ups** — enqueue draft prompts on **IST** business days (never auto-send)  
-10. **Admin Center** — users, paid access, payment claims  
+10. **Admin Center** — users, Mark paid / unpaid, recent Razorpay payment links, legacy UPI claims  
 11. **Marketing site** — Insider tips, FAQ, launch pricing, Privacy / Terms
 
 ### Quick Apply pipeline
@@ -68,9 +68,12 @@ Emails are always **drafts** until you send them from Gmail.
 | `GOOGLE_OAUTH_*` | Client ID, secret, redirect URI |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Encrypts stored Google tokens |
 | `CHATGPT_API_KEY` or `OPENAI_API_KEY` | OpenAI Apply generations |
-| `NEXT_PUBLIC_UPI_ID` | UPI VPA on `/billing` |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Razorpay Payment Links (server) |
+| `RAZORPAY_WEBHOOK_SECRET` | Webhook signature verify |
 | `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | Default `299` |
-| `ADMIN_NOTIFY_EMAIL` | Optional payment-claim alerts |
+| `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | Launch offer label |
+| `NEXT_PUBLIC_UPI_ID` | Optional legacy UPI fallback |
+| `ADMIN_NOTIFY_EMAIL` | Optional legacy payment-claim alerts |
 
 ---
 
@@ -86,7 +89,8 @@ Emails are always **drafts** until you send them from Gmail.
 | `/pipeline/[id]` | Live pipeline + PDF downloads |
 | `/onboarding` | Profile (Google, profile fields, master docs) |
 | `/settings` | Privacy & Settings (password, account) |
-| `/billing` | UPI paywall (launch offer) |
+| `/billing` | Razorpay Payment Link paywall (launch offer) |
+| `/billing/razorpay/return` | Post-payment confirm / poll |
 | `/admin-center` | Admin |
 | `/privacy-policy`, `/terms` | Legal |
 | `/prompts`, `/health` | Inbox / ops |
@@ -98,6 +102,7 @@ Emails are always **drafts** until you send them from Gmail.
 | Doc | Contents |
 |---|---|
 | [docs/setup.md](docs/setup.md) | Install, env, Google, OpenAI, billing, Vercel |
+| [docs/razorpay-payment-links.md](docs/razorpay-payment-links.md) | Razorpay Payment Links + webhook (primary billing) |
 | [docs/architecture.md](docs/architecture.md) | Stack, OpenAI pipeline, dashboard, billing |
 | [docs/problemstatement.md](docs/problemstatement.md) | Problem, goals, FRs |
 | [docs/edgecases.md](docs/edgecases.md) | Failure modes & mitigations |
@@ -109,7 +114,7 @@ Emails are always **drafts** until you send them from Gmail.
 ## Production (Vercel)
 
 1. Deploy `web/`  
-2. Set env (pooler DB, production URL, Google redirect, OpenAI key, UPI, `AUTH_SECRET`)  
+2. Set env (pooler DB, production URL, Google redirect, OpenAI key, Razorpay keys + webhook, `AUTH_SECRET`)  
 3. Confirm `/api/health`  
 4. Admin: Connect Google with `gmail.send` for transactional email  
 

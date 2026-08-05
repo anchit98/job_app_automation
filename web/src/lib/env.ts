@@ -40,7 +40,26 @@ export const env = {
     ),
   /** Optional override for payment-claim alert recipients (comma-separated). */
   adminNotifyEmail: () => optional("ADMIN_NOTIFY_EMAIL"),
+  /** Razorpay Key ID (server). Also accepts legacy Razorpay_API_KEY. */
+  razorpayKeyId: () =>
+    optional("RAZORPAY_KEY_ID", optional("Razorpay_API_KEY")),
+  /** Razorpay Key Secret (server only). Also accepts Razorpay_LIVE_KEY_SECRET. */
+  razorpayKeySecret: () =>
+    optional("RAZORPAY_KEY_SECRET", optional("Razorpay_LIVE_KEY_SECRET")),
+  /** Razorpay webhook signing secret (server only). */
+  razorpayWebhookSecret: () =>
+    optional("RAZORPAY_WEBHOOK_SECRET", optional("Razorpay_Webhook_Secret")),
+  /** Public Key ID for Checkout.js */
+  razorpayPublicKeyId: () =>
+    optional(
+      "NEXT_PUBLIC_RAZORPAY_KEY_ID",
+      optional("RAZORPAY_KEY_ID", optional("Razorpay_API_KEY")),
+    ),
 };
+
+export function hasRazorpayConfig(): boolean {
+  return Boolean(env.razorpayKeyId() && env.razorpayKeySecret());
+}
 
 export function hasGoogleConfig(): boolean {
   return Boolean(
