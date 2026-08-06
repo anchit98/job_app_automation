@@ -4,9 +4,14 @@ export const SINGLETON_ID = 1;
 
 let sql: ReturnType<typeof postgres> | null = null;
 
-/** Vercel/serverless: one connection per isolate. Local: small pool. */
+/**
+ * Vercel Fluid compute serves many concurrent requests per isolate, so max:1
+ * serialized every signed-in page behind a single connection (site-wide
+ * "stuck loading"). DATABASE_URL targets Supabase's transaction pooler
+ * (:6543), which multiplexes client connections, so a small pool is safe.
+ */
 function poolMax() {
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) return 1;
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) return 6;
   return 5;
 }
 
