@@ -90,6 +90,7 @@ export async function signUp(input: {
       full_name: user.full_name,
       is_admin: user.is_admin,
       must_reset_password: user.must_reset_password,
+      is_paid: user.is_paid,
     });
     return { ok: true as const, user };
   } catch (error) {
@@ -130,6 +131,7 @@ export async function signIn(input: { email: string; password: string }) {
       full_name: user.full_name,
       is_admin: user.is_admin,
       must_reset_password: user.must_reset_password,
+      is_paid: Boolean(user.is_admin) || Boolean(user.is_paid),
     });
     return {
       ok: true as const,
@@ -226,6 +228,7 @@ export async function resetPasswordWithToken(input: {
       full_name: user.full_name,
       is_admin: user.is_admin,
       must_reset_password: false,
+      is_paid: Boolean(user.is_admin) || Boolean(user.is_paid),
     });
     return { ok: true as const };
   } catch (error) {
@@ -256,6 +259,7 @@ export async function changePasswordAfterFirstLogin(input: { password: string })
       full_name: user.full_name,
       is_admin: user.is_admin,
       must_reset_password: false,
+      is_paid: user.is_paid,
     });
     return { ok: true as const };
   } catch (error) {
@@ -314,6 +318,7 @@ export async function updatePassword(input: {
       full_name: user.full_name,
       is_admin: user.is_admin,
       must_reset_password: false,
+      is_paid: Boolean(user.is_admin) || Boolean(user.is_paid),
     });
     return { ok: true as const };
   } catch (error) {

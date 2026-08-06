@@ -5,7 +5,10 @@ import { writeAuditLog } from "@/lib/audit";
 import { upsertMasterCoverLetterRow } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 import { DocsClient } from "@/lib/google/docs";
-import { resolveGoogleDocsId } from "@/lib/google/docs-url";
+import {
+  explainGoogleDocFetchError,
+  resolveGoogleDocsId,
+} from "@/lib/google/docs-url";
 import { DriveClient } from "@/lib/google/drive";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { syncMasterCoverLetterFromDoc } from "@/lib/cover-letter/master-sync";
@@ -34,8 +37,14 @@ export async function syncCoverLetterFromGoogleDoc(
   const auth = await getGoogleAuthClient();
   const docs = new DocsClient(auth);
   const drive = new DriveClient(auth);
-  const layout = await syncMasterCoverLetterFromDoc(docs, docId);
-  const templateDocId = await drive.ensureCoverLetterTemplateCopy(docId);
+  let layout: Awaited<ReturnType<typeof syncMasterCoverLetterFromDoc>>;
+  let templateDocId: string;
+  try {
+    layout = await syncMasterCoverLetterFromDoc(docs, docId);
+    templateDocId = await drive.ensureCoverLetterTemplateCopy(docId);
+  } catch (error) {
+    throw new Error(explainGoogleDocFetchError(error));
+  }
 
   const syncedAt = new Date().toISOString();
   await upsertMasterCoverLetterRow({

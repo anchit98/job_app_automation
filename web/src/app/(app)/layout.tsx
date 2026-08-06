@@ -28,7 +28,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const [user, profile, headerStore, readiness] = await Promise.all([
-    getCurrentUser(),
+    getCurrentUser().catch(() => null),
     getProfile().catch(() => null),
     headers(),
     getSetupReadiness().catch(() => ({

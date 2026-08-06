@@ -17,6 +17,7 @@ import { profileAvatarSrc } from "@/lib/profile-avatar";
 import { parseGoogleDocsUrl } from "@/lib/google/docs-url";
 import { formatAppDateTime } from "@/lib/datetime/india";
 import { profileFieldsComplete } from "@/lib/setup/profile-complete";
+import { linkedinUrlError } from "@/lib/contacts/validate";
 import type { MasterCoverLetter, MasterResume, Profile } from "@/lib/db/types";
 
 const RESUME_STRUCTURE_REF_URL =
@@ -201,7 +202,7 @@ export function OnboardingForms({
     if (!location.trim()) return "Location is required.";
     if (!phone.trim()) return "Contact number is required.";
     if (!linkedinUrl.trim()) return "LinkedIn URL is required.";
-    return null;
+    return linkedinUrlError(linkedinUrl);
   }
 
   function profilePayload() {
@@ -610,6 +611,9 @@ export function OnboardingForms({
                   placeholder="https://www.linkedin.com/in/..."
                   required
                 />
+                <p className="mt-1 text-[12px] text-on-surface-variant">
+                  Must include https:// — e.g. https://www.linkedin.com/in/your-name
+                </p>
               </div>
               <div>
                 <Label htmlFor="github_url">GitHub URL</Label>
@@ -741,8 +745,10 @@ export function OnboardingForms({
               </div>
             </div>
             <p className="li-meta">
-              Required. Paste your Google Doc URL, then Sync. Sync flags ATS
-              issues (e.g. missing Experience bullets) before saving.
+              Required. Paste a Google Docs URL (docs.google.com/document/...),
+              then Sync. Word (.doc/.docx) uploads on Drive will not work until
+              you open them with Google Docs. Sync flags ATS issues before
+              saving.
             </p>
             <div>
               <Label>Google Docs URL</Label>
@@ -751,6 +757,11 @@ export function OnboardingForms({
                 onChange={(e) => setDocId(e.target.value)}
                 placeholder="https://docs.google.com/document/d/<ID>/edit"
               />
+              <p className="mt-1 text-[12px] text-on-surface-variant">
+                Must be a Google Doc link — not a Drive file link or Word file.
+                Right-click in Drive → Open with → Google Docs, then paste that
+                URL.
+              </p>
             </div>
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -832,7 +843,8 @@ export function OnboardingForms({
             </div>
             <p className="li-meta">
               Recommended. Greeting + exactly 5 body paragraphs + Warm regards.
-              Sync flags ATS readiness before saving.
+              Use a Google Doc link (not Word on Drive). Sync flags ATS readiness
+              before saving.
             </p>
             <div>
               <Label>Google Docs URL</Label>
@@ -841,6 +853,11 @@ export function OnboardingForms({
                 onChange={(e) => setCoverLetterDocId(e.target.value)}
                 placeholder="https://docs.google.com/document/d/<ID>/edit"
               />
+              <p className="mt-1 text-[12px] text-on-surface-variant">
+                Must be a Google Doc link — not a Drive file link or Word file.
+                Right-click in Drive → Open with → Google Docs, then paste that
+                URL.
+              </p>
             </div>
             <div className="flex items-center justify-between gap-2">
               <div>

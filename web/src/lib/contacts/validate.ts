@@ -11,14 +11,44 @@ export const emailAddressSchema = z
     "Invalid email address",
   );
 
+export const LINKEDIN_URL_HTTPS_MESSAGE =
+  "LinkedIn URL must start with https:// (e.g. https://www.linkedin.com/in/your-name)";
+
 export const linkedinUrlSchema = z
   .string()
   .trim()
-  .url("Enter a valid LinkedIn URL")
-  .refine(
-    (url) => /linkedin\.com\/in\//i.test(url),
-    "URL must be a LinkedIn profile (linkedin.com/in/...)",
-  );
+  .min(1, "LinkedIn URL is required")
+  .superRefine((value, ctx) => {
+    // Check scheme before URL parsing so "linkedin.com/in/..." gets a clear fix
+    // instead of a generic invalid-URL error.
+    if (!/^https?:\/\//i.test(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: LINKEDIN_URL_HTTPS_MESSAGE,
+      });
+      return;
+    }
+    if (!z.string().url().safeParse(value).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Enter a valid LinkedIn URL",
+      });
+      return;
+    }
+    if (!/linkedin\.com\/in\//i.test(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "URL must be a LinkedIn profile (linkedin.com/in/...)",
+      });
+    }
+  });
+
+/** Client-friendly LinkedIn URL check; returns the first error or null. */
+export function linkedinUrlError(value: string): string | null {
+  const parsed = linkedinUrlSchema.safeParse(value);
+  if (parsed.success) return null;
+  return parsed.error.issues[0]?.message ?? "Enter a valid LinkedIn URL.";
+}
 
 export const mailmeteorValidationStatusSchema = z.enum([
   "Valid",

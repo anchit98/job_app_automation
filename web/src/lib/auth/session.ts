@@ -32,6 +32,7 @@ export async function createSession(
     full_name?: string | null;
     is_admin?: boolean;
     must_reset_password?: boolean;
+    is_paid?: boolean;
   },
 ): Promise<string> {
   const sessionId = randomUUID();
@@ -43,13 +44,15 @@ export async function createSession(
     expiresAt,
   );
 
+  const isAdmin = claims?.is_admin ?? false;
   const token = await new SignJWT({
     sid: sessionId,
     uid: userId,
     email: claims?.email ?? undefined,
     name: claims?.full_name ?? undefined,
-    is_admin: claims?.is_admin ?? false,
+    is_admin: isAdmin,
     must_reset_password: claims?.must_reset_password ?? false,
+    is_paid: isAdmin || Boolean(claims?.is_paid),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -134,42 +137,69 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     const uid = typeof payload.uid === "string" ? payload.uid : null;
     if (!sid || !uid) return null;
 
-    // One round-trip: validate session + load user
-    const row = (await dbGet(
-      `SELECT s.id AS session_id, s.expires_at, u.id, u.email, u.full_name,
-              u.is_admin, u.must_reset_password, u.is_paid
-         FROM sessions s
-         INNER JOIN users u ON u.id = s.user_id
-        WHERE s.id = ? AND s.user_id = ?`,
-      sid,
-      uid,
-    )) as
-      | {
-          session_id: string;
-          expires_at: string;
-          id: string;
-          email: string;
-          full_name: string | null;
-          is_admin: boolean;
-          must_reset_password: boolean;
-          is_paid: boolean;
-        }
-      | undefined;
-
-    if (!row) return null;
-    if (new Date(row.expires_at).getTime() < Date.now()) {
-      await dbRun(`DELETE FROM sessions WHERE id = ?`, sid);
-      return null;
-    }
-
-    return {
-      id: row.id,
-      email: row.email,
-      full_name: row.full_name,
-      is_admin: Boolean(row.is_admin),
-      must_reset_password: Boolean(row.must_reset_password),
-      is_paid: Boolean(row.is_admin) || Boolean(row.is_paid),
+    const email =
+      typeof payload.email === "string" ? payload.email : null;
+    const fullName =
+      typeof payload.name === "string" ? payload.name : null;
+    const isAdmin = Boolean(payload.is_admin);
+    const mustReset = Boolean(payload.must_reset_password);
+    const paidClaim =
+      typeof payload.is_paid === "boolean" ? payload.is_paid : undefined;
+    const jwtFallback: SessionUser = {
+      id: uid,
+      email: email ?? "",
+      full_name: fullName,
+      is_admin: isAdmin,
+      must_reset_password: mustReset,
+      // Prefer JWT claim when present; otherwise keep access open during a DB
+      // blip so paid users aren't hard-locked (pages still degrade soft).
+      is_paid: isAdmin || (paidClaim ?? true),
     };
+
+    try {
+      // One round-trip: validate session + load user
+      const row = (await dbGet(
+        `SELECT s.id AS session_id, s.expires_at, u.id, u.email, u.full_name,
+                u.is_admin, u.must_reset_password, u.is_paid
+           FROM sessions s
+           INNER JOIN users u ON u.id = s.user_id
+          WHERE s.id = ? AND s.user_id = ?`,
+        sid,
+        uid,
+      )) as
+        | {
+            session_id: string;
+            expires_at: string;
+            id: string;
+            email: string;
+            full_name: string | null;
+            is_admin: boolean;
+            must_reset_password: boolean;
+            is_paid: boolean;
+          }
+        | undefined;
+
+      if (!row) return null;
+      if (new Date(row.expires_at).getTime() < Date.now()) {
+        await dbRun(`DELETE FROM sessions WHERE id = ?`, sid).catch(() => {});
+        return null;
+      }
+
+      return {
+        id: row.id,
+        email: row.email,
+        full_name: row.full_name,
+        is_admin: Boolean(row.is_admin),
+        must_reset_password: Boolean(row.must_reset_password),
+        is_paid: Boolean(row.is_admin) || Boolean(row.is_paid),
+      };
+    } catch (error) {
+      // Transient DB / pool errors must not look like a logged-out session —
+      // that produced blank screens and "session crashed" for many users.
+      console.error("[auth] session DB lookup failed; using JWT claims:", error);
+      if (!email) return null;
+      return jwtFallback;
+    }
   } catch {
     return null;
   }

@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { DocsClient } from "@/lib/google/docs";
-import { resolveGoogleDocsId } from "@/lib/google/docs-url";
+import {
+  explainGoogleDocFetchError,
+  resolveGoogleDocsId,
+} from "@/lib/google/docs-url";
 import { DriveClient } from "@/lib/google/drive";
 import { upsertMasterResumeRow } from "@/lib/db/queries";
 import { env } from "@/lib/env";
@@ -46,9 +49,15 @@ export async function syncMasterFromGoogleDoc(
   const auth = await getGoogleAuthClient();
   const docs = new DocsClient(auth);
   const drive = new DriveClient(auth);
-  const synced = await syncMasterResumeFromDoc(docs, docId);
+  let synced: Awaited<ReturnType<typeof syncMasterResumeFromDoc>>;
+  let templateDocId: string;
+  try {
+    synced = await syncMasterResumeFromDoc(docs, docId);
+    templateDocId = await drive.ensureMasterTemplateCopy(docId);
+  } catch (error) {
+    throw new Error(explainGoogleDocFetchError(error));
+  }
   const { content, layout, sync_mode } = synced;
-  const templateDocId = await drive.ensureMasterTemplateCopy(docId);
 
   const syncedAt = new Date().toISOString();
   await upsertMasterResumeRow({
