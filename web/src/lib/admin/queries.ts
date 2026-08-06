@@ -29,31 +29,40 @@ export type AdminUserSummary = {
 async function loadAppOutcomeCountsByUser(): Promise<
   Map<string, { passed: number; failed: number }>
 > {
-  const rows = (await dbAll(
-    `SELECT user_id,
-            COUNT(*) FILTER (WHERE status = 'completed')::int AS apps_passed,
-            COUNT(*) FILTER (WHERE status IN ('failed', 'needs_manual'))::int AS apps_failed
-       FROM (
-         SELECT DISTINCT ON (application_id)
-                user_id, application_id, status
-           FROM pipeline_runs
-          ORDER BY application_id, created_at::timestamptz DESC
-       ) latest
-      GROUP BY user_id`,
-  )) as Array<{
-    user_id: string;
-    apps_passed: number;
-    apps_failed: number;
-  }>;
+  // Keep this cheap: no timestamptz cast (created_at is TEXT; ISO-ish strings
+  // sort correctly). A full-table cast was timing out and holding pool slots
+  // for minutes, which froze the whole app on reload.
+  try {
+    const rows = (await dbAll(
+      `SELECT user_id,
+              COUNT(*) FILTER (WHERE status = 'completed')::int AS apps_passed,
+              COUNT(*) FILTER (WHERE status IN ('failed', 'needs_manual'))::int AS apps_failed
+         FROM (
+           SELECT DISTINCT ON (application_id)
+                  user_id, application_id, status
+             FROM pipeline_runs
+            WHERE user_id IS NOT NULL
+            ORDER BY application_id, created_at DESC
+         ) latest
+        GROUP BY user_id`,
+    )) as Array<{
+      user_id: string;
+      apps_passed: number;
+      apps_failed: number;
+    }>;
 
-  const map = new Map<string, { passed: number; failed: number }>();
-  for (const row of rows) {
-    map.set(row.user_id, {
-      passed: Number(row.apps_passed) || 0,
-      failed: Number(row.apps_failed) || 0,
-    });
+    const map = new Map<string, { passed: number; failed: number }>();
+    for (const row of rows) {
+      map.set(row.user_id, {
+        passed: Number(row.apps_passed) || 0,
+        failed: Number(row.apps_failed) || 0,
+      });
+    }
+    return map;
+  } catch (error) {
+    console.error("[admin] loadAppOutcomeCountsByUser failed:", error);
+    return new Map();
   }
-  return map;
 }
 
 export async function listAdminUsers(): Promise<AdminUserSummary[]> {
@@ -65,7 +74,11 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
               p.location AS profile_location,
               p.phone AS profile_phone,
               p.linkedin_url AS profile_linkedin_url,
-              mr.content AS resume_content,
+              CASE
+                WHEN mr.content IS NULL THEN false
+                WHEN btrim(mr.content::text) IN ('', '{}', 'null') THEN false
+                ELSE true
+              END AS resume_done,
               gt.status AS google_status
          FROM users u
          LEFT JOIN profiles p ON p.user_id = u.id
@@ -86,7 +99,7 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
         profile_location: string | null;
         profile_phone: string | null;
         profile_linkedin_url: string | null;
-        resume_content: string | null;
+        resume_done: boolean;
         google_status: string | null;
       }>
     >,
@@ -94,9 +107,7 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
   ]);
 
   return rows.map((row) => {
-    const resumeDone = Boolean(
-      row.resume_content && row.resume_content !== "{}",
-    );
+    const resumeDone = Boolean(row.resume_done);
     const profileDone = profileFieldsComplete({
       full_name: row.profile_full_name || row.full_name,
       location: row.profile_location,

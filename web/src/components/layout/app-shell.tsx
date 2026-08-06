@@ -93,7 +93,13 @@ export function AppShell({
             ? "max-md:overflow-hidden md:min-h-[100dvh]"
             : "max-md:overflow-hidden"
       }`}
-    >      {isPaid ? <PipelineKeeper /> : null}
+    >
+      {isPaid &&
+      !pathname.startsWith("/admin-center") &&
+      !pathname.startsWith("/settings") &&
+      !pathname.startsWith("/billing") ? (
+        <PipelineKeeper />
+      ) : null}
       <header className="z-50 shrink-0 bg-surface border-b border-border-hairline pt-[env(safe-area-inset-top,0px)] md:pt-0">
         <div className="mx-auto h-nav-height max-w-content-max px-margin-mobile md:px-margin-desktop flex items-center justify-between gap-2 md:gap-4">
           <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">

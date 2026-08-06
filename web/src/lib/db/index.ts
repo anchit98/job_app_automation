@@ -14,7 +14,10 @@ export function getSql() {
       max: 10,
       idle_timeout: 20,
       connect_timeout: 10,
-      max_lifetime: 60 * 30,
+      // Shorter lifetime + TCP keepalive: wedged sockets (server waiting on
+      // ClientRead forever) starved the pool and froze every page load.
+      max_lifetime: 60 * 5,
+      keep_alive: 30,
     });
   }
   return sql;
@@ -26,13 +29,55 @@ export function toPgParams(text: string): string {
   return text.replace(/\?/g, () => `$${++i}`);
 }
 
+/**
+ * Watchdog for wedged sockets: the network can silently kill connections to
+ * Supabase mid-query, leaving Postgres in ClientRead and the app frozen for
+ * minutes. Cap each query and rebuild the pool so the next request recovers.
+ */
+const QUERY_TIMEOUT_MS = 15_000;
+
+function resetPool(reason: string) {
+  if (!sql) return;
+  console.error(`[db] resetting connection pool: ${reason}`);
+  const old = sql;
+  sql = null;
+  void old.end({ timeout: 1 }).catch(() => {});
+}
+
+async function guarded<T>(promise: Promise<T>, text: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          // Swallow the late rejection when the destroyed pool aborts it.
+          promise.catch(() => {});
+          resetPool(`query exceeded ${QUERY_TIMEOUT_MS}ms`);
+          reject(
+            new Error(
+              `Database query timed out after ${QUERY_TIMEOUT_MS}ms: ${text
+                .replace(/\s+/g, " ")
+                .slice(0, 120)}`,
+            ),
+          );
+        }, QUERY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function dbGet<T extends Record<string, unknown> = Record<string, unknown>>(
   text: string,
   ...params: unknown[]
 ): Promise<T | undefined> {
-  const rows = await getSql().unsafe(
-    toPgParams(text),
-    params as never[],
+  const rows = await guarded(
+    getSql().unsafe(toPgParams(text), params as never[]) as unknown as Promise<
+      unknown[]
+    >,
+    text,
   );
   return rows[0] as unknown as T | undefined;
 }
@@ -41,9 +86,11 @@ export async function dbAll<T extends Record<string, unknown> = Record<string, u
   text: string,
   ...params: unknown[]
 ): Promise<T[]> {
-  const rows = await getSql().unsafe(
-    toPgParams(text),
-    params as never[],
+  const rows = await guarded(
+    getSql().unsafe(toPgParams(text), params as never[]) as unknown as Promise<
+      unknown[]
+    >,
+    text,
   );
   return rows as unknown as T[];
 }
@@ -52,13 +99,15 @@ export async function dbRun(
   text: string,
   ...params: unknown[]
 ): Promise<{ changes: number }> {
-  const result = await getSql().unsafe(
-    toPgParams(text),
-    params as never[],
+  const result = await guarded(
+    getSql().unsafe(toPgParams(text), params as never[]) as unknown as Promise<
+      unknown[]
+    >,
+    text,
   );
   const changes =
-    typeof (result as { count?: number }).count === "number"
-      ? (result as { count: number }).count
+    typeof (result as unknown as { count?: number }).count === "number"
+      ? (result as unknown as { count: number }).count
       : Array.isArray(result)
         ? result.length
         : 0;

@@ -3,6 +3,8 @@ import { AdminCenterClient } from "@/components/admin/admin-center-client";
 import { requireUser } from "@/lib/auth/user";
 import { getAdminCenterData } from "@/lib/admin/queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminCenterPage() {
   const admin = await requireUser();
   if (!admin.is_admin) {

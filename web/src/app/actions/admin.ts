@@ -72,7 +72,7 @@ export async function adminCreateUser(input: {
       admin_user_id: admin.id,
       default_password: DEFAULT_PASSWORD,
     });
-    revalidatePath("/admin-center");
+    revalidatePath("/admin-center", "page");
     return { ok: true as const, user, defaultPassword: DEFAULT_PASSWORD };
   } catch (error) {
     return { ok: false as const, error: adminFailureMessage(error) };
@@ -302,7 +302,7 @@ export async function adminSetUserPaid(input: {
       parsed.data.userId,
       { admin_user_id: admin.id, email: user.email },
     );
-    revalidatePath("/admin-center");
+    revalidatePath("/admin-center", "page");
     revalidatePath("/billing");
     return { ok: true as const, email: user.email, paid: parsed.data.paid };
   } catch (error) {

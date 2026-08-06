@@ -345,8 +345,9 @@ export async function deleteAllUserSessions(userId: string) {
 }
 
 /**
- * Permanently deletes a user and cascades related rows. Clears extension
- * pending rows first - their FKs do not cascade on prompt/pipeline delete.
+ * Permanently deletes a user and related rows.
+ * Explicit deletes first: live DBs may lack ON DELETE CASCADE on older FKs
+ * (e.g. applications_user_id_fkey), and pending_extension_runs does not cascade.
  */
 export async function deleteUserAccount(userId: string): Promise<void> {
   const sql = getSql();
@@ -355,7 +356,48 @@ export async function deleteUserAccount(userId: string): Promise<void> {
       DELETE FROM pending_extension_runs
       WHERE prompt_run_id IN (SELECT id FROM prompt_runs WHERE user_id = ${userId})
          OR pipeline_run_id IN (SELECT id FROM pipeline_runs WHERE user_id = ${userId})
+         OR pipeline_run_id IN (
+              SELECT id FROM pipeline_runs
+               WHERE application_id IN (
+                 SELECT id FROM applications WHERE user_id = ${userId}
+               )
+            )
     `;
+
+    // Clear non-cascading prompt_run refs before removing runs / applications.
+    await tx`
+      UPDATE resume_versions
+         SET prompt_run_id = NULL
+       WHERE prompt_run_id IN (SELECT id FROM prompt_runs WHERE user_id = ${userId})
+    `;
+    await tx`
+      UPDATE cover_letter_versions
+         SET prompt_run_id = NULL
+       WHERE prompt_run_id IN (SELECT id FROM prompt_runs WHERE user_id = ${userId})
+    `;
+    await tx`
+      UPDATE contacts
+         SET prompt_run_id = NULL
+       WHERE prompt_run_id IN (SELECT id FROM prompt_runs WHERE user_id = ${userId})
+    `;
+    await tx`
+      UPDATE emails
+         SET prompt_run_id = NULL
+       WHERE prompt_run_id IN (SELECT id FROM prompt_runs WHERE user_id = ${userId})
+    `;
+    await tx`
+      UPDATE follow_ups
+         SET prompt_run_id = NULL
+       WHERE prompt_run_id IN (SELECT id FROM prompt_runs WHERE user_id = ${userId})
+    `;
+
+    await tx`DELETE FROM pipeline_runs WHERE user_id = ${userId}`;
+    await tx`
+      DELETE FROM pipeline_runs
+       WHERE application_id IN (SELECT id FROM applications WHERE user_id = ${userId})
+    `;
+    await tx`DELETE FROM applications WHERE user_id = ${userId}`;
+    await tx`DELETE FROM prompt_runs WHERE user_id = ${userId}`;
     await tx`DELETE FROM users WHERE id = ${userId}`;
   });
 }

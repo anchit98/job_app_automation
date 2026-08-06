@@ -375,11 +375,11 @@ export async function findPipelineByPromptRun(
   const rows = (
     uid
       ? await dbAll(
-          `SELECT * FROM pipeline_runs WHERE user_id = ? ORDER BY created_at::timestamptz DESC LIMIT 20`,
+          `SELECT * FROM pipeline_runs WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`,
           uid,
         )
       : await dbAll(
-          `SELECT * FROM pipeline_runs ORDER BY created_at::timestamptz DESC LIMIT 20`,
+          `SELECT * FROM pipeline_runs ORDER BY created_at DESC LIMIT 20`,
         )
   ) as Record<string, unknown>[];
   for (const row of rows) {
@@ -398,7 +398,7 @@ export async function listBusyPipelineRuns(userId?: string): Promise<PipelineRun
     `SELECT * FROM pipeline_runs
      WHERE user_id = ?
        AND status IN ('running', 'awaiting_chatgpt')
-     ORDER BY created_at::timestamptz ASC`,
+     ORDER BY created_at ASC`,
     uid,
   )) as Record<string, unknown>[];
   return rows.map(mapPipelineRow);
@@ -465,7 +465,7 @@ export async function listQueuedPipelineRuns(userId?: string): Promise<PipelineR
     `SELECT * FROM pipeline_runs
      WHERE user_id = ?
        AND status = 'queued'
-     ORDER BY created_at::timestamptz ASC`,
+     ORDER BY created_at ASC`,
     uid,
   )) as Record<string, unknown>[];
   return rows.map(mapPipelineRow);
@@ -479,7 +479,7 @@ export async function getLatestPipelineForApplication(
   const row = (await dbGet(
     `SELECT * FROM pipeline_runs
      WHERE application_id = ? AND user_id = ?
-     ORDER BY created_at::timestamptz DESC
+     ORDER BY created_at DESC
      LIMIT 1`,
     applicationId,
     uid,
@@ -500,7 +500,7 @@ export async function listLatestPipelinesForApplications(
      FROM pipeline_runs
      WHERE user_id = ?
        AND application_id IN (${placeholders})
-     ORDER BY application_id, created_at::timestamptz DESC`,
+     ORDER BY application_id, created_at DESC`,
     uid,
     ...applicationIds,
   )) as Record<string, unknown>[];
@@ -523,7 +523,7 @@ export async function claimNextQueuedPipeline(userId?: string): Promise<Pipeline
      WHERE id = (
        SELECT id FROM pipeline_runs
        WHERE status = 'queued' AND user_id = ?
-       ORDER BY created_at::timestamptz ASC
+       ORDER BY created_at ASC
        LIMIT 1
      )
      RETURNING *`,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   adminApprovePaymentClaim,
   adminCreateUser,
@@ -34,6 +34,32 @@ type ActiveResetLink = {
   full_name: string | null;
 };
 
+function toAdminUserSummary(user: {
+  id: string;
+  email: string;
+  full_name: string | null;
+  is_admin: boolean;
+  must_reset_password: boolean;
+  is_paid: boolean;
+}): AdminUserSummary {
+  return {
+    id: user.id,
+    email: user.email,
+    full_name: user.full_name,
+    is_admin: user.is_admin,
+    must_reset_password: user.must_reset_password,
+    is_paid: user.is_admin || user.is_paid,
+    paid_at: user.is_admin || user.is_paid ? new Date().toISOString() : null,
+    created_at: new Date().toISOString(),
+    google_connected: false,
+    profile_done: false,
+    resume_done: false,
+    setup_completed: false,
+    apps_passed: 0,
+    apps_failed: 0,
+  };
+}
+
 export function AdminCenterClient({
   currentUserId,
   users,
@@ -55,6 +81,12 @@ export function AdminCenterClient({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openMenuUserId, setOpenMenuUserId] = useState<string | null>(null);
+  // Local copy so mutations update the table immediately; props sync after refresh.
+  const [userRows, setUserRows] = useState(users);
+
+  useEffect(() => {
+    setUserRows(users);
+  }, [users]);
 
   const pendingRequestUsers = useMemo(
     () => new Set(resetRequests.map((request) => request.user_id)),
@@ -64,6 +96,10 @@ export function AdminCenterClient({
   function clearFeedback() {
     setMessage(null);
     setError(null);
+  }
+
+  function refreshUsers() {
+    router.refresh();
   }
 
   return (
@@ -91,7 +127,11 @@ export function AdminCenterClient({
                 `Created ${result.user.email}. Default password: ${result.defaultPassword}`,
               );
               setCreateForm({ email: "", full_name: "" });
-              router.refresh();
+              setUserRows((current) => [
+                toAdminUserSummary(result.user),
+                ...current.filter((row) => row.id !== result.user.id),
+              ]);
+              refreshUsers();
             });
           }}
         >
@@ -224,7 +264,20 @@ export function AdminCenterClient({
                                 return;
                               }
                               setMessage(`Approved payment for ${claim.email}.`);
-                              router.refresh();
+                              setUserRows((current) =>
+                                current.map((row) =>
+                                  row.id === claim.user_id
+                                    ? {
+                                        ...row,
+                                        is_paid: true,
+                                        paid_at:
+                                          row.paid_at ??
+                                          new Date().toISOString(),
+                                      }
+                                    : row,
+                                ),
+                              );
+                              refreshUsers();
                             });
                           }}
                         />
@@ -244,7 +297,7 @@ export function AdminCenterClient({
                                 return;
                               }
                               setMessage(`Rejected payment for ${claim.email}.`);
-                              router.refresh();
+                              refreshUsers();
                             });
                           }}
                         />
@@ -310,7 +363,7 @@ export function AdminCenterClient({
               <code>abc12345</code>
             </p>
           </div>
-          <span className="li-meta shrink-0">{users.length} total</span>
+          <span className="li-meta shrink-0">{userRows.length} total</span>
         </div>
         <div className="overflow-auto flex-1">
           <table className="w-full text-left text-[13px]">
@@ -351,7 +404,7 @@ export function AdminCenterClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-border-muted">
-              {users.map((user) => (
+              {userRows.map((user) => (
                 <tr key={user.id} className="align-middle hover:bg-[var(--ghost-hover)]">
                   <td className="px-2 sm:px-3 py-2 min-w-0">
                     <div className="font-semibold text-on-surface leading-tight">
@@ -437,7 +490,20 @@ export function AdminCenterClient({
                                     return;
                                   }
                                   setMessage(`Marked ${user.email} as paid.`);
-                                  router.refresh();
+                                  setUserRows((current) =>
+                                    current.map((row) =>
+                                      row.id === user.id
+                                        ? {
+                                            ...row,
+                                            is_paid: true,
+                                            paid_at:
+                                              row.paid_at ??
+                                              new Date().toISOString(),
+                                          }
+                                        : row,
+                                    ),
+                                  );
+                                  refreshUsers();
                                 });
                               },
                             }
@@ -468,7 +534,18 @@ export function AdminCenterClient({
                                     setMessage(
                                       `Revoked access for ${user.email}.`,
                                     );
-                                    router.refresh();
+                                    setUserRows((current) =>
+                                      current.map((row) =>
+                                        row.id === user.id
+                                          ? {
+                                              ...row,
+                                              is_paid: false,
+                                              paid_at: null,
+                                            }
+                                          : row,
+                                      ),
+                                    );
+                                    refreshUsers();
                                   });
                                 },
                               }
@@ -501,7 +578,21 @@ export function AdminCenterClient({
                                   setMessage(
                                     `Promoted ${user.email} to admin.`,
                                   );
-                                  router.refresh();
+                                  setUserRows((current) =>
+                                    current.map((row) =>
+                                      row.id === user.id
+                                        ? {
+                                            ...row,
+                                            is_admin: true,
+                                            is_paid: true,
+                                            paid_at:
+                                              row.paid_at ??
+                                              new Date().toISOString(),
+                                          }
+                                        : row,
+                                    ),
+                                  );
+                                  refreshUsers();
                                 });
                               },
                             }
@@ -532,7 +623,14 @@ export function AdminCenterClient({
                                     setMessage(
                                       `Removed admin from ${user.email}.`,
                                     );
-                                    router.refresh();
+                                    setUserRows((current) =>
+                                      current.map((row) =>
+                                        row.id === user.id
+                                          ? { ...row, is_admin: false }
+                                          : row,
+                                      ),
+                                    );
+                                    refreshUsers();
                                   });
                                 },
                               }
@@ -562,7 +660,14 @@ export function AdminCenterClient({
                               setMessage(
                                 `Password reset for ${user.email}. Default: ${result.defaultPassword}`,
                               );
-                              router.refresh();
+                              setUserRows((current) =>
+                                current.map((row) =>
+                                  row.id === user.id
+                                    ? { ...row, must_reset_password: true }
+                                    : row,
+                                ),
+                              );
+                              refreshUsers();
                             });
                           },
                         },
@@ -591,7 +696,10 @@ export function AdminCenterClient({
                                 return;
                               }
                               setMessage(`Deleted ${result.email}.`);
-                              router.refresh();
+                              setUserRows((current) =>
+                                current.filter((row) => row.id !== user.id),
+                              );
+                              refreshUsers();
                             });
                           },
                         },
@@ -600,7 +708,7 @@ export function AdminCenterClient({
                   </td>
                 </tr>
               ))}
-              {users.length === 0 ? (
+              {userRows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-3 py-4 li-meta">
                     No users yet.

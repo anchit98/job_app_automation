@@ -419,6 +419,8 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_application
   ON pipeline_runs (application_id);
 CREATE INDEX IF NOT EXISTS pipeline_runs_user_idx ON pipeline_runs (user_id);
+CREATE INDEX IF NOT EXISTS pipeline_runs_application_created_idx
+  ON pipeline_runs (application_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS pending_extension_runs (
   prompt_run_id TEXT PRIMARY KEY REFERENCES prompt_runs (id),

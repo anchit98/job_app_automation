@@ -3,11 +3,11 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["postgres"],
   experimental: {
-    // Keep visited pages in the client router cache. Mutations that call
-    // revalidatePath still refresh; plain revisits reuse the cached RSC tree.
+    // Short cache only — a 1h dynamic staleTime made soft navigations feel
+    // "stuck loading" when a refresh raced pipeline ticks for DB connections.
     staleTimes: {
-      dynamic: 3600,
-      static: 86400,
+      dynamic: 30,
+      static: 180,
     },
   },
 };

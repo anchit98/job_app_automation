@@ -1936,9 +1936,13 @@ export async function tickGlobalPipelines() {
     };
   }
 
-  // Cheap path first - avoid promote/advance when nothing is active or queued.
-  await failStaleBusyPipelines();
-  const busy = await listBusyPipelineRuns();
+  // Cheap path first - avoid stale-fail / promote / advance when idle.
+  // failStaleBusyPipelines alone was ~2s per tick and starved page loads.
+  let busy = await listBusyPipelineRuns();
+  if (busy.length > 0) {
+    await failStaleBusyPipelines();
+    busy = await listBusyPipelineRuns();
+  }
   const queued = busy.length === 0 ? await listQueuedPipelineRuns() : [];
 
   if (busy.length === 0 && queued.length === 0) {
