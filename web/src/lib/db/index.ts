@@ -27,10 +27,9 @@ export function getSql() {
       connect_timeout: 10,
       max_lifetime: 60 * 5,
       keep_alive: 30,
-      // Cancel slow queries server-side without destroying the pool (pool resets
-      // were cascading 500s for every concurrent request on the same isolate).
+      // Cancel slow queries server-side without destroying the pool.
       connection: {
-        statement_timeout: 20000,
+        statement_timeout: 15000,
       },
     });
   }
@@ -43,13 +42,43 @@ export function toPgParams(text: string): string {
   return text.replace(/\?/g, () => `$${++i}`);
 }
 
+/** Fail the HTTP request fast if the pooler/network stalls — do not destroy the pool. */
+const CLIENT_QUERY_TIMEOUT_MS = 12_000;
+
+async function withClientTimeout<T>(
+  promise: Promise<T>,
+  text: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(
+              `Database query timed out after ${CLIENT_QUERY_TIMEOUT_MS}ms: ${text
+                .replace(/\s+/g, " ")
+                .slice(0, 120)}`,
+            ),
+          );
+        }, CLIENT_QUERY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function dbGet<T extends Record<string, unknown> = Record<string, unknown>>(
   text: string,
   ...params: unknown[]
 ): Promise<T | undefined> {
-  const rows = await getSql().unsafe(
-    toPgParams(text),
-    params as never[],
+  const rows = await withClientTimeout(
+    getSql().unsafe(toPgParams(text), params as never[]) as unknown as Promise<
+      unknown[]
+    >,
+    text,
   );
   return rows[0] as unknown as T | undefined;
 }
@@ -58,9 +87,11 @@ export async function dbAll<T extends Record<string, unknown> = Record<string, u
   text: string,
   ...params: unknown[]
 ): Promise<T[]> {
-  const rows = await getSql().unsafe(
-    toPgParams(text),
-    params as never[],
+  const rows = await withClientTimeout(
+    getSql().unsafe(toPgParams(text), params as never[]) as unknown as Promise<
+      unknown[]
+    >,
+    text,
   );
   return rows as unknown as T[];
 }
@@ -69,13 +100,15 @@ export async function dbRun(
   text: string,
   ...params: unknown[]
 ): Promise<{ changes: number }> {
-  const result = await getSql().unsafe(
-    toPgParams(text),
-    params as never[],
+  const result = await withClientTimeout(
+    getSql().unsafe(toPgParams(text), params as never[]) as unknown as Promise<
+      unknown[]
+    >,
+    text,
   );
   const changes =
-    typeof (result as { count?: number }).count === "number"
-      ? (result as { count: number }).count
+    typeof (result as unknown as { count?: number }).count === "number"
+      ? (result as unknown as { count: number }).count
       : Array.isArray(result)
         ? result.length
         : 0;

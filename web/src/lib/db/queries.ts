@@ -49,7 +49,7 @@ function mapProfile(row: Record<string, unknown>): Profile {
     portfolio_url: (row.portfolio_url as string | null) ?? null,
     setup_console_done_at: (row.setup_console_done_at as string | null) ?? null,
     setup_guide_collapsed: Boolean(row.setup_guide_collapsed),
-    has_avatar: Boolean(row.avatar_data),
+    has_avatar: Boolean(row.has_avatar ?? row.avatar_data),
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -108,7 +108,17 @@ function mapGoogleTokens(row: Record<string, unknown>): GoogleTokensRow {
 
 export async function getProfileRow(userId?: string): Promise<Profile | null> {
   const uid = await currentUserId(userId);
-  const row = await dbGet("SELECT * FROM profiles WHERE user_id = ?", uid) as Record<string, unknown> | undefined;
+  // Never SELECT avatar_data here — blobs were wedging pooler ClientRead waits
+  // on every AppShell render. Avatar bytes are loaded only via /api/profile/avatar.
+  const row = (await dbGet(
+    `SELECT full_name, headline, location, timezone, drive_root_id, preferred_tone,
+            phone, linkedin_url, github_url, portfolio_url,
+            setup_console_done_at, setup_guide_collapsed, created_at, updated_at,
+            (avatar_data IS NOT NULL AND avatar_mime IS NOT NULL) AS has_avatar
+       FROM profiles
+      WHERE user_id = ?`,
+    uid,
+  )) as Record<string, unknown> | undefined;
   return row ? mapProfile(row) : null;
 }
 

@@ -1,4 +1,6 @@
 import { decryptSecret, encryptSecret } from "@/lib/crypto/tokens";
+import { getCurrentUser } from "@/lib/auth/user";
+import { dbGet } from "@/lib/db";
 import {
   deleteGoogleTokensRow,
   getGoogleTokensRow,
@@ -100,8 +102,13 @@ export async function getGoogleAuthClient(userId?: string) {
 }
 
 export async function isGoogleConnected(): Promise<boolean> {
-  const row = await getGoogleTokensRow();
-  return Boolean(row && row.status === "active");
+  const user = await getCurrentUser();
+  if (!user) return false;
+  const row = await dbGet<{ status: string }>(
+    `SELECT status FROM google_tokens WHERE user_id = ?`,
+    user.id,
+  );
+  return row?.status === "active";
 }
 
 export async function revokeGoogleTokenAtSource(refreshToken: string) {

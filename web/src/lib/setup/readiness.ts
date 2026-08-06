@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { getCurrentUser } from "@/lib/auth/user";
-import { getProfileRow, getMasterResumeRow } from "@/lib/db/queries";
+import { dbGet } from "@/lib/db";
+import { getProfileRow } from "@/lib/db/queries";
 import { isGoogleConnected } from "@/lib/google/tokens";
 import { profileFieldsComplete } from "@/lib/setup/profile-complete";
 
@@ -11,13 +12,6 @@ export type SetupReadiness = {
   /** Ready to use Dashboard + Apply */
   setupReady: boolean;
 };
-
-function hasMasterResumeContent(
-  content: Record<string, unknown> | null | undefined,
-): boolean {
-  if (!content) return false;
-  return Object.keys(content).length > 0;
-}
 
 /**
  * One-time setup gate for paid users:
@@ -34,9 +28,19 @@ export const getSetupReadiness = cache(async (): Promise<SetupReadiness> => {
     };
   }
 
-  const [profile, resume, googleConnected] = await Promise.all([
+  // Cheap checks only — never pull master_resume.content/doc_layout blobs here.
+  const [profile, resumeFlag, googleConnected] = await Promise.all([
     getProfileRow().catch(() => null),
-    getMasterResumeRow().catch(() => null),
+    dbGet<{ resume_done: boolean }>(
+      `SELECT CASE
+                WHEN content IS NULL THEN false
+                WHEN btrim(content::text) IN ('', '{}', 'null') THEN false
+                ELSE true
+              END AS resume_done
+         FROM master_resume
+        WHERE user_id = ?`,
+      user.id,
+    ).catch(() => undefined),
     isGoogleConnected().catch(() => false),
   ]);
 
@@ -46,9 +50,7 @@ export const getSetupReadiness = cache(async (): Promise<SetupReadiness> => {
     phone: profile?.phone,
     linkedin_url: profile?.linkedin_url,
   });
-  const masterResumeDone = hasMasterResumeContent(
-    resume?.content as Record<string, unknown> | null | undefined,
-  );
+  const masterResumeDone = Boolean(resumeFlag?.resume_done);
 
   return {
     googleConnected,

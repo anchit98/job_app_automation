@@ -16,6 +16,16 @@ const UNPAID_ALLOWED = [
   "/reset-password-required",
 ];
 
+/** Skip setup/resume fan-out — these pages don't need the setup gate data. */
+function skipSetupReadiness(pathname: string) {
+  return (
+    pathname.startsWith("/admin-center") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/billing") ||
+    pathname === "/reset-password-required"
+  );
+}
+
 function unpaidAllowed(pathname: string) {
   return UNPAID_ALLOWED.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
@@ -27,20 +37,29 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [user, profile, headerStore, readiness] = await Promise.all([
+  const headerStore = await headers();
+  const pathname = headerStore.get("x-pathname") || "";
+  const lightLayout = skipSetupReadiness(pathname);
+
+  const [user, profile, readiness] = await Promise.all([
     getCurrentUser().catch(() => null),
     getProfile().catch(() => null),
-    headers(),
-    getSetupReadiness().catch(() => ({
-      googleConnected: false,
-      profileDone: false,
-      masterResumeDone: false,
-      setupReady: false,
-    })),
+    lightLayout
+      ? Promise.resolve({
+          googleConnected: true,
+          profileDone: true,
+          masterResumeDone: true,
+          setupReady: true,
+        })
+      : getSetupReadiness().catch(() => ({
+          googleConnected: false,
+          profileDone: false,
+          masterResumeDone: false,
+          setupReady: false,
+        })),
   ]);
 
   const isPaid = user ? userHasPaidAccess(user) : true;
-  const pathname = headerStore.get("x-pathname") || "";
   const setupReady = !isPaid || readiness.setupReady;
 
   // Server-side redirect when pathname is available from middleware.
@@ -54,10 +73,14 @@ export default async function AppLayout({
     pathname &&
     (pathname === "/billing" || pathname.startsWith("/billing/"))
   ) {
+    // Need real readiness for this redirect — fetch if we skipped it.
+    const ready = lightLayout
+      ? (await getSetupReadiness().catch(() => ({ setupReady: false }))).setupReady
+      : readiness.setupReady;
     redirect(
       pathname.startsWith("/billing/razorpay/return")
         ? "/onboarding"
-        : readiness.setupReady
+        : ready
           ? "/dashboard"
           : "/onboarding",
     );
