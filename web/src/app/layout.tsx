@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import { RootChrome } from "@/components/layout/site-footer";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { APP_DESCRIPTION, APP_NAME } from "@/lib/brand";
@@ -89,6 +90,7 @@ export default function RootLayout({
         <ThemeProvider>
           <RootChrome>{children}</RootChrome>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
