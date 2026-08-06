@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegalBackLink } from "@/components/layout/legal-back-link";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | JobApp OS",
+  title: "Privacy Policy",
   description: "Privacy Policy for JobApp OS.",
 };
 

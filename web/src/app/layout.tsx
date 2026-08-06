@@ -2,12 +2,21 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { RootChrome } from "@/components/layout/site-footer";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { APP_DESCRIPTION, APP_NAME } from "@/lib/brand";
 import "./globals.css";
 
+const APP_ORIGIN =
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://www.jobappos.in";
+
 export const metadata: Metadata = {
-  title: "JobApp OS | Job Application Automation",
-  description:
-    "JobApp OS helps job seekers automate applications: tailored resumes and cover letters, Google Drive/Docs storage, Gmail drafts, and application tracking.",
+  metadataBase: new URL(APP_ORIGIN),
+  // Exact match for Google OAuth branding verification (application-name / og tags).
+  applicationName: APP_NAME,
+  title: {
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
+  },
+  description: APP_DESCRIPTION,
   icons: {
     icon: [
       { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
@@ -18,8 +27,20 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "JobApp OS",
+    title: APP_NAME,
     statusBarStyle: "default",
+  },
+  openGraph: {
+    type: "website",
+    siteName: APP_NAME,
+    title: APP_NAME,
+    description: APP_DESCRIPTION,
+    url: "/",
+  },
+  twitter: {
+    card: "summary",
+    title: APP_NAME,
+    description: APP_DESCRIPTION,
   },
 };
 

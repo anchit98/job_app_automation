@@ -6,15 +6,37 @@ import { useEffect, useRef, useState } from "react";
 import { LandingGallery } from "@/components/marketing/landing-gallery";
 import { LandingAgentVisual } from "@/components/marketing/landing-agent-visual";
 
-const navLinks = [
-  { href: "#about", label: "About" },
-  { href: "#features", label: "Features" },
-  { href: "#benefits", label: "Why JobApp OS" },
-  { href: "#tips", label: "Insider tips" },
-  { href: "#ai", label: "AI" },
-  { href: "#gallery", label: "Gallery" },
+type NavItem = { href: string; label: string };
+type NavEntry = NavItem | { label: string; items: NavItem[] };
+
+const navEntries: NavEntry[] = [
+  {
+    label: "Product",
+    items: [
+      { href: "#how-it-works", label: "How it works" },
+      { href: "#features", label: "Features" },
+      { href: "#google-access", label: "Google access" },
+      { href: "#gallery", label: "Screenshots" },
+    ],
+  },
+  {
+    label: "Why JobApp OS",
+    items: [
+      { href: "#benefits", label: "Benefits" },
+      { href: "#tips", label: "Insider tips" },
+      { href: "#ai", label: "How AI is used" },
+    ],
+  },
   { href: "#pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
+  {
+    label: "Support",
+    items: [
+      { href: "/contact", label: "Contact Us" },
+      { href: "/privacy-policy", label: "Privacy Policy" },
+      { href: "/terms", label: "Terms of Service" },
+    ],
+  },
 ];
 
 const heroChips = [
@@ -154,24 +176,65 @@ const faqs = [
   },
 ];
 
-const aboutSteps = [
+const workflowSteps = [
   {
     step: "01",
-    icon: "record_voice_over",
-    title: "Teach it your voice",
-    body: "Connect Google, set your profile, and lock in master resume and cover letter sources.",
+    icon: "person_add",
+    title: "Sign up",
+    body: "Create your JobApp OS account with your email — it takes under a minute.",
   },
   {
     step: "02",
-    icon: "play_circle",
-    title: "Start Apply",
-    body: "Paste the JD. The agent walks resume, cover letter, contacts, emails, and drafts automatically.",
+    icon: "link",
+    title: "Connect your Google account",
+    body: "Grant permission for Google Drive, Docs, and Gmail drafts so documents and outreach can be prepared for you.",
   },
   {
     step: "03",
-    icon: "insights",
-    title: "Track and follow up",
-    body: "Monitor status, enqueue follow-ups, and keep every company conversation in one tracker.",
+    icon: "description",
+    title: "Set up your master resume",
+    body: "Fill in your profile and sync your master resume and cover letter from Google Docs — the source of truth for every application.",
+  },
+  {
+    step: "04",
+    icon: "content_paste",
+    title: "Paste a job description",
+    body: "Add the company, role, and full job description to start an Apply run.",
+  },
+  {
+    step: "05",
+    icon: "auto_awesome",
+    title: "AI generates your application",
+    body: "A tailored resume, cover letter, and personalized outreach emails are generated, validated, and saved to your Drive as PDFs.",
+  },
+  {
+    step: "06",
+    icon: "send",
+    title: "Review, send, and track",
+    body: "Check the Gmail drafts, send them yourself, and track every application, reply, and follow-up on the dashboard.",
+  },
+];
+
+const googleAccessPoints = [
+  {
+    icon: "folder_open",
+    title: "Google Drive & Docs",
+    body: "Creates a JobApp OS folder in your Drive and builds your tailored resume and cover letter as Google Docs there, then exports the PDFs you attach to applications.",
+  },
+  {
+    icon: "drafts",
+    title: "Gmail — drafts only",
+    body: "Writes outreach and follow-up emails as drafts in your Gmail, attaching the finished PDFs. Nothing is ever sent automatically — you review and press send yourself.",
+  },
+  {
+    icon: "mark_email_read",
+    title: "Reply tracking, scoped tightly",
+    body: "Where you grant read access, JobApp OS only looks up the application threads it created for you, so follow-ups land in the right conversation. Unrelated email is never read.",
+  },
+  {
+    icon: "verified_user",
+    title: "You stay in control",
+    body: "Access is used only after you grant permission and only for these features. Your data is never sold or shared with third parties, and you can revoke access anytime in your Google Account settings.",
   },
 ];
 
@@ -323,6 +386,16 @@ export function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [showTop, setShowTop] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!openDropdown) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenDropdown(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [openDropdown]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -386,11 +459,82 @@ export function LandingPage() {
             </span>
           </a>
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Page">
-            {navLinks.map((link) => (
-              <a key={link.href} href={link.href} className="mk-nav-link">
-                {link.label}
-              </a>
-            ))}
+            {navEntries.map((entry) =>
+              "items" in entry ? (
+                <div key={entry.label} className="relative">
+                  <button
+                    type="button"
+                    className="mk-nav-link inline-flex items-center gap-0.5 bg-transparent"
+                    aria-haspopup="menu"
+                    aria-expanded={openDropdown === entry.label}
+                    onClick={() =>
+                      setOpenDropdown((open) =>
+                        open === entry.label ? null : entry.label,
+                      )
+                    }
+                  >
+                    {entry.label}
+                    <span
+                      className={`material-symbols-outlined text-[17px] transition-transform duration-200 ${
+                        openDropdown === entry.label ? "rotate-180" : ""
+                      }`}
+                      aria-hidden
+                    >
+                      expand_more
+                    </span>
+                  </button>
+                  {openDropdown === entry.label ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Close menu"
+                        className="fixed inset-0 z-40 cursor-default"
+                        onClick={() => setOpenDropdown(null)}
+                        tabIndex={-1}
+                      />
+                      <div
+                        role="menu"
+                        className="absolute left-0 top-[calc(100%+8px)] z-50 w-52 overflow-hidden rounded-xl border border-[var(--border-hairline)] bg-[var(--surface)] py-1.5 shadow-[0_18px_44px_-18px_rgba(0,0,0,0.35)]"
+                      >
+                        {entry.items.map((item) => {
+                          const itemClass =
+                            "block px-4 py-2.5 text-[13px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)] hover:text-[var(--primary)]";
+                          return item.href.startsWith("/") ? (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              role="menuitem"
+                              className={itemClass}
+                              onClick={() => setOpenDropdown(null)}
+                            >
+                              {item.label}
+                            </Link>
+                          ) : (
+                            <a
+                              key={item.href}
+                              href={item.href}
+                              role="menuitem"
+                              className={itemClass}
+                              onClick={() => setOpenDropdown(null)}
+                            >
+                              {item.label}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              ) : entry.href.startsWith("/") ? (
+                <Link key={entry.href} href={entry.href} className="mk-nav-link">
+                  {entry.label}
+                </Link>
+              ) : (
+                <a key={entry.href} href={entry.href} className="mk-nav-link">
+                  {entry.label}
+                </a>
+              ),
+            )}
           </nav>
           <div className="hidden items-center gap-2 lg:flex">
             <Link
@@ -429,16 +573,56 @@ export function LandingPage() {
               className="mx-auto flex max-w-6xl flex-col gap-0.5 px-4 py-3 sm:px-6"
               aria-label="Mobile"
             >
-              {navLinks.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  className="rounded-lg px-3 py-2.5 text-[15px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]"
-                  onClick={closeMenu}
-                >
-                  {link.label}
-                </a>
-              ))}
+              {navEntries.map((entry) =>
+                "items" in entry ? (
+                  <div key={entry.label}>
+                    <p className="px-3 pb-1 pt-3 text-[11.5px] font-bold uppercase tracking-[0.14em] text-[var(--on-surface-variant)]">
+                      {entry.label}
+                    </p>
+                    {entry.items.map((item) => {
+                      const itemClass =
+                        "block rounded-lg py-2.5 pl-6 pr-3 text-[15px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]";
+                      return item.href.startsWith("/") ? (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={itemClass}
+                          onClick={closeMenu}
+                        >
+                          {item.label}
+                        </Link>
+                      ) : (
+                        <a
+                          key={item.href}
+                          href={item.href}
+                          className={itemClass}
+                          onClick={closeMenu}
+                        >
+                          {item.label}
+                        </a>
+                      );
+                    })}
+                  </div>
+                ) : entry.href.startsWith("/") ? (
+                  <Link
+                    key={entry.href}
+                    href={entry.href}
+                    className="rounded-lg px-3 py-2.5 text-[15px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]"
+                    onClick={closeMenu}
+                  >
+                    {entry.label}
+                  </Link>
+                ) : (
+                  <a
+                    key={entry.href}
+                    href={entry.href}
+                    className="rounded-lg px-3 py-2.5 text-[15px] font-semibold text-[var(--on-surface)] no-underline transition-colors hover:bg-[var(--ghost-hover)]"
+                    onClick={closeMenu}
+                  >
+                    {entry.label}
+                  </a>
+                ),
+              )}
               <div className="mt-2 flex flex-col gap-2 border-t border-[var(--border-hairline)] pt-3">
                 <Link
                   href="/login"
@@ -540,18 +724,18 @@ export function LandingPage() {
         </section>
 
         <section
-          id="about"
+          id="how-it-works"
           className="marketing-section border-t border-[var(--border-hairline)]"
         >
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <SectionHeading
-              eyebrow="About"
-              title="What JobApp OS does"
+              eyebrow="How it works"
+              title="From sign-up to sent application"
               lead="JobApp OS helps job seekers automate applications end to end: tailor resumes and cover letters from a pasted job description, save materials to Google Drive/Docs, prepare Gmail drafts for recruiters, schedule follow-up reminders, and track every role in one place — while you stay in control of what gets sent."
             />
-            <div className="mt-12 grid gap-5 sm:grid-cols-3">
-              {aboutSteps.map((item, index) => (
-                <Reveal key={item.step} delay={index * 110}>
+            <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {workflowSteps.map((item, index) => (
+                <Reveal key={item.step} delay={(index % 3) * 110}>
                   <article className="marketing-panel mk-step-card h-full rounded-2xl p-6 text-center sm:text-left">
                     <div className="flex items-center justify-between">
                       <span className="mk-icon-tile">
@@ -598,6 +782,52 @@ export function LandingPage() {
                 </Reveal>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section
+          id="google-access"
+          className="marketing-section border-t border-[var(--border-hairline)] bg-[var(--surface-container-low)]"
+        >
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <SectionHeading
+              eyebrow="Google permissions"
+              title="Why connect your Google account?"
+              lead="JobApp OS uses your Google account only after you grant permission, and only to power the features below. Nothing is emailed on your behalf, and your data is never shared with third parties."
+              align="center"
+            />
+            <div className="mt-12 grid gap-5 sm:grid-cols-2">
+              {googleAccessPoints.map((point, index) => (
+                <Reveal key={point.title} delay={(index % 2) * 110}>
+                  <article className="marketing-panel flex h-full flex-col items-center gap-5 rounded-2xl p-6 text-center sm:flex-row sm:items-start sm:text-left">
+                    <span className="mk-icon-tile shrink-0">
+                      <span className="material-symbols-outlined text-[22px]">
+                        {point.icon}
+                      </span>
+                    </span>
+                    <div>
+                      <h3 className="text-[17px] font-bold">{point.title}</h3>
+                      <p className="mt-2 text-[14px] leading-6 text-[var(--on-surface-variant)]">
+                        {point.body}
+                      </p>
+                    </div>
+                  </article>
+                </Reveal>
+              ))}
+            </div>
+            <Reveal delay={120}>
+              <p className="mt-8 text-center text-[14px] text-[var(--on-surface-variant)]">
+                Full details on what we access, why, and how it&apos;s protected
+                are in our{" "}
+                <Link
+                  href="/privacy-policy"
+                  className="font-semibold text-[var(--primary)] no-underline hover:underline"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+            </Reveal>
           </div>
         </section>
 
@@ -896,6 +1126,13 @@ export function LandingPage() {
               >
                 Terms
               </Link>
+              {" · "}
+              <Link
+                href="/contact"
+                className="font-semibold text-[var(--primary)] underline underline-offset-2"
+              >
+                Contact Us
+              </Link>
             </p>
           </div>
           <div className="grid grid-cols-2 gap-8 text-center sm:grid-cols-3 sm:text-left lg:col-span-7">
@@ -905,8 +1142,18 @@ export function LandingPage() {
               </p>
               <ul className="mt-4 space-y-2.5 text-[14px]">
                 <li>
+                  <a href="#how-it-works" className="mk-footer-link">
+                    How it works
+                  </a>
+                </li>
+                <li>
                   <a href="#features" className="mk-footer-link">
                     Features
+                  </a>
+                </li>
+                <li>
+                  <a href="#google-access" className="mk-footer-link">
+                    Google access
                   </a>
                 </li>
                 <li>
@@ -916,7 +1163,7 @@ export function LandingPage() {
                 </li>
                 <li>
                   <a href="#gallery" className="mk-footer-link">
-                    Gallery
+                    Screenshots
                   </a>
                 </li>
               </ul>
@@ -940,7 +1187,7 @@ export function LandingPage() {
             </div>
             <div>
               <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[var(--on-surface-variant)]">
-                Policies
+                Legal & support
               </p>
               <ul className="mt-4 space-y-2.5 text-[14px]">
                 <li>
@@ -951,6 +1198,11 @@ export function LandingPage() {
                 <li>
                   <Link href="/terms" className="mk-footer-link">
                     Terms of Service
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/contact" className="mk-footer-link">
+                    Contact Us
                   </Link>
                 </li>
               </ul>

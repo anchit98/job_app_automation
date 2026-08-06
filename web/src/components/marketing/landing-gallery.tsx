@@ -12,6 +12,12 @@ const slides = [
     caption: "Command center with pipeline metrics and follow-ups",
   },
   {
+    id: "google",
+    label: "Google connect",
+    icon: "account_circle",
+    caption: "Connect Google once — Drive, Docs, and Gmail drafts, with your consent",
+  },
+  {
     id: "apply",
     label: "Apply",
     icon: "rocket_launch",
@@ -97,6 +103,65 @@ function DashboardPreview() {
             </p>
           </div>
         ))}
+      </div>
+    </Frame>
+  );
+}
+
+function GoogleConnectPreview() {
+  const scopes = [
+    {
+      icon: "folder_open",
+      label: "Google Drive & Docs",
+      detail: "Create and update your tailored resume and cover letter documents",
+    },
+    {
+      icon: "drafts",
+      label: "Gmail drafts",
+      detail: "Save outreach and follow-up emails as drafts — never auto-sent",
+    },
+    {
+      icon: "mark_email_read",
+      label: "Reply tracking",
+      detail: "Look up only the application threads created for you",
+    },
+  ];
+  return (
+    <Frame title="JobApp OS · Connect Google">
+      <p className="text-[16px] font-bold">Connect your Google account</p>
+      <p className="mt-1 text-[12px] text-[var(--on-surface-variant)]">
+        JobApp OS requests these permissions, used only for your applications
+      </p>
+      <div className="mt-4 space-y-2.5">
+        {scopes.map((scope, index) => (
+          <div
+            key={scope.label}
+            className="mk-gallery-item flex items-start gap-3 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface)] px-3.5 py-3"
+            style={{ animationDelay: `${index * 80}ms` }}
+          >
+            <span className="material-symbols-outlined mt-0.5 text-[18px] text-[var(--primary)]">
+              {scope.icon}
+            </span>
+            <div>
+              <p className="text-[13px] font-bold">{scope.label}</p>
+              <p className="text-[12px] text-[var(--on-surface-variant)]">
+                {scope.detail}
+              </p>
+            </div>
+          </div>
+        ))}
+        <div
+          className="mk-gallery-item rounded-lg bg-[var(--primary)] px-3.5 py-2.5 text-center text-[13px] font-semibold text-[var(--on-primary)]"
+          style={{ animationDelay: "240ms" }}
+        >
+          Connect Google
+        </div>
+        <p
+          className="mk-gallery-item text-center text-[11.5px] text-[var(--on-surface-variant)]"
+          style={{ animationDelay: "300ms" }}
+        >
+          You can revoke access anytime from your Google Account settings.
+        </p>
       </div>
     </Frame>
   );
@@ -263,6 +328,8 @@ function Preview({ id }: { id: SlideId }) {
   switch (id) {
     case "dashboard":
       return <DashboardPreview />;
+    case "google":
+      return <GoogleConnectPreview />;
     case "apply":
       return <ApplyPreview />;
     case "jobs":

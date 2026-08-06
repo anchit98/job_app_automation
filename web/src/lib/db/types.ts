@@ -93,7 +93,8 @@ export interface AuditLogEntry {
 import type { ApplicationStatus } from "@/lib/applications/status";
 import type { ResumeContent } from "@/lib/resume/fabrication";
 
-export const DRIVE_ROOT_FOLDER_NAME = "Job Application Automation";
+/** Must stay aligned with the public product name (Google branding / Drive UI). */
+export const DRIVE_ROOT_FOLDER_NAME = "JobApp OS";
 
 export type { ApplicationStatus };
 

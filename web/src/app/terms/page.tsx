@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegalBackLink } from "@/components/layout/legal-back-link";
 
 export const metadata: Metadata = {
-  title: "Terms of Service | JobApp OS",
+  title: "Terms of Service",
   description: "Terms of Service for JobApp OS.",
 };
 

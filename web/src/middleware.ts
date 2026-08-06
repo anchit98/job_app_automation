@@ -12,6 +12,7 @@ const PUBLIC_PREFIXES = [
   "/review-payment",
   "/privacy-policy",
   "/terms",
+  "/contact",
   "/_next",
   "/favicon",
   "/brand",

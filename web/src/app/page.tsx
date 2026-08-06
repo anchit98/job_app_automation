@@ -7,9 +7,16 @@ import { LandingPage } from "@/components/marketing/landing-page";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "JobApp OS | Job application automation",
+  // Keep homepage <title> and OG title exact — Google branding checks match this to OAuth.
+  title: {
+    absolute: "JobApp OS",
+  },
   description:
-    "JobApp OS helps job seekers automate applications: tailored resumes and cover letters stored in Google Drive and Google Docs, Gmail drafts for outreach (you send), and application tracking. Learn why we request Google access in our Privacy Policy.",
+    "JobApp OS is an AI-powered job application assistant that helps job seekers create tailored resumes and cover letters, organize job applications, and send personalized application emails via Gmail drafts. Learn why we request Google access in our Privacy Policy.",
+  openGraph: {
+    title: "JobApp OS",
+    siteName: "JobApp OS",
+  },
 };
 
 export default async function HomePage() {
