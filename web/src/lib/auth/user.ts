@@ -293,6 +293,21 @@ export async function setUserPassword(
   );
 }
 
+/** Replace only the stored hash (e.g. cost-factor upgrade on login). */
+export async function updatePasswordHash(
+  userId: string,
+  passwordHash: string,
+): Promise<void> {
+  await dbRun(
+    `UPDATE users
+        SET password_hash = ?,
+            updated_at = ((NOW() AT TIME ZONE 'utc')::text)
+      WHERE id = ?`,
+    passwordHash,
+    userId,
+  );
+}
+
 export async function setUserPaid(
   userId: string,
   paid: boolean,

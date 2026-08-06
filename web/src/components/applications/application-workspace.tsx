@@ -90,7 +90,7 @@ export function ApplicationWorkspace({
       {/* Workspace Header */}
       <header className="min-h-[56px] py-2 bg-surface border-b border-border-hairline flex flex-wrap items-center justify-between gap-3 px-margin-mobile md:px-margin-desktop shrink-0">
         <div className="flex items-center gap-3">
-          <Link href="/applications" className="text-on-surface-variant hover:text-primary transition-colors flex items-center">
+          <Link href="/applications" prefetch={false} className="text-on-surface-variant hover:text-primary transition-colors flex items-center">
             <span className="material-symbols-outlined text-[20px]">arrow_back</span>
           </Link>
           <div className="w-12 h-12 rounded-[4px] bg-primary-container text-primary flex items-center justify-center font-semibold border border-border-hairline text-[18px]">

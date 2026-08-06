@@ -105,7 +105,7 @@ export function AppShell({
           <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
             <Link
               href={homeHref}
-              prefetch
+              prefetch={false}
               onClick={() => setOptimisticPath(homeHref)}
               className="flex items-center gap-2 shrink-0 no-underline"
             >
@@ -176,7 +176,7 @@ export function AppShell({
                   <Link
                     key={link.href}
                     href={href}
-                    prefetch
+                    prefetch={false}
                     title={
                       lockedBySetup
                         ? "Finish one-time setup first"
@@ -223,7 +223,7 @@ export function AppShell({
                     <Link
                       key={`locked-${link.href}`}
                       href="/billing"
-                      prefetch
+                      prefetch={false}
                       onClick={() => setOptimisticPath("/billing")}
                       title="Unlock with payment"
                       className="flex flex-col items-center justify-center min-w-[72px] px-1 py-1 border-b-2 border-transparent text-on-surface-variant/50 no-underline hover:text-on-surface-variant"
@@ -287,7 +287,7 @@ export function AppShell({
               <Link
                 key={`mobile-${link.href}`}
                 href={href}
-                prefetch
+                prefetch={false}
                 title={
                   lockedBySetup ? "Finish one-time setup first" : undefined
                 }

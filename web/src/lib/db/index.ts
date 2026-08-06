@@ -27,9 +27,11 @@ export function getSql() {
       connect_timeout: 10,
       max_lifetime: 60 * 5,
       keep_alive: 30,
-      // Cancel slow queries server-side without destroying the pool.
+      // Cancel slow queries server-side without destroying the pool. Kept just
+      // above CLIENT_QUERY_TIMEOUT_MS so an abandoned query frees its pooled
+      // connection soon after the HTTP request has already given up on it.
       connection: {
-        statement_timeout: 15000,
+        statement_timeout: 10000,
       },
     });
   }
@@ -43,7 +45,7 @@ export function toPgParams(text: string): string {
 }
 
 /** Fail the HTTP request fast if the pooler/network stalls — do not destroy the pool. */
-const CLIENT_QUERY_TIMEOUT_MS = 12_000;
+const CLIENT_QUERY_TIMEOUT_MS = 8_000;
 
 async function withClientTimeout<T>(
   promise: Promise<T>,

@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
 );
 
+-- Login looks users up via lower(email); the plain UNIQUE(email) index can't
+-- serve that predicate.
+CREATE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email));
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -111,6 +115,9 @@ CREATE INDEX IF NOT EXISTS razorpay_payment_links_status_idx
   ON razorpay_payment_links (status, created_at DESC);
 CREATE INDEX IF NOT EXISTS razorpay_payment_links_reference_idx
   ON razorpay_payment_links (reference_id);
+-- Admin recent-links list: ORDER BY created_at DESC LIMIT N
+CREATE INDEX IF NOT EXISTS razorpay_payment_links_created_idx
+  ON razorpay_payment_links (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS profiles (
   user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,

@@ -48,6 +48,7 @@ export function QuickActions() {
           <li key={action.href}>
             <Link
               href={action.href}
+              prefetch={false}
               className="group flex items-center gap-3 rounded-xl border border-border-hairline bg-surface px-3 py-2.5 no-underline transition-all hover:border-primary/40 hover:shadow-[var(--shadow-card)]"
             >
               <span

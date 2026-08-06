@@ -60,6 +60,7 @@ export function RecentApplications({ items }: RecentApplicationsProps) {
         {items.length > 0 && (
           <Link
             href="/applications"
+            prefetch={false}
             className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary no-underline hover:underline"
           >
             View all
@@ -91,6 +92,7 @@ export function RecentApplications({ items }: RecentApplicationsProps) {
           </div>
           <Link
             href="/apply"
+            prefetch={false}
             className="li-btn-primary no-underline text-[13px]"
           >
             Start your first Apply
@@ -104,6 +106,7 @@ export function RecentApplications({ items }: RecentApplicationsProps) {
               <li key={item.id}>
                 <Link
                   href={`/applications/${item.id}`}
+                  prefetch={false}
                   className="flex items-center gap-3 rounded-lg px-1 py-2.5 no-underline transition-colors hover:bg-[var(--ghost-hover)]"
                 >
                   <span

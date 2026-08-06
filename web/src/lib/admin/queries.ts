@@ -66,45 +66,45 @@ async function loadAppOutcomeCountsByUser(): Promise<
 }
 
 export async function listAdminUsers(): Promise<AdminUserSummary[]> {
-  const [rows, outcomeCounts] = await Promise.all([
-    dbAll(
-      `SELECT u.id, u.email, u.full_name, u.is_admin, u.must_reset_password,
-              u.is_paid, u.paid_at, u.created_at,
-              p.full_name AS profile_full_name,
-              p.location AS profile_location,
-              p.phone AS profile_phone,
-              p.linkedin_url AS profile_linkedin_url,
-              CASE
-                WHEN mr.content IS NULL THEN false
-                WHEN btrim(mr.content::text) IN ('', '{}', 'null') THEN false
-                ELSE true
-              END AS resume_done,
-              gt.status AS google_status
-         FROM users u
-         LEFT JOIN profiles p ON p.user_id = u.id
-         LEFT JOIN master_resume mr ON mr.user_id = u.id
-         LEFT JOIN google_tokens gt ON gt.user_id = u.id
-        ORDER BY u.created_at DESC`,
-    ) as Promise<
-      Array<{
-        id: string;
-        email: string;
-        full_name: string | null;
-        is_admin: boolean;
-        must_reset_password: boolean;
-        is_paid: boolean;
-        paid_at: string | null;
-        created_at: string;
-        profile_full_name: string | null;
-        profile_location: string | null;
-        profile_phone: string | null;
-        profile_linkedin_url: string | null;
-        resume_done: boolean;
-        google_status: string | null;
-      }>
-    >,
-    loadAppOutcomeCountsByUser(),
-  ]);
+  // Sequential: users list first, then outcomes. Parallelizing these two on a
+  // high-latency link (local India → Seoul pooler) was starving the pool and
+  // timing out sibling admin queries like payment links.
+  const rows = (await dbAll(
+    `SELECT u.id, u.email, u.full_name, u.is_admin, u.must_reset_password,
+            u.is_paid, u.paid_at, u.created_at,
+            p.full_name AS profile_full_name,
+            p.location AS profile_location,
+            p.phone AS profile_phone,
+            p.linkedin_url AS profile_linkedin_url,
+            -- Cheap presence check: never cast/btrim full resume JSON blobs.
+            (mr.user_id IS NOT NULL
+              AND mr.content IS NOT NULL
+              AND octet_length(mr.content) > 2
+              AND left(mr.content, 8) NOT IN ('{}', 'null', '')) AS resume_done,
+            gt.status AS google_status
+       FROM users u
+       LEFT JOIN profiles p ON p.user_id = u.id
+       LEFT JOIN master_resume mr ON mr.user_id = u.id
+       LEFT JOIN google_tokens gt ON gt.user_id = u.id
+      ORDER BY u.created_at DESC`,
+  )) as Array<{
+    id: string;
+    email: string;
+    full_name: string | null;
+    is_admin: boolean;
+    must_reset_password: boolean;
+    is_paid: boolean;
+    paid_at: string | null;
+    created_at: string;
+    profile_full_name: string | null;
+    profile_location: string | null;
+    profile_phone: string | null;
+    profile_linkedin_url: string | null;
+    resume_done: boolean;
+    google_status: string | null;
+  }>;
+
+  const outcomeCounts = await loadAppOutcomeCountsByUser();
 
   return rows.map((row) => {
     const resumeDone = Boolean(row.resume_done);
@@ -136,20 +136,51 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
   });
 }
 
+async function softAdminLoad<T>(
+  label: string,
+  load: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    // Use warn + string so Next.js dev overlay doesn't treat this as a crash
+    // (admin sections degrade to empty lists instead).
+    console.warn(`[admin] ${label} failed:`, String(error));
+    return fallback;
+  }
+}
+
 export async function getAdminCenterData() {
-  const [
-    users,
-    resetRequests,
-    activeResetLinks,
-    pendingPaymentClaims,
-    recentRazorpayPaymentLinks,
-  ] = await Promise.all([
-    listAdminUsers(),
-    listOpenPasswordResetRequests(),
-    listActivePasswordResetTokens(),
-    listPendingPaymentClaims(),
-    listRecentRazorpayPaymentLinks(25),
-  ]);
+  // Run sequentially. Five parallel heavy queries from a local laptop across
+  // continents exhaust the small pool and cause 8s client timeouts that look
+  // like Admin Center bugs. Production (Seoul↔Seoul) stays fast either way.
+  const users = await softAdminLoad(
+    "listAdminUsers",
+    () => listAdminUsers(),
+    [] as AdminUserSummary[],
+  );
+  const resetRequests = await softAdminLoad(
+    "listOpenPasswordResetRequests",
+    () => listOpenPasswordResetRequests(),
+    [] as Awaited<ReturnType<typeof listOpenPasswordResetRequests>>,
+  );
+  const activeResetLinks = await softAdminLoad(
+    "listActivePasswordResetTokens",
+    () => listActivePasswordResetTokens(),
+    [] as Awaited<ReturnType<typeof listActivePasswordResetTokens>>,
+  );
+  const pendingPaymentClaims = await softAdminLoad(
+    "listPendingPaymentClaims",
+    () => listPendingPaymentClaims(),
+    [] as Awaited<ReturnType<typeof listPendingPaymentClaims>>,
+  );
+  const recentRazorpayPaymentLinks = await softAdminLoad(
+    "listRecentRazorpayPaymentLinks",
+    () => listRecentRazorpayPaymentLinks(25),
+    [] as Awaited<ReturnType<typeof listRecentRazorpayPaymentLinks>>,
+  );
+
   return {
     users,
     resetRequests,

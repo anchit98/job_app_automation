@@ -36,6 +36,7 @@ export function ApplicationPipelineActions({
     return (
       <Link
         href={`/pipeline/${pipelineId}`}
+        prefetch={false}
         className="text-[12px] text-on-surface-variant hover:text-primary no-underline"
         title="View pipeline"
       >
@@ -82,6 +83,7 @@ export function ApplicationPipelineActions({
         )}
         <Link
           href={`/pipeline/${pipelineId}`}
+          prefetch={false}
           className="li-btn-ghost text-[11px] px-2 py-1 border border-border-hairline no-underline"
         >
           Open

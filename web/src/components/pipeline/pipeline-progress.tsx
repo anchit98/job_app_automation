@@ -814,6 +814,7 @@ export function PipelineProgress({
               {" · "}
               <Link
                 href={`/applications/${pipeline.application_id}`}
+                prefetch={false}
                 className="text-primary font-semibold hover:underline"
               >
                 Open application
@@ -994,6 +995,7 @@ export function PipelineProgress({
               </p>
               <Link
                 href="/apply"
+                prefetch={false}
                 className="li-btn-primary text-[12px] no-underline inline-flex"
               >
                 Start Apply
@@ -1057,6 +1059,7 @@ export function PipelineProgress({
           <div className="mt-4">
             <Link
               href={`/applications/${pipeline.application_id}`}
+              prefetch={false}
               className="li-btn-primary text-[13px] no-underline"
             >
               Open application

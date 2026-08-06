@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { cache } from "react";
 import type {
   Application,
   ApplicationStatus,
@@ -106,7 +107,11 @@ function mapGoogleTokens(row: Record<string, unknown>): GoogleTokensRow {
   };
 }
 
-export async function getProfileRow(userId?: string): Promise<Profile | null> {
+// React.cache: the app layout and setup readiness both need the profile on
+// every page render — dedupe to a single query per request.
+export const getProfileRow = cache(async function getProfileRow(
+  userId?: string,
+): Promise<Profile | null> {
   const uid = await currentUserId(userId);
   // Never SELECT avatar_data here — blobs were wedging pooler ClientRead waits
   // on every AppShell render. Avatar bytes are loaded only via /api/profile/avatar.
@@ -120,7 +125,7 @@ export async function getProfileRow(userId?: string): Promise<Profile | null> {
     uid,
   )) as Record<string, unknown> | undefined;
   return row ? mapProfile(row) : null;
-}
+});
 
 export async function upsertProfileRow(input: {
   full_name: string;

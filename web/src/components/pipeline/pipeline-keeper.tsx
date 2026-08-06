@@ -13,7 +13,9 @@ type WakeSignal = {
 };
 
 const BUSY_INTERVAL_MS = 5000;
-const IDLE_INTERVAL_MS = 20000;
+const IDLE_INTERVAL_MS = 60000;
+/** Let the page's own data queries win the DB pool before the first tick. */
+const FIRST_TICK_DELAY_MS = 4000;
 
 /**
  * Keeps Quick Apply pipelines moving on every app page - not only /pipeline/[id].
@@ -106,7 +108,7 @@ export function PipelineKeeper() {
       }
     }
 
-    void tick();
+    const firstTick = setTimeout(() => void tick(), FIRST_TICK_DELAY_MS);
     schedule(IDLE_INTERVAL_MS);
 
     const onFocus = () => {
@@ -120,6 +122,7 @@ export function PipelineKeeper() {
 
     return () => {
       cancelled = true;
+      clearTimeout(firstTick);
       if (intervalRef.current) clearInterval(intervalRef.current);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);

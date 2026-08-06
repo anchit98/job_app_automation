@@ -182,7 +182,7 @@ function MenuLink({
   return (
     <Link
       href={href}
-      prefetch
+      prefetch={false}
       role="menuitem"
       onClick={onNavigate}
       className="flex items-center gap-3 px-3 py-2.5 text-[14px] text-on-surface no-underline hover:bg-[var(--ghost-hover)]"

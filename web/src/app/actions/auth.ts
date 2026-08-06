@@ -2,7 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import {
+  hashPassword,
+  passwordHashNeedsRehash,
+  verifyPassword,
+} from "@/lib/auth/password";
 import { createSession, destroySession } from "@/lib/auth/session";
 import {
   claimOrphanedData,
@@ -16,6 +20,7 @@ import {
   getUserById,
   requireUser,
   setUserPassword,
+  updatePasswordHash,
 } from "@/lib/auth/user";
 import {
   consumePasswordResetToken,
@@ -34,11 +39,16 @@ function authFailureMessage(error: unknown): string {
   if (/AUTH_SECRET|Missing required environment variable/i.test(msg)) {
     return "Server misconfigured: set AUTH_SECRET in Vercel Environment Variables, then redeploy.";
   }
-  if (/DATABASE_URL|ECONNREFUSED|connect/i.test(msg)) {
+  if (/DATABASE_URL|ECONNREFUSED|ENOTFOUND|connect_timeout|connect timed out/i.test(msg)) {
     return "Could not reach the database. Check DATABASE_URL on Vercel.";
   }
-  if (/relation .* does not exist|sessions|users/i.test(msg)) {
+  // Only true missing-table errors — do NOT match every message that merely
+  // mentions "users"/"sessions" (timeouts include those table names in SQL).
+  if (/relation ["']?(public\.)?(users|sessions)["']? does not exist/i.test(msg)) {
     return "Auth tables are missing. Run the Supabase schema migration (users/sessions).";
+  }
+  if (/timed out|timeout|canceling statement/i.test(msg)) {
+    return "Login is taking too long (database busy). Wait a moment and try again.";
   }
   if (/password recovery email|gmail\.send|Reconnect Google from the admin account/i.test(msg)) {
     return msg;
@@ -124,6 +134,17 @@ export async function signIn(input: { email: string; password: string }) {
     );
     if (!valid) {
       return { ok: false as const, error: "Invalid email or password." };
+    }
+
+    // One-time upgrade of legacy cost-12 hashes so future logins are fast.
+    // Never let this block or fail the login itself.
+    if (passwordHashNeedsRehash(user.password_hash)) {
+      try {
+        const upgraded = await hashPassword(parsed.data.password);
+        await updatePasswordHash(user.id, upgraded);
+      } catch {
+        /* keep the old hash */
+      }
     }
 
     await createSession(user.id, {

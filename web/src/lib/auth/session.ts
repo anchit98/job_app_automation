@@ -123,6 +123,33 @@ export async function getSessionFromCookies(): Promise<{
 }
 
 /**
+ * Auth must never block page rendering: if the session DB validation can't
+ * answer quickly (pool congestion / slow pooler), fall back to JWT claims
+ * instead of holding the whole request for the 8s+ client query timeout.
+ */
+const AUTH_DB_TIMEOUT_MS = 2_500;
+
+function raceAuthTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(`Auth session validation timed out after ${AUTH_DB_TIMEOUT_MS}ms`),
+      );
+    }, AUTH_DB_TIMEOUT_MS);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
  * Request-scoped: React.cache dedupes across layout + parallel page fetches
  * so we don't hit sessions/users once per query helper.
  */
@@ -158,14 +185,16 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 
     try {
       // One round-trip: validate session + load user
-      const row = (await dbGet(
-        `SELECT s.id AS session_id, s.expires_at, u.id, u.email, u.full_name,
-                u.is_admin, u.must_reset_password, u.is_paid
-           FROM sessions s
-           INNER JOIN users u ON u.id = s.user_id
-          WHERE s.id = ? AND s.user_id = ?`,
-        sid,
-        uid,
+      const row = (await raceAuthTimeout(
+        dbGet(
+          `SELECT s.id AS session_id, s.expires_at, u.id, u.email, u.full_name,
+                  u.is_admin, u.must_reset_password, u.is_paid
+             FROM sessions s
+             INNER JOIN users u ON u.id = s.user_id
+            WHERE s.id = ? AND s.user_id = ?`,
+          sid,
+          uid,
+        ),
       )) as
         | {
             session_id: string;

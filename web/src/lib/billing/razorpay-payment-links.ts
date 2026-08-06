@@ -131,8 +131,13 @@ export type RazorpayPaymentLinkAdminRow = RazorpayPaymentLinkRow & {
 export async function listRecentRazorpayPaymentLinks(
   limit = 25,
 ): Promise<RazorpayPaymentLinkAdminRow[]> {
+  // Explicit columns + created_at index (see schema) — avoid SELECT * and a
+  // sequential scan when the pool is already busy (admin loads several lists).
   const rows = (await dbAll(
-    `SELECT pl.*, u.email, u.full_name
+    `SELECT pl.id, pl.user_id, pl.razorpay_payment_link_id, pl.short_url,
+            pl.amount_paise, pl.currency, pl.status, pl.razorpay_payment_id,
+            pl.reference_id, pl.created_at, pl.paid_at,
+            u.email, u.full_name
        FROM razorpay_payment_links pl
        INNER JOIN users u ON u.id = pl.user_id
       ORDER BY pl.created_at DESC

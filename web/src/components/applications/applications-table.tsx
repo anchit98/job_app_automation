@@ -169,6 +169,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                   >
                     <Link
                       href={`/applications/${app.id}`}
+                      prefetch={false}
                       className="col-span-3 flex items-center gap-3 min-w-0 no-underline"
                     >
                       <div className="w-12 h-12 rounded-[4px] bg-primary-container text-primary flex items-center justify-center font-semibold border border-border-hairline shrink-0 text-[16px]">
@@ -244,6 +245,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                 <div key={app.id} className="li-card p-4 space-y-3">
                   <Link
                     href={`/applications/${app.id}`}
+                    prefetch={false}
                     className="mobile-card-row no-underline"
                   >
                     <div className="mobile-avatar rounded-[6px] bg-primary-container text-primary flex items-center justify-center font-semibold text-[16px]">

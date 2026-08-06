@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/tokens";
 import { getCurrentUser } from "@/lib/auth/user";
 import { dbGet } from "@/lib/db";
@@ -101,7 +102,9 @@ export async function getGoogleAuthClient(userId?: string) {
   return client;
 }
 
-export async function isGoogleConnected(): Promise<boolean> {
+// React.cache: layout setup-readiness and pages (e.g. dashboard) both ask this
+// in the same request — dedupe to one query.
+export const isGoogleConnected = cache(async (): Promise<boolean> => {
   const user = await getCurrentUser();
   if (!user) return false;
   const row = await dbGet<{ status: string }>(
@@ -109,7 +112,7 @@ export async function isGoogleConnected(): Promise<boolean> {
     user.id,
   );
   return row?.status === "active";
-}
+});
 
 export async function revokeGoogleTokenAtSource(refreshToken: string) {
   const client = createOAuth2Client();

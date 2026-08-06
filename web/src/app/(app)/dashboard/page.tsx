@@ -75,6 +75,7 @@ export default async function DashboardPage({
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
               <Link
                 href="/apply"
+                prefetch={false}
                 className="li-btn-primary shrink-0 no-underline justify-center max-sm:w-full"
               >
                 <span className="material-symbols-outlined text-[18px]">
@@ -84,6 +85,7 @@ export default async function DashboardPage({
               </Link>
               <Link
                 href="/onboarding"
+                prefetch={false}
                 className="group shrink-0 no-underline inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-hairline bg-surface px-4 py-2 text-[13px] font-semibold text-on-surface shadow-[var(--shadow-card)] hover:border-primary/40 hover:text-primary transition-colors max-sm:w-full"
               >
                 <span className="material-symbols-outlined text-[18px]">

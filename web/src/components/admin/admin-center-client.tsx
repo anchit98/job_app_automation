@@ -99,7 +99,13 @@ export function AdminCenterClient({
   }
 
   function refreshUsers() {
-    router.refresh();
+    // Fire-and-forget: awaiting refresh inside startTransition kept the whole
+    // Admin UI disabled / stuck on Loading when the RSC round-trip hung.
+    try {
+      router.refresh();
+    } catch {
+      /* ignore */
+    }
   }
 
   return (
