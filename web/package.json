@@ -20,6 +20,7 @@
     "@tiptap/pm": "^3.27.3",
     "@tiptap/react": "^3.27.3",
     "@tiptap/starter-kit": "^3.27.3",
+    "@vercel/speed-insights": "^2.0.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "google-auth-library": "^10.9.0",

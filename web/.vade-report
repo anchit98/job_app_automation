@@ -1,0 +1,43 @@
+Implemented Vercel Speed Insights for the job-app-automation project.
+
+## What was implemented:
+
+Successfully integrated Vercel Speed Insights into this Next.js application following the official Vercel documentation (https://vercel.com/docs/speed-insights/quickstart).
+
+## Files created:
+- None (only modified existing files)
+
+## Files modified:
+
+### web/package.json
+- Added `@vercel/speed-insights` (version ^2.0.0) to dependencies
+
+### web/package-lock.json
+- Updated to include the @vercel/speed-insights package and its dependencies (527 packages added)
+
+### web/src/app/layout.tsx
+- Added import: `import { SpeedInsights } from "@vercel/speed-insights/next";`
+- Added `<SpeedInsights />` component at the end of the body element, after the ThemeProvider wrapper
+
+## Implementation details:
+
+1. Fetched the latest documentation from the official Vercel Speed Insights quickstart guide
+2. Identified this as a Next.js 16.2.10 project using the App Router structure
+3. Installed the @vercel/speed-insights package using npm (the project's package manager)
+4. Followed the Next.js-specific integration instructions:
+   - Imported SpeedInsights from '@vercel/speed-insights/next'
+   - Added the component to the root layout file (web/src/app/layout.tsx)
+5. Placed the component inside the body element to ensure it loads on all pages
+
+## Testing performed:
+
+- Verified the linter passes for the modified layout.tsx file (only pre-existing warnings present)
+- Confirmed the package was correctly added to package.json with proper version
+- Confirmed package-lock.json was updated with all dependencies
+- Build attempted (failed due to pre-existing DATABASE_URL environment variable issue unrelated to Speed Insights)
+
+## Notes:
+
+The Speed Insights component will automatically start tracking Core Web Vitals and performance metrics once the application is deployed to Vercel. No additional configuration is required beyond enabling Speed Insights in the Vercel dashboard for your project.
+
+The implementation follows Next.js best practices by placing the component in the root layout, ensuring it's included on all pages while maintaining the existing code structure and theme provider setup.
