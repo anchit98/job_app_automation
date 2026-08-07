@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { disconnectGoogleAccount } from "@/app/actions/google";
 
 interface GoogleConnectPanelProps {
@@ -11,14 +11,42 @@ interface GoogleConnectPanelProps {
   embedded?: boolean;
 }
 
+function friendlyGoogleError(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const key = raw.trim().toLowerCase();
+  if (key === "invalid_state") {
+    return "Google connection was interrupted. Click Connect Google and try again.";
+  }
+  if (key === "missing_code") {
+    return "Google did not return an authorization code. Please try connecting again.";
+  }
+  if (key.includes("refresh token")) {
+    return raw;
+  }
+  if (key === "access_denied") {
+    return "Google access was denied. Allow Drive and Gmail permissions to continue setup.";
+  }
+  return raw;
+}
+
 export function GoogleConnectPanel({
   initialConnected,
   googleError,
   embedded = false,
 }: GoogleConnectPanelProps) {
   const [connected, setConnected] = useState(initialConnected);
-  const [error] = useState<string | null>(googleError ?? null);
+  const [error, setError] = useState<string | null>(
+    friendlyGoogleError(googleError),
+  );
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setConnected(initialConnected);
+  }, [initialConnected]);
+
+  useEffect(() => {
+    setError(friendlyGoogleError(googleError));
+  }, [googleError]);
 
   function handleConnect() {
     window.location.href = "/api/auth/google/start";

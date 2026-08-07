@@ -1,14 +1,14 @@
-import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { env, hasGoogleConfig } from "@/lib/env";
 import { getGoogleAuthUrl } from "@/lib/google/oauth";
+import { createGoogleOAuthState } from "@/lib/google/oauth-state";
 import { getCurrentUser } from "@/lib/auth/user";
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.redirect(new URL("/login", env.appUrl()));
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (!hasGoogleConfig()) {
@@ -18,16 +18,18 @@ export async function GET() {
     );
   }
 
-  const state = randomBytes(16).toString("hex");
-  const cookieStore = await cookies();
-  cookieStore.set("google_oauth_state", state, {
+  const state = createGoogleOAuthState(user.id);
+  const url = getGoogleAuthUrl(state);
+
+  // Set cookie on the redirect response (cookies().set alone can be dropped
+  // on some Route Handler redirects). Signed `state` is the source of truth.
+  const response = NextResponse.redirect(url);
+  response.cookies.set("google_oauth_state", state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 600,
     path: "/",
   });
-
-  const url = getGoogleAuthUrl(state);
-  return NextResponse.redirect(url);
+  return response;
 }

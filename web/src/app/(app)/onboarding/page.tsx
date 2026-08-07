@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getProfile, syncSignatureLinksFromResume } from "@/app/actions/profile";
 import { getMasterResume } from "@/app/actions/master-resume";
 import { getMasterCoverLetter } from "@/app/actions/cover-letter";
@@ -6,6 +7,7 @@ import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { getSetupReadiness } from "@/lib/setup/readiness";
 import { OnboardingForms } from "@/components/onboarding/onboarding-forms";
 import { GoogleConnectModal } from "@/components/onboarding/google-connect-modal";
+import { GoogleOAuthQueryCleaner } from "@/components/onboarding/google-oauth-query-cleaner";
 
 export default async function OnboardingPage({
   searchParams,
@@ -49,11 +51,15 @@ export default async function OnboardingPage({
   // Only treat an explicit `false` as disconnected. `null` (DB blip) must not
   // reopen the Connect Google modal for users who already linked.
   const googleConnected = googleState === true || justConnected;
-  const askToConnect = googleState === false && !justConnected;
+  const askToConnect =
+    !justConnected && (googleState === false || Boolean(googleError));
   const setupReady = Boolean(readiness?.setupReady);
 
   return (
     <div className="space-y-3">
+      <Suspense fallback={null}>
+        <GoogleOAuthQueryCleaner />
+      </Suspense>
       <GoogleConnectModal
         open={askToConnect}
         initialConnected={googleConnected}
