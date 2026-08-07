@@ -59,12 +59,19 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
 
+  // Server Actions POST to the current page (e.g. signIn posts to /login).
+  // Redirecting those breaks the action mid-flight — the login form then
+  // shows "Sign-in failed" even though the session was created. Only
+  // redirect real GET navigations.
+  const isGetNavigation = request.method === "GET";
+
   if (isPublic(pathname)) {
     // Logged-in users hitting login/signup → dashboard
     if (
-      pathname === "/login" ||
-      pathname === "/signup" ||
-      pathname === "/forgot-password"
+      isGetNavigation &&
+      (pathname === "/login" ||
+        pathname === "/signup" ||
+        pathname === "/forgot-password")
     ) {
       if (sessionPayload?.must_reset_password) {
         return NextResponse.redirect(
@@ -95,12 +102,12 @@ export async function middleware(request: NextRequest) {
       new TextEncoder().encode(process.env.AUTH_SECRET),
     );
     const mustReset = Boolean(payload.must_reset_password);
-    if (mustReset && pathname !== "/reset-password-required") {
+    if (isGetNavigation && mustReset && pathname !== "/reset-password-required") {
       return NextResponse.redirect(
         new URL("/reset-password-required", request.url),
       );
     }
-    if (!mustReset && pathname === "/reset-password-required") {
+    if (isGetNavigation && !mustReset && pathname === "/reset-password-required") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
     return NextResponse.next({

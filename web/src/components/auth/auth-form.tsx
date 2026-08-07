@@ -38,13 +38,16 @@ export function AuthForm({
   nextPath: string;
 }) {
   const [pending, startTransition] = useTransition();
+  const [navigating, setNavigating] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const busy = pending || navigating;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -58,7 +61,9 @@ export function AuthForm({
         }
         // Full document navigation — soft App Router transitions from the
         // auth layout into /(app) + setup redirect often paint a blank
-        // onboarding until a hard refresh.
+        // onboarding until a hard refresh. Stay disabled until it completes
+        // so a second click can't re-run the action mid-navigation.
+        setNavigating(true);
         window.location.assign(resolveClientRedirect(result, nextPath));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err ?? "");
@@ -143,10 +148,10 @@ export function AuthForm({
 
         <button
           type="submit"
-          disabled={pending}
+          disabled={busy}
           className="li-btn-primary w-full justify-center disabled:opacity-50"
         >
-          {pending
+          {busy
             ? "Please wait…"
             : mode === "signup"
               ? "Create account"
