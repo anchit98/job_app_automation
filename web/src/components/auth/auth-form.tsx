@@ -1,9 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { signIn, signUp } from "@/app/actions/auth";
+
+function resolveClientRedirect(
+  result: {
+    redirectTo?: string;
+    user?: {
+      must_reset_password?: boolean;
+      is_paid?: boolean;
+      is_admin?: boolean;
+    };
+  },
+  nextPath: string,
+): string {
+  // Prefer server-chosen landing (setup-aware). Only override for Razorpay return.
+  const next = nextPath || "/dashboard";
+  if (next.startsWith("/billing/razorpay/return")) return next;
+  if (result.redirectTo) return result.redirectTo;
+  if (result.user?.must_reset_password) return "/reset-password-required";
+  if (
+    result.user &&
+    result.user.is_paid === false &&
+    !result.user.is_admin
+  ) {
+    return "/billing";
+  }
+  return next;
+}
 
 export function AuthForm({
   mode,
@@ -12,7 +37,6 @@ export function AuthForm({
   mode: "login" | "signup";
   nextPath: string;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,28 +56,10 @@ export function AuthForm({
           setError(result.error);
           return;
         }
-        router.replace(
-          result.user?.must_reset_password
-            ? "/reset-password-required"
-            : (() => {
-                const next = nextPath || "/dashboard";
-                const isPaymentReturn = next.startsWith(
-                  "/billing/razorpay/return",
-                );
-                // Let Razorpay return finish unlock even if still unpaid in JWT/DB.
-                if (isPaymentReturn) return next;
-                if (
-                  result.user &&
-                  "is_paid" in result.user &&
-                  result.user.is_paid === false &&
-                  !result.user.is_admin
-                ) {
-                  return "/billing";
-                }
-                return next;
-              })(),
-        );
-        router.refresh();
+        // Full document navigation — soft App Router transitions from the
+        // auth layout into /(app) + setup redirect often paint a blank
+        // onboarding until a hard refresh.
+        window.location.assign(resolveClientRedirect(result, nextPath));
       } catch {
         setError(
           "Sign-in failed. If this is production, confirm AUTH_SECRET is set on Vercel and redeploy.",

@@ -13,6 +13,47 @@ export type SetupReadiness = {
   setupReady: boolean;
 };
 
+/** Cheap setup check by user id (login landing) — no session / React cache needed. */
+export async function isSetupReadyForUserId(userId: string): Promise<boolean> {
+  const [profile, resumeFlag, google] = await Promise.all([
+    dbGet<{
+      full_name: string | null;
+      location: string | null;
+      phone: string | null;
+      linkedin_url: string | null;
+    }>(
+      `SELECT full_name, location, phone, linkedin_url
+         FROM profiles WHERE user_id = ?`,
+      userId,
+    ).catch(() => null),
+    dbGet<{ resume_done: boolean }>(
+      `SELECT CASE
+                WHEN content IS NULL THEN false
+                WHEN octet_length(content) <= 2 THEN false
+                WHEN left(content, 8) IN ('{}', 'null', '') THEN false
+                ELSE true
+              END AS resume_done
+         FROM master_resume
+        WHERE user_id = ?`,
+      userId,
+    ).catch(() => undefined),
+    dbGet<{ status: string }>(
+      `SELECT status FROM google_tokens WHERE user_id = ?`,
+      userId,
+    ).catch(() => null),
+  ]);
+
+  const profileDone = profileFieldsComplete({
+    full_name: profile?.full_name,
+    location: profile?.location,
+    phone: profile?.phone,
+    linkedin_url: profile?.linkedin_url,
+  });
+  const masterResumeDone = Boolean(resumeFlag?.resume_done);
+  const googleConnected = google?.status === "active";
+  return googleConnected && profileDone && masterResumeDone;
+}
+
 /**
  * One-time setup gate for paid users:
  * Connect Google + profile (name, location, phone, LinkedIn) + master resume.

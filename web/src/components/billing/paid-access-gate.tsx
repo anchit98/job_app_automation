@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 const UNPAID_ALLOWED = [
@@ -28,13 +28,12 @@ export function PaidAccessGate({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const locked = !isPaid && !unpaidAllowed(pathname);
 
   useEffect(() => {
     if (!locked) return;
-    router.replace("/billing");
-  }, [locked, router]);
+    window.location.replace("/billing");
+  }, [locked]);
 
   if (locked) {
     return (

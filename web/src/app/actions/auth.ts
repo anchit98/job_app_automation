@@ -27,12 +27,36 @@ import {
   markAllPasswordResetTokensUsed,
 } from "@/lib/auth/password-reset";
 import { sendPasswordResetEmail } from "@/lib/auth/password-reset-email";
+import { isSetupReadyForUserId } from "@/lib/setup/readiness";
 
 const credentialsSchema = z.object({
   email: z.string().email("Enter a valid email."),
   password: z.string().min(8, "Password must be at least 8 characters."),
   full_name: z.string().optional(),
 });
+
+/**
+ * Where to send the browser after a successful sign-in/up.
+ * Prefer a full document navigation on the client — soft App Router
+ * transitions from /(auth) → /(app) + setup redirect often paint blank
+ * until a hard refresh.
+ */
+async function postAuthRedirectPath(user: {
+  id: string;
+  is_admin: boolean;
+  is_paid: boolean;
+  must_reset_password: boolean;
+}): Promise<string> {
+  if (user.must_reset_password) return "/reset-password-required";
+  const paid = Boolean(user.is_admin) || Boolean(user.is_paid);
+  if (!paid) return "/billing";
+  try {
+    const ready = await isSetupReadyForUserId(user.id);
+    return ready ? "/dashboard" : "/onboarding";
+  } catch {
+    return "/onboarding";
+  }
+}
 
 function authFailureMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error ?? "");
@@ -102,7 +126,11 @@ export async function signUp(input: {
       must_reset_password: user.must_reset_password,
       is_paid: user.is_paid,
     });
-    return { ok: true as const, user };
+    return {
+      ok: true as const,
+      redirectTo: await postAuthRedirectPath(user),
+      user,
+    };
   } catch (error) {
     return { ok: false as const, error: authFailureMessage(error) };
   }
@@ -154,16 +182,18 @@ export async function signIn(input: { email: string; password: string }) {
       must_reset_password: user.must_reset_password,
       is_paid: Boolean(user.is_admin) || Boolean(user.is_paid),
     });
+    const authUser = {
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      is_admin: Boolean(user.is_admin),
+      must_reset_password: Boolean(user.must_reset_password),
+      is_paid: Boolean(user.is_admin) || Boolean(user.is_paid),
+    };
     return {
       ok: true as const,
-      user: {
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name,
-        is_admin: Boolean(user.is_admin),
-        must_reset_password: Boolean(user.must_reset_password),
-        is_paid: Boolean(user.is_admin) || Boolean(user.is_paid),
-      },
+      redirectTo: await postAuthRedirectPath(authUser),
+      user: authUser,
     };
   } catch (error) {
     return { ok: false as const, error: authFailureMessage(error) };
