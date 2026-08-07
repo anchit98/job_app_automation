@@ -9,20 +9,23 @@ import { exchangeCodeForTokens } from "@/lib/google/oauth";
 import { verifyGoogleOAuthState } from "@/lib/google/oauth-state";
 import { saveGoogleTokens } from "@/lib/google/tokens";
 
+/** Preview / loopback hosts must never become the post-OAuth return origin. */
+function isEphemeralOrigin(urlOrHost: string): boolean {
+  return /localhost|127\.0\.0\.1|\.vercel\.app/i.test(urlOrHost);
+}
+
 /**
  * Prefer the configured production origin so post-OAuth redirects always land
- * on the same host as GOOGLE_OAUTH_REDIRECT_URI / NEXT_PUBLIC_APP_URL.
- * Fall back to the request host for local/dev.
+ * on the same host as GOOGLE_OAUTH_REDIRECT_URI / NEXT_PUBLIC_APP_URL
+ * (e.g. https://www.jobappos.in) — never the Vercel *.vercel.app deployment URL.
+ * Fall back to the request host only for local/dev.
  */
 function oauthReturnOrigin(request: Request): string {
   const configured = env.appUrl().replace(/\/$/, "");
-  if (
-    /^https:\/\//i.test(configured) &&
-    !/localhost|127\.0\.0\.1/i.test(configured)
-  ) {
+  if (/^https:\/\//i.test(configured) && !isEphemeralOrigin(configured)) {
     return configured;
   }
-  return env.publicAppUrlFromHeaders(
+  const fromRequest = env.publicAppUrlFromHeaders(
     new Headers({
       host:
         request.headers.get("x-forwarded-host") ||
@@ -33,6 +36,9 @@ function oauthReturnOrigin(request: Request): string {
         (request.url.startsWith("https") ? "https" : "http"),
     }),
   );
+  if (!isEphemeralOrigin(fromRequest)) return fromRequest;
+  // Misconfigured production still prefers NEXT_PUBLIC_APP_URL over request host.
+  return configured || fromRequest;
 }
 
 function onboardingUrl(request: Request, query: Record<string, string>) {
