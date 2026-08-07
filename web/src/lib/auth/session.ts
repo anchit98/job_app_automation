@@ -2,11 +2,14 @@ import { randomUUID } from "crypto";
 import { cache } from "react";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
+import { appCookieOptions } from "@/lib/auth/cookie-options";
 import { dbGet, dbRun } from "@/lib/db";
 import { env } from "@/lib/env";
 
 export const SESSION_COOKIE = "applyforge_session";
 const SESSION_DAYS = 30;
+const SESSION_MAX_AGE = SESSION_DAYS * 24 * 60 * 60;
 
 export type SessionUser = {
   id: string;
@@ -60,15 +63,25 @@ export async function createSession(
     .sign(secretKey());
 
   const jar = await cookies();
-  jar.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_DAYS * 24 * 60 * 60,
-  });
+  jar.set(
+    SESSION_COOKIE,
+    token,
+    appCookieOptions({ maxAge: SESSION_MAX_AGE }),
+  );
 
   return sessionId;
+}
+
+/** Re-attach session JWT onto a Route Handler redirect (survives host flips). */
+export async function attachSessionCookie(response: NextResponse): Promise<void> {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) return;
+  response.cookies.set(
+    SESSION_COOKIE,
+    token,
+    appCookieOptions({ maxAge: SESSION_MAX_AGE }),
+  );
 }
 
 export async function destroySession(): Promise<void> {
@@ -85,7 +98,8 @@ export async function destroySession(): Promise<void> {
       /* ignore invalid token */
     }
   }
-  jar.delete(SESSION_COOKIE);
+  // Must clear with the same Domain as set, or the browser keeps the cookie.
+  jar.set(SESSION_COOKIE, "", appCookieOptions({ maxAge: 0 }));
 }
 
 export async function readSessionToken(

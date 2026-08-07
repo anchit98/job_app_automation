@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { env, hasGoogleConfig } from "@/lib/env";
 import { getGoogleAuthUrl } from "@/lib/google/oauth";
 import { createGoogleOAuthState } from "@/lib/google/oauth-state";
 import { getCurrentUser } from "@/lib/auth/user";
+import { appCookieOptions } from "@/lib/auth/cookie-options";
+import { attachSessionCookie } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
   const user = await getCurrentUser();
@@ -24,12 +25,12 @@ export async function GET(request: Request) {
   // Set cookie on the redirect response (cookies().set alone can be dropped
   // on some Route Handler redirects). Signed `state` is the source of truth.
   const response = NextResponse.redirect(url);
-  response.cookies.set("google_oauth_state", state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 600,
-    path: "/",
-  });
+  response.cookies.set(
+    "google_oauth_state",
+    state,
+    appCookieOptions({ maxAge: 600 }),
+  );
+  // Keep the app session cookie alive across the Google round-trip / host flip.
+  await attachSessionCookie(response);
   return response;
 }

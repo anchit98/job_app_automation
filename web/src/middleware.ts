@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import { appCookieOptions } from "@/lib/auth/cookie-options";
 
 const SESSION_COOKIE = "applyforge_session";
 
@@ -110,7 +111,7 @@ export async function middleware(request: NextRequest) {
     const nextTarget = `${pathname}${request.nextUrl.search}`;
     login.searchParams.set("next", nextTarget);
     const res = NextResponse.redirect(login);
-    res.cookies.delete(SESSION_COOKIE);
+    res.cookies.set(SESSION_COOKIE, "", appCookieOptions({ maxAge: 0 }));
     return res;
   }
 }

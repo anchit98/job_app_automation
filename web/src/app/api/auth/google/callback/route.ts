@@ -1,26 +1,54 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { writeAuditLog } from "@/lib/audit";
+import { appCookieOptions } from "@/lib/auth/cookie-options";
+import { attachSessionCookie } from "@/lib/auth/session";
 import { requireUser } from "@/lib/auth/user";
 import { env } from "@/lib/env";
 import { exchangeCodeForTokens } from "@/lib/google/oauth";
 import { verifyGoogleOAuthState } from "@/lib/google/oauth-state";
 import { saveGoogleTokens } from "@/lib/google/tokens";
 
-function onboardingUrl(request: Request, query: Record<string, string>) {
-  const base = env.publicAppUrlFromHeaders(
+/**
+ * Prefer the configured production origin so post-OAuth redirects always land
+ * on the same host as GOOGLE_OAUTH_REDIRECT_URI / NEXT_PUBLIC_APP_URL.
+ * Fall back to the request host for local/dev.
+ */
+function oauthReturnOrigin(request: Request): string {
+  const configured = env.appUrl().replace(/\/$/, "");
+  if (
+    /^https:\/\//i.test(configured) &&
+    !/localhost|127\.0\.0\.1/i.test(configured)
+  ) {
+    return configured;
+  }
+  return env.publicAppUrlFromHeaders(
     new Headers({
-      host: request.headers.get("x-forwarded-host") || request.headers.get("host") || "",
+      host:
+        request.headers.get("x-forwarded-host") ||
+        request.headers.get("host") ||
+        "",
       "x-forwarded-proto":
         request.headers.get("x-forwarded-proto") ||
         (request.url.startsWith("https") ? "https" : "http"),
     }),
   );
-  const url = new URL("/onboarding", `${base}/`);
+}
+
+function onboardingUrl(request: Request, query: Record<string, string>) {
+  const url = new URL("/onboarding", `${oauthReturnOrigin(request)}/`);
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, v);
   }
   return url.toString();
+}
+
+function clearOAuthState(response: NextResponse) {
+  response.cookies.set(
+    "google_oauth_state",
+    "",
+    appCookieOptions({ maxAge: 0 }),
+  );
 }
 
 export async function GET(request: Request) {
@@ -31,24 +59,35 @@ export async function GET(request: Request) {
 
   if (error) {
     const desc = searchParams.get("error_description") ?? error;
-    return NextResponse.redirect(
+    const res = NextResponse.redirect(
       onboardingUrl(request, { google_error: desc }),
     );
+    clearOAuthState(res);
+    await attachSessionCookie(res);
+    return res;
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(
+    const res = NextResponse.redirect(
       onboardingUrl(request, { google_error: "missing_code" }),
     );
+    clearOAuthState(res);
+    await attachSessionCookie(res);
+    return res;
   }
 
   let user;
   try {
     user = await requireUser();
   } catch {
-    const login = new URL("/login", request.url);
+    // Session cookie often missing on apex↔www after Google redirect.
+    // Send them to login on the canonical host with a clear reason.
+    const login = new URL("/login", `${oauthReturnOrigin(request)}/`);
     login.searchParams.set("next", "/onboarding");
-    return NextResponse.redirect(login);
+    login.searchParams.set("google_error", "session_lost");
+    const res = NextResponse.redirect(login.toString());
+    clearOAuthState(res);
+    return res;
   }
 
   const cookieStore = await cookies();
@@ -61,18 +100,12 @@ export async function GET(request: Request) {
       savedState === state &&
       verifyGoogleOAuthState(savedState, user.id));
 
-  const clearState = NextResponse.redirect(
-    onboardingUrl(request, { google_error: "invalid_state" }),
-  );
-  clearState.cookies.set("google_oauth_state", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 0,
-    path: "/",
-  });
-
   if (!stateOk) {
+    const clearState = NextResponse.redirect(
+      onboardingUrl(request, { google_error: "invalid_state" }),
+    );
+    clearOAuthState(clearState);
+    await attachSessionCookie(clearState);
     return clearState;
   }
 
@@ -83,12 +116,15 @@ export async function GET(request: Request) {
       : new Date(Date.now() + 3600_000);
 
     if (!tokens.refresh_token) {
-      return NextResponse.redirect(
+      const res = NextResponse.redirect(
         onboardingUrl(request, {
           google_error:
             "Google did not return a refresh token. Disconnect JobApp OS in your Google Account permissions, then connect again.",
         }),
       );
+      clearOAuthState(res);
+      await attachSessionCookie(res);
+      return res;
     }
 
     await saveGoogleTokens(
@@ -104,18 +140,18 @@ export async function GET(request: Request) {
     const success = NextResponse.redirect(
       onboardingUrl(request, { google_connected: "1" }),
     );
-    success.cookies.set("google_oauth_state", "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 0,
-      path: "/",
-    });
+    clearOAuthState(success);
+    // Re-set session on this response so post-OAuth navigation does not drop
+    // the user on /login even though Google connect succeeded (www/apex).
+    await attachSessionCookie(success);
     return success;
   } catch (e) {
     const message = e instanceof Error ? e.message : "oauth_failed";
-    return NextResponse.redirect(
+    const res = NextResponse.redirect(
       onboardingUrl(request, { google_error: message }),
     );
+    clearOAuthState(res);
+    await attachSessionCookie(res);
+    return res;
   }
 }
