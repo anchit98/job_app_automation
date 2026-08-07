@@ -21,9 +21,9 @@ function isEphemeralOrigin(urlOrHost: string): boolean {
  * Fall back to the request host only for local/dev.
  */
 function oauthReturnOrigin(request: Request): string {
-  const configured = env.appUrl().replace(/\/$/, "");
-  if (/^https:\/\//i.test(configured) && !isEphemeralOrigin(configured)) {
-    return configured;
+  const canonical = env.canonicalAppUrl();
+  if (/^https:\/\//i.test(canonical) && !isEphemeralOrigin(canonical)) {
+    return canonical;
   }
   const fromRequest = env.publicAppUrlFromHeaders(
     new Headers({
@@ -37,8 +37,8 @@ function oauthReturnOrigin(request: Request): string {
     }),
   );
   if (!isEphemeralOrigin(fromRequest)) return fromRequest;
-  // Misconfigured production still prefers NEXT_PUBLIC_APP_URL over request host.
-  return configured || fromRequest;
+  // Misconfigured production still prefers the canonical URL over request host.
+  return canonical || fromRequest;
 }
 
 function onboardingUrl(request: Request, query: Record<string, string>) {

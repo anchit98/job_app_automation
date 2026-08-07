@@ -10,8 +10,34 @@ function optional(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+/** Canonical production origin — must match Google OAuth consent branding. */
+const PRODUCTION_ORIGIN = "https://www.jobappos.in";
+
+/** Hosts that must never appear in the Google OAuth redirect_uri in prod. */
+function isEphemeralHost(url: string): boolean {
+  return /localhost|127\.0\.0\.1|\.vercel\.app/i.test(url);
+}
+
+const isDeployedProduction = () =>
+  process.env.NODE_ENV === "production" &&
+  Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
 export const env = {
   appUrl: () => optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000"),
+  /**
+   * App origin safe for OAuth/email redirects: never *.vercel.app or
+   * localhost when deployed to production.
+   */
+  canonicalAppUrl: (): string => {
+    const configured = optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000").replace(
+      /\/$/,
+      "",
+    );
+    if (isDeployedProduction() && isEphemeralHost(configured)) {
+      return PRODUCTION_ORIGIN;
+    }
+    return configured;
+  },
   /**
    * Prefer the request Host so Razorpay callback returns to the same origin
    * the user is browsing (avoids localhost / apex / www cookie mismatches).
@@ -44,11 +70,19 @@ export const env = {
   authSecret: () => required("AUTH_SECRET"),
   googleClientId: () => required("GOOGLE_OAUTH_CLIENT_ID"),
   googleClientSecret: () => required("GOOGLE_OAUTH_CLIENT_SECRET"),
-  googleRedirectUri: () =>
-    optional(
+  googleRedirectUri: () => {
+    const configured = optional(
       "GOOGLE_OAUTH_REDIRECT_URI",
       `${optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000")}/api/auth/google/callback`,
-    ),
+    );
+    // Vercel deployments expose VERCEL_URL / preview hosts; if env still points
+    // at *.vercel.app (or localhost) in production, force the canonical origin
+    // so Google always sends users back to www.jobappos.in.
+    if (isDeployedProduction() && isEphemeralHost(configured)) {
+      return `${PRODUCTION_ORIGIN}/api/auth/google/callback`;
+    }
+    return configured;
+  },
   googleTokenEncryptionKey: () => required("GOOGLE_TOKEN_ENCRYPTION_KEY"),
   resumeMasterDocId: () => optional("RESUME_MASTER_DOC_ID"),
   coverLetterMasterDocId: () =>
