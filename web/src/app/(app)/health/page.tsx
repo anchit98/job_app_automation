@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { dbGet } from "@/lib/db";
 import { listRecentPromptRuns } from "@/lib/db/queries";
-import { isGoogleConnected } from "@/lib/google/tokens";
+import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { peekQueuedExtensionRun } from "@/lib/db/pipeline";
 
 export default async function HealthPage() {
@@ -15,7 +15,7 @@ export default async function HealthPage() {
   }
 
   const [googleConnected, recentRuns, pendingExt] = await Promise.all([
-      isGoogleConnected().catch(() => false),
+      getGoogleConnectedState().then((s) => s === true),
       listRecentPromptRuns(8),
       peekQueuedExtensionRun(),
     ]);

@@ -2,7 +2,7 @@ import { getProfile, syncSignatureLinksFromResume } from "@/app/actions/profile"
 import { getMasterResume } from "@/app/actions/master-resume";
 import { getMasterCoverLetter } from "@/app/actions/cover-letter";
 import { getCurrentUser } from "@/lib/auth/user";
-import { isGoogleConnected } from "@/lib/google/tokens";
+import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { getSetupReadiness } from "@/lib/setup/readiness";
 import { OnboardingForms } from "@/components/onboarding/onboarding-forms";
 import { GoogleConnectModal } from "@/components/onboarding/google-connect-modal";
@@ -22,14 +22,14 @@ export default async function OnboardingPage({
     masterResume,
     masterCoverLetter,
     user,
-    googleConnected,
+    googleState,
     readiness,
   ] = await Promise.all([
     getProfile().catch(() => null),
     getMasterResume().catch(() => null),
     getMasterCoverLetter().catch(() => null),
     getCurrentUser().catch(() => null),
-    isGoogleConnected().catch(() => false),
+    getGoogleConnectedState(),
     getSetupReadiness().catch(() => null),
   ]);
 
@@ -46,14 +46,17 @@ export default async function OnboardingPage({
     resolvedProfile = (await getProfile().catch(() => null)) ?? resolvedProfile;
   }
 
-  const connected = googleConnected || justConnected;
+  // Only treat an explicit `false` as disconnected. `null` (DB blip) must not
+  // reopen the Connect Google modal for users who already linked.
+  const googleConnected = googleState === true || justConnected;
+  const askToConnect = googleState === false && !justConnected;
   const setupReady = Boolean(readiness?.setupReady);
 
   return (
     <div className="space-y-3">
       <GoogleConnectModal
-        open={!connected}
-        initialConnected={connected}
+        open={askToConnect}
+        initialConnected={googleConnected}
         googleError={googleError}
       />
 
@@ -62,7 +65,7 @@ export default async function OnboardingPage({
         masterResume={masterResume}
         masterCoverLetter={masterCoverLetter}
         isAdmin={Boolean(user?.is_admin)}
-        googleConnected={connected}
+        googleConnected={googleConnected || googleState !== false}
         setupReady={setupReady}
         justConnected={justConnected}
         googleError={googleError}

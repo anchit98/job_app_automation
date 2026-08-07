@@ -12,7 +12,7 @@ import { getMasterResume } from "@/app/actions/master-resume";
 import { getApplicationTimeline } from "@/app/actions/tracker";
 import { getApplicationPipelineSummaries } from "@/app/actions/pipeline";
 import { ApplicationWorkspace } from "@/components/applications/application-workspace";
-import { isGoogleConnected } from "@/lib/google/tokens";
+import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { resumeContentSchema } from "@/lib/resume/fabrication";
 
 export default async function ApplicationDetailPage({
@@ -42,7 +42,7 @@ export default async function ApplicationDetailPage({
     getContactsForApplication(id).catch(() => []),
     getEmailsForApplication(id).catch(() => []),
     getFollowUpsForApplication(id).catch(() => []),
-    isGoogleConnected().catch(() => false),
+    getGoogleConnectedState().then((s) => s !== false),
     getApplicationTimeline(id).catch(() => []),
     getApplicationPipelineSummaries([id]).catch(
       () =>

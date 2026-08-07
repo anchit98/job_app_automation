@@ -107,12 +107,44 @@ export async function getGoogleAuthClient(userId?: string) {
 export const isGoogleConnected = cache(async (): Promise<boolean> => {
   const user = await getCurrentUser();
   if (!user) return false;
-  const row = await dbGet<{ status: string }>(
-    `SELECT status FROM google_tokens WHERE user_id = ?`,
-    user.id,
-  );
-  return row?.status === "active";
+
+  const lookup = () =>
+    dbGet<{ status: string }>(
+      `SELECT status FROM google_tokens WHERE user_id = ?`,
+      user.id,
+    );
+
+  try {
+    const row = await lookup();
+    return row?.status === "active";
+  } catch (first) {
+    // One quick retry — a single pool blip must not look like "disconnected"
+    // and reopen the Connect Google modal for users who already linked.
+    try {
+      await new Promise((r) => setTimeout(r, 150));
+      const row = await lookup();
+      return row?.status === "active";
+    } catch (second) {
+      console.warn(
+        "[google] isGoogleConnected failed after retry:",
+        String(second ?? first),
+      );
+      throw second;
+    }
+  }
 });
+
+/**
+ * UI/setup helper: `true` / `false` when known, `null` when the DB check failed.
+ * Callers must NOT treat `null` as disconnected (that caused false reconnect prompts).
+ */
+export async function getGoogleConnectedState(): Promise<boolean | null> {
+  try {
+    return await isGoogleConnected();
+  } catch {
+    return null;
+  }
+}
 
 export async function revokeGoogleTokenAtSource(refreshToken: string) {
   const client = createOAuth2Client();

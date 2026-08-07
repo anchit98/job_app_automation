@@ -2,7 +2,7 @@ import { cache } from "react";
 import { getCurrentUser } from "@/lib/auth/user";
 import { dbGet } from "@/lib/db";
 import { getProfileRow } from "@/lib/db/queries";
-import { isGoogleConnected } from "@/lib/google/tokens";
+import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { profileFieldsComplete } from "@/lib/setup/profile-complete";
 
 export type SetupReadiness = {
@@ -29,19 +29,20 @@ export const getSetupReadiness = cache(async (): Promise<SetupReadiness> => {
   }
 
   // Cheap checks only — never pull master_resume.content/doc_layout blobs here.
-  const [profile, resumeFlag, googleConnected] = await Promise.all([
+  const [profile, resumeFlag, googleState] = await Promise.all([
     getProfileRow().catch(() => null),
     dbGet<{ resume_done: boolean }>(
       `SELECT CASE
                 WHEN content IS NULL THEN false
-                WHEN btrim(content::text) IN ('', '{}', 'null') THEN false
+                WHEN octet_length(content) <= 2 THEN false
+                WHEN left(content, 8) IN ('{}', 'null', '') THEN false
                 ELSE true
               END AS resume_done
          FROM master_resume
         WHERE user_id = ?`,
       user.id,
     ).catch(() => undefined),
-    isGoogleConnected().catch(() => false),
+    getGoogleConnectedState(),
   ]);
 
   const profileDone = profileFieldsComplete({
@@ -51,6 +52,9 @@ export const getSetupReadiness = cache(async (): Promise<SetupReadiness> => {
     linkedin_url: profile?.linkedin_url,
   });
   const masterResumeDone = Boolean(resumeFlag?.resume_done);
+  // Unknown (DB blip) must not look like "not connected" — that locked paid
+  // users behind the Connect Google modal after a successful OAuth.
+  const googleConnected = googleState !== false;
 
   return {
     googleConnected,

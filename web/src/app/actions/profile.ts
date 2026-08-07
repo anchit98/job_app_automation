@@ -76,49 +76,69 @@ export async function getProfile() {
 }
 
 export async function uploadProfileAvatar(formData: FormData) {
-  await requireUser();
-  const file = formData.get("avatar");
-  if (!(file instanceof File) || file.size === 0) {
-    return { ok: false as const, error: "Choose an image to upload." };
-  }
-  if (!ALLOWED_MIME.has(file.type)) {
+  try {
+    await requireUser();
+    const file = formData.get("avatar");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false as const, error: "Choose an image to upload." };
+    }
+    if (!ALLOWED_MIME.has(file.type)) {
+      return {
+        ok: false as const,
+        error: "Use a JPEG, PNG, or WebP image.",
+      };
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      return {
+        ok: false as const,
+        error: "Image is too large after processing. Try a smaller photo.",
+      };
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await setProfileAvatarRow({
+      data: buffer.toString("base64"),
+      mime: file.type,
+    });
+
+    await writeAuditLog("profile.avatar_upload", "profiles", "local", {
+      mime: file.type,
+      bytes: buffer.length,
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/onboarding");
+    revalidatePath("/", "layout");
+    return { ok: true as const };
+  } catch (error) {
+    console.warn("[profile] avatar upload failed:", String(error));
+    const msg = error instanceof Error ? error.message : String(error ?? "");
+    if (/timed out|timeout|canceling statement/i.test(msg)) {
+      return {
+        ok: false as const,
+        error: "Upload timed out. Please try again in a moment.",
+      };
+    }
     return {
       ok: false as const,
-      error: "Use a JPEG, PNG, or WebP image.",
+      error: "Could not save your photo. Please try again.",
     };
   }
-  if (file.size > MAX_AVATAR_BYTES) {
-    return {
-      ok: false as const,
-      error: "Image is too large after processing. Try a smaller photo.",
-    };
-  }
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await setProfileAvatarRow({
-    data: buffer.toString("base64"),
-    mime: file.type,
-  });
-
-  await writeAuditLog("profile.avatar_upload", "profiles", "local", {
-    mime: file.type,
-    bytes: buffer.length,
-  });
-
-  revalidatePath("/dashboard");
-  revalidatePath("/onboarding");
-  revalidatePath("/", "layout");
-  return { ok: true as const };
 }
 
 export async function removeProfileAvatar() {
-  await requireUser();
-  await clearProfileAvatarRow();
-  await writeAuditLog("profile.avatar_remove", "profiles", "local", {});
-  revalidatePath("/dashboard");
-  revalidatePath("/onboarding");
-  revalidatePath("/", "layout");
-  return { ok: true as const };
+  try {
+    await requireUser();
+    await clearProfileAvatarRow();
+    await writeAuditLog("profile.avatar_remove", "profiles", "local", {});
+    revalidatePath("/dashboard");
+    revalidatePath("/onboarding");
+    revalidatePath("/", "layout");
+    return { ok: true as const };
+  } catch (error) {
+    console.warn("[profile] avatar remove failed:", String(error));
+    return { ok: false as const, error: "Could not remove photo." };
+  }
 }
 
 export async function syncSignatureLinksFromResume(options?: {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getDashboardData } from "@/app/actions/tracker";
 import { getProfile } from "@/app/actions/profile";
-import { isGoogleConnected } from "@/lib/google/tokens";
+import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { parseMetricsRange } from "@/lib/tracker/metrics-range";
 import { searchApplications } from "@/lib/tracker/queries";
 import { DashboardMetricsGrid } from "@/components/dashboard/dashboard-metrics";
@@ -23,7 +23,7 @@ export default async function DashboardPage({
   const [dashboard, profile, connected, recent] = await Promise.all([
     getDashboardData(metricsRange).catch(() => null),
     getProfile().catch(() => null),
-    isGoogleConnected().catch(() => false),
+    getGoogleConnectedState().then((s) => s !== false),
     searchApplications({ page: 1, pageSize: 6 }).catch(() => null),
   ]);
 
