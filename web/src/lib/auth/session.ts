@@ -63,11 +63,24 @@ export async function createSession(
     .sign(secretKey());
 
   const jar = await cookies();
-  jar.set(
-    SESSION_COOKIE,
-    token,
-    appCookieOptions({ maxAge: SESSION_MAX_AGE }),
-  );
+  try {
+    jar.set(
+      SESSION_COOKIE,
+      token,
+      appCookieOptions({ maxAge: SESSION_MAX_AGE }),
+    );
+  } catch (err) {
+    // Rare: Domain attribute rejected — fall back to host-only cookie so
+    // login still succeeds (www/apex sharing may need a fix afterward).
+    console.warn("[auth] session cookie set failed; retrying host-only:", err);
+    jar.set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE,
+    });
+  }
 
   return sessionId;
 }

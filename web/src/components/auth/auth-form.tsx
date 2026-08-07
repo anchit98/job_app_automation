@@ -60,9 +60,21 @@ export function AuthForm({
         // auth layout into /(app) + setup redirect often paint a blank
         // onboarding until a hard refresh.
         window.location.assign(resolveClientRedirect(result, nextPath));
-      } catch {
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err ?? "");
+        // Stale client after a deploy often fails Server Actions with opaque
+        // digests — a hard reload picks up the matching action IDs.
+        if (/Failed to find Server Action|server action|fetch|network|digest/i.test(msg)) {
+          setError(
+            "Sign-in interrupted (often after a fresh deploy). Refresh this page and try again.",
+          );
+          return;
+        }
+        console.error("[auth-form]", err);
         setError(
-          "Sign-in failed. If this is production, confirm AUTH_SECRET is set on Vercel and redeploy.",
+          msg && msg.length < 180
+            ? msg
+            : "Sign-in failed. Refresh the page and try again.",
         );
       }
     });
