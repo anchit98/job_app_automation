@@ -21,6 +21,8 @@ const PUBLIC_PREFIXES = [
   "/api/cron",
   "/api/health",
   "/api/billing/razorpay/webhook",
+  // Clears revoked JWTs that middleware still treats as signed-in.
+  "/api/auth/clear-stale-session",
   // Must stay public: Razorpay redirect can drop the session cookie; unlock
   // still runs from signed callback params / API reconcile.
   "/billing/razorpay/return",
@@ -66,22 +68,20 @@ export async function middleware(request: NextRequest) {
   const isGetNavigation = request.method === "GET";
 
   if (isPublic(pathname)) {
-    // Logged-in users hitting login/signup → dashboard
+    // Do NOT bounce login/signup to the app based on JWT alone. Sessions can
+    // be revoked in the DB while the cookie still verifies (ghost accounts).
+    // Auth pages call getCurrentUser() and redirect only when the DB session
+    // is real.
     if (
       isGetNavigation &&
+      sessionPayload?.must_reset_password &&
       (pathname === "/login" ||
         pathname === "/signup" ||
         pathname === "/forgot-password")
     ) {
-      if (sessionPayload?.must_reset_password) {
-        return NextResponse.redirect(
-          new URL("/reset-password-required", request.url),
-        );
-      }
-      if (sessionPayload) {
-        // Unpaid users land on billing; paid status is checked in app layout.
-        return NextResponse.redirect(new URL("/dashboard", request.url));
-      }
+      return NextResponse.redirect(
+        new URL("/reset-password-required", request.url),
+      );
     }
     return NextResponse.next({
       request: { headers: requestHeaders },

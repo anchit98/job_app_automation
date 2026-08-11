@@ -59,7 +59,13 @@ export default async function AppLayout({
         })),
   ]);
 
-  const isPaid = user ? userHasPaidAccess(user) : true;
+  // JWT can still verify after sessions were wiped → empty "Me"/? ghost shell.
+  // Clear the stale cookie, then send them to login.
+  if (!user) {
+    redirect("/api/auth/clear-stale-session?next=/login");
+  }
+
+  const isPaid = userHasPaidAccess(user);
   const setupReady = !isPaid || readiness.setupReady;
 
   // Server-side redirect when pathname is available from middleware.
