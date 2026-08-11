@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { upsertProfile, upsertProfileBasics } from "@/app/actions/profile";
 import { upsertMasterResume } from "@/app/actions/master-resume";
@@ -54,7 +53,6 @@ export function OnboardingForms({
   justConnected = false,
   googleError = null,
 }: OnboardingFormsProps) {
-  const router = useRouter();
   const [fullName, setFullName] = useState(profile?.full_name ?? "");
   const [headline, setHeadline] = useState(profile?.headline ?? "");
   const [location, setLocation] = useState(profile?.location ?? "");
@@ -77,6 +75,12 @@ export function OnboardingForms({
   const [syncingCoverLetter, startCoverLetterSync] = useTransition();
   const [resumeSynced, setResumeSynced] = useState(
     hasMasterResumeContent(masterResume?.content),
+  );
+  const [resumeSyncedAt, setResumeSyncedAt] = useState<string | null>(
+    masterResume?.doc_synced_at ?? null,
+  );
+  const [coverSyncedAt, setCoverSyncedAt] = useState<string | null>(
+    masterCoverLetter?.doc_synced_at ?? null,
   );
   // Incomplete setup always starts expanded so post-payment onboarding is clear.
   // Collapsed preference only applies after setup is finished.
@@ -145,10 +149,11 @@ export function OnboardingForms({
   function clearResumeFieldsLocal() {
     setResumeJson(blankMasterResumeJson());
     setResumeSynced(false);
+    setResumeSyncedAt(null);
   }
 
   function clearCoverLetterFieldsLocal() {
-    // Cover letter state comes from server props after reset + refresh.
+    setCoverSyncedAt(null);
   }
 
   function applySignatureFields(fields: {
@@ -212,7 +217,8 @@ export function OnboardingForms({
                 ? "Master resume sync was reset."
                 : "Cover letter sync was reset.",
         );
-        router.refresh();
+        // Do not router.refresh() here — production Flight + layout auth used
+        // to surface an opaque Server Components digest error after reset/sync.
       } catch (e) {
         setError(e instanceof Error ? e.message : "Reset failed");
       }
@@ -268,7 +274,6 @@ export function OnboardingForms({
           location,
         });
         setMessage("Profile saved.");
-        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
       }
@@ -292,7 +297,6 @@ export function OnboardingForms({
       try {
         await upsertProfile(profilePayload());
         setMessage("Contact & links saved.");
-        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
       }
@@ -323,7 +327,6 @@ export function OnboardingForms({
         await upsertMasterResume({ content });
         setResumeSynced(Object.keys(content).length > 0);
         setMessage("Profile and master resume saved.");
-        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
       }
@@ -681,6 +684,7 @@ export function OnboardingForms({
                           setResumeJson(JSON.stringify(res.content, null, 2));
                           setResumeSynced(Object.keys(res.content).length > 0);
                         }
+                        if (res.synced_at) setResumeSyncedAt(res.synced_at);
                         const linksFilled = applySignatureFields(
                           res.signature_fields,
                         );
@@ -695,7 +699,6 @@ export function OnboardingForms({
                               : ""
                           }.`,
                         );
-                        router.refresh();
                       } catch (e) {
                         setError(
                           e instanceof Error ? e.message : "Sync failed",
@@ -716,8 +719,8 @@ export function OnboardingForms({
                   Last sync
                 </span>
                 <span className="text-[13px] font-semibold text-on-surface">
-                  {masterResume?.doc_synced_at
-                    ? formatAppDateTime(masterResume.doc_synced_at)
+                  {resumeSyncedAt
+                    ? formatAppDateTime(resumeSyncedAt)
                     : masterDone
                       ? "Ready"
                       : "Never synced"}
@@ -775,10 +778,10 @@ export function OnboardingForms({
                     startCoverLetterSync(async () => {
                       try {
                         const res = await syncCoverLetterFromGoogleDoc(doc.id);
+                        if (res.synced_at) setCoverSyncedAt(res.synced_at);
                         setMessage(
                           `Cover letter template synced - ${res.body_slots} body slots mapped.`,
                         );
-                        router.refresh();
                       } catch (e) {
                         setError(
                           e instanceof Error ? e.message : "Sync failed",
@@ -794,8 +797,8 @@ export function OnboardingForms({
                   Last sync
                 </span>
                 <span className="text-[13px] font-semibold text-on-surface">
-                  {masterCoverLetter?.doc_synced_at
-                    ? formatAppDateTime(masterCoverLetter.doc_synced_at)
+                  {coverSyncedAt
+                    ? formatAppDateTime(coverSyncedAt)
                     : "Never synced"}
                 </span>
               </div>

@@ -8,15 +8,7 @@ export const GOOGLE_USER_SCOPES = [
   "https://www.googleapis.com/auth/documents",
 ] as const;
 
-/**
- * Extra scopes only for admin Connect Google (password reset / payment emails).
- * Not shown on the normal user consent screen.
- */
-export const GOOGLE_ADMIN_EXTRA_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.send",
-] as const;
-
-/** @deprecated Prefer GOOGLE_USER_SCOPES + optional admin extras. */
+/** @deprecated Prefer GOOGLE_USER_SCOPES. */
 export const GOOGLE_SCOPES = GOOGLE_USER_SCOPES;
 
 export function createOAuth2Client() {
@@ -27,18 +19,12 @@ export function createOAuth2Client() {
   );
 }
 
-export function getGoogleAuthUrl(
-  state: string,
-  options?: { includeAdminSend?: boolean },
-) {
+export function getGoogleAuthUrl(state: string) {
   const client = createOAuth2Client();
-  const scope = options?.includeAdminSend
-    ? [...GOOGLE_USER_SCOPES, ...GOOGLE_ADMIN_EXTRA_SCOPES]
-    : [...GOOGLE_USER_SCOPES];
   return client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope,
+    scope: [...GOOGLE_USER_SCOPES],
     state,
     // false: do not re-attach previously granted scopes (gmail.readonly, etc.)
     include_granted_scopes: false,

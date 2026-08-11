@@ -135,7 +135,6 @@ export async function uploadProfileAvatar(formData: FormData) {
 
     revalidatePath("/dashboard");
     revalidatePath("/onboarding");
-    revalidatePath("/", "layout");
     return { ok: true as const };
   } catch (error) {
     console.warn("[profile] avatar upload failed:", String(error));
@@ -160,7 +159,6 @@ export async function removeProfileAvatar() {
     await writeAuditLog("profile.avatar_remove", "profiles", "local", {});
     revalidatePath("/dashboard");
     revalidatePath("/onboarding");
-    revalidatePath("/", "layout");
     return { ok: true as const };
   } catch (error) {
     console.warn("[profile] avatar remove failed:", String(error));

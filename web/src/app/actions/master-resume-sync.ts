@@ -98,6 +98,8 @@ export async function syncMasterFromGoogleDoc(
     skills: content.skills.length,
     education: content.education.length,
     synced_at: syncedAt,
+    // Keep payload small for Server Action → client; full content is reloaded
+    // via router.refresh() / getMasterResume on the onboarding page.
     content: content as unknown as Record<string, unknown>,
     sync_mode: sync_mode ?? "heuristic",
     signature_fields: links?.ok ? links.fields : null,

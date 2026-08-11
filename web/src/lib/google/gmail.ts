@@ -299,7 +299,7 @@ export class GmailClient {
     } catch (error) {
       if (isMissingScopeError(error)) {
         throw new GmailScopeMissingError(
-          "Gmail send scope missing - reconnect Google with gmail.send access.",
+          "Gmail compose scope missing - reconnect Google.",
         );
       }
       throw error;

@@ -59,7 +59,6 @@ export async function setSetupGuideCollapsed(collapsed: boolean) {
 function revalidateSetupPaths() {
   revalidatePath("/onboarding");
   revalidatePath("/dashboard");
-  revalidatePath("/", "layout");
 }
 
 /** Clear profile text fields + avatar (keeps timezone / setup flags). */

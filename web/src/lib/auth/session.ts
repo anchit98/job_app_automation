@@ -266,7 +266,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       } else {
         console.error("[auth] session DB lookup failed; using JWT claims:", error);
       }
-      if (!email) return null;
+      // Always fall back on transient failure — returning null here used to
+      // bounce users through cookie-clear redirects mid Flight refresh.
       return jwtFallback;
     }
   } catch {

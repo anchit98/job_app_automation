@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { PaidAccessGate } from "@/components/billing/paid-access-gate";
 import { SetupAccessGate } from "@/components/setup/setup-access-gate";
+import { HardRedirect } from "@/components/auth/hard-redirect";
 import { getCurrentUser, userHasPaidAccess } from "@/lib/auth/user";
 import { getProfile } from "@/app/actions/profile";
 import { profileAvatarSrc } from "@/lib/profile-avatar";
@@ -41,8 +42,16 @@ export default async function AppLayout({
   const pathname = headerStore.get("x-pathname") || "";
   const lightLayout = skipSetupReadiness(pathname);
 
-  const [user, profile, readiness] = await Promise.all([
-    getCurrentUser().catch(() => null),
+  let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
+  try {
+    user = await getCurrentUser();
+  } catch (error) {
+    // Transient auth failures must not tear down the shell mid-refresh.
+    console.error("[layout] getCurrentUser failed:", error);
+    user = null;
+  }
+
+  const [profile, readiness] = await Promise.all([
     getProfile().catch(() => null),
     lightLayout
       ? Promise.resolve({
@@ -59,27 +68,25 @@ export default async function AppLayout({
         })),
   ]);
 
-  // JWT can still verify after sessions were wiped → empty "Me"/? ghost shell.
-  // Clear the stale cookie, then send them to login.
+  // Hard client redirect — never throw redirect() here during Flight refresh
+  // after Doc sync/reset (production shows a digest-only RSC error).
   if (!user) {
-    redirect("/api/auth/clear-stale-session?next=/login");
+    return <HardRedirect href="/login" label="Returning to sign in…" />;
   }
 
   const isPaid = userHasPaidAccess(user);
   const setupReady = !isPaid || readiness.setupReady;
 
   // Server-side redirect when pathname is available from middleware.
-  if (user && !isPaid && pathname && !unpaidAllowed(pathname)) {
+  if (!isPaid && pathname && !unpaidAllowed(pathname)) {
     redirect("/billing");
   }
   // Paid users leave billing; after payment always prefer onboarding.
   if (
-    user &&
     isPaid &&
     pathname &&
     (pathname === "/billing" || pathname.startsWith("/billing/"))
   ) {
-    // Need real readiness for this redirect — fetch if we skipped it.
     const ready = lightLayout
       ? (await getSetupReadiness().catch(() => ({ setupReady: false }))).setupReady
       : readiness.setupReady;
@@ -92,7 +99,6 @@ export default async function AppLayout({
     );
   }
   if (
-    user &&
     isPaid &&
     !readiness.setupReady &&
     pathname &&
@@ -104,10 +110,10 @@ export default async function AppLayout({
 
   return (
     <AppShell
-      userEmail={user?.email}
-      userName={profile?.full_name || user?.full_name}
+      userEmail={user.email}
+      userName={profile?.full_name || user.full_name}
       avatarSrc={profileAvatarSrc(profile)}
-      isAdmin={user?.is_admin}
+      isAdmin={user.is_admin}
       isPaid={isPaid}
       setupReady={setupReady}
     >

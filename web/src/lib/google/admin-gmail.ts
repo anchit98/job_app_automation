@@ -55,9 +55,9 @@ export async function requireGmailSenderAdmin(
       "No admin Google account is connected. Connect Google from an admin account first.",
     );
   }
-  if (!sender.scope.includes("gmail.send")) {
+  if (!sender.scope.includes("gmail.compose")) {
     throw new AdminGmailConfigError(
-      "Admin Google account needs gmail.send access. Reconnect Google from the admin account, then try again.",
+      "Admin Google account needs Gmail compose access. Reconnect Google from the admin account, then try again.",
     );
   }
   return sender;
