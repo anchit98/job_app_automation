@@ -153,15 +153,22 @@ export async function getSessionFromCookies(): Promise<{
  * Auth must never block page rendering: if the session DB validation can't
  * answer quickly (pool congestion / slow pooler), fall back to JWT claims
  * instead of holding the whole request for the 8s+ client query timeout.
+ * Local/dev → remote Supabase often sits near 2–3s on a cold pool, so keep
+ * this under CLIENT_QUERY_TIMEOUT_MS but above typical pooler latency.
  */
-const AUTH_DB_TIMEOUT_MS = 2_500;
+const AUTH_DB_TIMEOUT_MS = 4_000;
+
+class AuthSessionDbTimeoutError extends Error {
+  constructor() {
+    super(`Auth session validation timed out after ${AUTH_DB_TIMEOUT_MS}ms`);
+    this.name = "AuthSessionDbTimeoutError";
+  }
+}
 
 function raceAuthTimeout<T>(promise: Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(
-        new Error(`Auth session validation timed out after ${AUTH_DB_TIMEOUT_MS}ms`),
-      );
+      reject(new AuthSessionDbTimeoutError());
     }, AUTH_DB_TIMEOUT_MS);
     promise.then(
       (value) => {
@@ -252,7 +259,13 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     } catch (error) {
       // Transient DB / pool errors must not look like a logged-out session —
       // that produced blank screens and "session crashed" for many users.
-      console.error("[auth] session DB lookup failed; using JWT claims:", error);
+      if (error instanceof AuthSessionDbTimeoutError) {
+        // Expected under pool congestion / distant Supabase — JWT keeps the
+        // request moving. Avoid console.error so DevTools doesn't look broken.
+        console.warn("[auth] session DB slow; using JWT claims");
+      } else {
+        console.error("[auth] session DB lookup failed; using JWT claims:", error);
+      }
       if (!email) return null;
       return jwtFallback;
     }

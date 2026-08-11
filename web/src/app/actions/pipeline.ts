@@ -79,8 +79,8 @@ const contactSchema = z.object({
 
 const startSchema = z.object({
   jd: z.string().min(50),
-  company: z.string().trim().min(1, "Company is required."),
-  role: z.string().trim().min(1, "Role is required."),
+  company: z.string().trim().optional(),
+  role: z.string().trim().optional(),
   job_url: z.string().optional(),
   notes: z.string().optional(),
   email_instructions: z.string().optional(),
@@ -301,8 +301,8 @@ export async function startQuickApplyPipeline(input: z.infer<typeof startSchema>
     }
 
     const applicationId = await insertApplication({
-      company: parsed.data.company,
-      role: parsed.data.role,
+      company: parsed.data.company?.trim() || null,
+      role: parsed.data.role?.trim() || null,
       job_url: parsed.data.job_url || null,
       jd_raw: jdRaw,
       notes: parsed.data.notes,
@@ -311,9 +311,10 @@ export async function startQuickApplyPipeline(input: z.infer<typeof startSchema>
 
     after(() => {
       void writeAuditLog("application.created", "applications", applicationId, {
-        company: parsed.data.company ?? null,
-        role: parsed.data.role ?? null,
+        company: parsed.data.company?.trim() || null,
+        role: parsed.data.role?.trim() || null,
         jd_truncated: jdTruncated,
+        company_role_from_jd: !parsed.data.company?.trim() && !parsed.data.role?.trim(),
       }).catch((err) => {
         console.error("[pipeline] audit after start failed", err);
       });
@@ -322,7 +323,10 @@ export async function startQuickApplyPipeline(input: z.infer<typeof startSchema>
     const result = await bootstrapAndAdvancePipeline({
       application_id: applicationId,
       contacts: parsed.data.contacts,
-      skip_jd_parse: parsed.data.skip_jd_parse === true,
+      // Always parse JD when company/role weren't provided by the user.
+      skip_jd_parse:
+        parsed.data.skip_jd_parse === true &&
+        Boolean(parsed.data.company?.trim() && parsed.data.role?.trim()),
       skip_cover_letter: parsed.data.skip_cover_letter === true,
       contacts_already_saved: false,
       llm_engine: parsed.data.llm_engine ?? "openai",

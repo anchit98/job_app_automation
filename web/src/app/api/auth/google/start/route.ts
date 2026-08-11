@@ -20,7 +20,9 @@ export async function GET(request: Request) {
   }
 
   const state = createGoogleOAuthState(user.id);
-  const url = getGoogleAuthUrl(state);
+  const url = getGoogleAuthUrl(state, {
+    includeAdminSend: Boolean(user.is_admin),
+  });
 
   // Set cookie on the redirect response (cookies().set alone can be dropped
   // on some Route Handler redirects). Signed `state` is the source of truth.

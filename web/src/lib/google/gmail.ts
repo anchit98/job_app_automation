@@ -199,28 +199,44 @@ export class GmailClient {
 
   async getDraftMessageMetadata(draftId: string): Promise<DraftMessageMetadata> {
     try {
+      // Prefer drafts.get so we don't require gmail.readonly (messages.get).
       const draftRes = await this.gmail().users.drafts.get({
         userId: "me",
         id: draftId,
-        format: "minimal",
+        format: "full",
       });
-      const messageId = draftRes.data.message?.id;
       const threadId = draftRes.data.message?.threadId ?? null;
+      const rfcFromDraft = headerValue(
+        draftRes.data.message?.payload?.headers,
+        "Message-ID",
+      );
+      if (rfcFromDraft) {
+        return { threadId, rfcMessageId: rfcFromDraft };
+      }
+
+      const messageId = draftRes.data.message?.id;
       if (!messageId) {
         return { threadId, rfcMessageId: null };
       }
 
-      const msgRes = await this.gmail().users.messages.get({
-        userId: "me",
-        id: messageId,
-        format: "metadata",
-        metadataHeaders: ["Message-ID"],
-      });
-
-      return {
-        threadId: msgRes.data.threadId ?? threadId,
-        rfcMessageId: headerValue(msgRes.data.payload?.headers, "Message-ID"),
-      };
+      try {
+        const msgRes = await this.gmail().users.messages.get({
+          userId: "me",
+          id: messageId,
+          format: "metadata",
+          metadataHeaders: ["Message-ID"],
+        });
+        return {
+          threadId: msgRes.data.threadId ?? threadId,
+          rfcMessageId: headerValue(msgRes.data.payload?.headers, "Message-ID"),
+        };
+      } catch (error) {
+        // Missing gmail.readonly — draft metadata alone is enough for most flows.
+        if (isMissingScopeError(error)) {
+          return { threadId, rfcMessageId: null };
+        }
+        throw error;
+      }
     } catch (error) {
       if (isMissingScopeError(error)) {
         throw new GmailScopeMissingError();

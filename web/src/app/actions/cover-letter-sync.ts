@@ -40,6 +40,7 @@ export async function syncCoverLetterFromGoogleDoc(
   let layout: Awaited<ReturnType<typeof syncMasterCoverLetterFromDoc>>;
   let templateDocId: string;
   try {
+    await drive.assertReadableGoogleDoc(docId);
     layout = await syncMasterCoverLetterFromDoc(docs, docId);
     templateDocId = await drive.ensureCoverLetterTemplateCopy(docId);
   } catch (error) {

@@ -95,11 +95,13 @@ Monitor token usage in the OpenAI dashboard as users grow (typical full Apply is
 See [`architecture.md`](architecture.md) §11. Summary:
 
 1. Enable **Gmail API**, **Google Drive API**, **Google Docs API**.
-2. OAuth consent scopes:
-   - `gmail.compose`, `gmail.send`, `gmail.readonly` (as used by the app)
-   - `drive.readonly`, `drive.file`, `documents`
-3. Web client origins + redirect: `…/api/auth/google/callback`
-4. Admin must **Connect Google** with `gmail.send` for password + payment emails.
+2. OAuth consent scopes (user Connect Google):
+   - `gmail.compose`, `drive.file`, `documents`
+   - Admins additionally get `gmail.send` (password / payment emails)
+   - Master Doc selection uses **Google Picker** (no `drive.readonly`)
+3. Enable **Google Picker API** and create a Browser API key → `NEXT_PUBLIC_GOOGLE_API_KEY`
+4. Web client origins + redirect: `…/api/auth/google/callback`
+5. Admin must **Connect Google** (with send) for password + payment emails.
 
 ---
 
@@ -121,6 +123,8 @@ Open [http://localhost:3000](http://localhost:3000) → **Create an account**.
 | `AUTH_SECRET` | Yes | Session cookie |
 | `NEXT_PUBLIC_APP_URL` | Yes | Public URL |
 | `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | Yes | OAuth |
+| `NEXT_PUBLIC_GOOGLE_API_KEY` | Yes for Picker | Browser key (Picker API) |
+| `NEXT_PUBLIC_GOOGLE_APP_ID` | No | Cloud project number for Picker |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypt Google tokens |
 | `CHATGPT_API_KEY` or `OPENAI_API_KEY` | Yes for Apply | OpenAI |
 | `RESUME_MASTER_DOC_ID` / `COVER_LETTER_MASTER_DOC_ID` | No | Default master Docs |

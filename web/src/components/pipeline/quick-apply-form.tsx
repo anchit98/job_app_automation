@@ -130,13 +130,13 @@ function SectionHeading({
   hint?: string;
 }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[12px] font-bold text-primary mt-0.5">
+    <div className="flex items-start gap-2.5 min-w-0">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[12px] font-bold leading-none text-primary">
         {step}
       </span>
-      <div>
-        <h2 className="li-section-title">{title}</h2>
-        {hint && <p className="li-meta mt-0.5">{hint}</p>}
+      <div className="min-w-0">
+        <h2 className="li-section-title leading-6">{title}</h2>
+        {hint ? <p className="li-meta mt-0.5">{hint}</p> : null}
       </div>
     </div>
   );
@@ -153,8 +153,6 @@ export function QuickApplyForm({
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [jd, setJd] = useState("");
-  const [company, setCompany] = useState("");
-  const [role, setRole] = useState("");
   const [jobUrl, setJobUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [emailInstructions, setEmailInstructions] = useState("");
@@ -170,13 +168,7 @@ export function QuickApplyForm({
     [contacts],
   );
 
-  const canSubmit = useMemo(
-    () =>
-      jd.trim().length >= 50 &&
-      company.trim().length > 0 &&
-      role.trim().length > 0,
-    [jd, company, role],
-  );
+  const canSubmit = useMemo(() => jd.trim().length >= 50, [jd]);
 
   function updateContact(index: number, patch: Partial<ContactRow>) {
     setContacts((prev) =>
@@ -200,8 +192,6 @@ export function QuickApplyForm({
 
       const result = await startQuickApplyPipeline({
         jd,
-        company: company.trim(),
-        role: role.trim(),
         job_url: jobUrl.trim() || undefined,
         notes: notes.trim() || undefined,
         email_instructions: emailInstructions.trim() || undefined,
@@ -241,20 +231,19 @@ export function QuickApplyForm({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        {/* JD + role details */}
-        <div className="lg:col-span-7 li-card p-4 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:items-stretch">
+        {/* JD — stretch to match Contacts + This run will */}
+        <div className="lg:col-span-7 li-card p-4 flex flex-col gap-4 lg:h-full min-h-0">
           <SectionHeading
             step={1}
             title="Job description"
-            hint="Runs server-side with AI — paste a JD and the pipeline starts automatically."
           />
           <textarea
             value={jd}
             onChange={(e) => setJd(e.target.value)}
             rows={7}
             placeholder="Paste the full job description here…"
-            className="w-full h-[160px] resize-y rounded-xl border border-border-hairline bg-surface p-3 text-[14px] text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-shadow"
+            className="w-full min-h-[160px] flex-1 resize-y rounded-xl border border-border-hairline bg-surface p-3 text-[14px] text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-shadow"
           />
           <div className="flex items-center justify-between text-[11.5px] text-on-surface-variant -mt-2 px-0.5">
             <span>
@@ -264,38 +253,23 @@ export function QuickApplyForm({
             </span>
           </div>
 
-          <SectionHeading step={2} title="Role details" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-              placeholder="Company *"
-              required
-              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow"
-            />
-            <input
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              placeholder="Role *"
-              required
-              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow"
-            />
+          <div className="grid grid-cols-1 gap-2">
             <input
               value={jobUrl}
               onChange={(e) => setJobUrl(e.target.value)}
               placeholder="Job URL (optional)"
-              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow sm:col-span-2"
+              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow"
             />
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Notes (optional)"
               rows={2}
-              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow sm:col-span-2"
+              className="rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[14px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow"
             />
           </div>
 
-          <label className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-muted bg-surface-container-low px-3 py-2.5">
+          <label className="mt-auto flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-muted bg-surface-container-low px-3 py-2.5">
             <div className="min-w-0 flex-1">
               <div className="text-[13.5px] font-semibold text-on-surface">
                 Cover letter needed?
@@ -316,50 +290,59 @@ export function QuickApplyForm({
                 </p>
               ) : null}
             </div>
-            <select
-              value={includeCoverLetter ? "yes" : "no"}
-              onChange={(e) => {
-                const wantYes = e.target.value === "yes";
-                if (wantYes && !coverLetterSynced) {
-                  setIncludeCoverLetter(false);
-                  setCoverLetterGateHint(
-                    "Cannot enable cover letter — no cover letter template has been synced. Sync one from Onboarding first.",
-                  );
-                  return;
-                }
-                setCoverLetterGateHint(null);
-                setIncludeCoverLetter(wantYes);
-              }}
-              aria-label="Cover letter needed"
-              className="shrink-0 cursor-pointer rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[13px] font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
-            >
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
+            <div className="relative shrink-0">
+              <select
+                value={includeCoverLetter ? "yes" : "no"}
+                onChange={(e) => {
+                  const wantYes = e.target.value === "yes";
+                  if (wantYes && !coverLetterSynced) {
+                    setIncludeCoverLetter(false);
+                    setCoverLetterGateHint(
+                      "Cannot enable cover letter — no cover letter template has been synced. Sync one from Onboarding first.",
+                    );
+                    return;
+                  }
+                  setCoverLetterGateHint(null);
+                  setIncludeCoverLetter(wantYes);
+                }}
+                aria-label="Cover letter needed"
+                className="appearance-none cursor-pointer rounded-lg border border-border-hairline bg-surface pl-3 pr-9 py-2 text-[13px] font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+              <span
+                className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-on-surface-variant"
+                aria-hidden
+              >
+                <span className="material-symbols-outlined text-[18px] leading-none">
+                  expand_more
+                </span>
+              </span>
+            </div>
           </label>
         </div>
 
-        {/* Contacts + submit */}
-        <div className="lg:col-span-5 flex flex-col gap-3">
-          <div className="li-card p-4 space-y-3 flex-1">
-            <div className="flex items-center justify-between gap-3">
+        {/* Contacts + This run will — shared height with JD card */}
+        <div className="lg:col-span-5 flex flex-col gap-3 lg:h-full min-h-0">
+          <div className="li-card p-4 space-y-3 flex-1 flex flex-col min-h-0">
+            <div className="flex items-start justify-between gap-3">
               <SectionHeading
-                step={3}
+                step={2}
                 title="Contacts"
-                hint="Optional — without contacts, cold emails and Gmail drafts are skipped."
               />
               <button
                 type="button"
                 onClick={() => setContacts((prev) => [...prev, emptyContact()])}
-                className="li-btn-ghost text-[13px] text-primary shrink-0"
+                className="li-btn-ghost h-6 shrink-0 self-start text-[13px] leading-6 text-primary"
               >
                 + Add
               </button>
             </div>
 
-            <ContactFinderGuide company={company} />
+            <ContactFinderGuide company="" />
 
-            <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+            <div className="space-y-2 flex-1 min-h-0 max-h-[240px] overflow-y-auto pr-1">
               {contacts.map((c, i) => (
                 <div
                   key={i}
@@ -413,14 +396,13 @@ export function QuickApplyForm({
             <textarea
               value={emailInstructions}
               onChange={(e) => setEmailInstructions(e.target.value)}
-              placeholder="Email instructions (optional) — e.g. mention relocating in July, keep under 120 words"
+              placeholder="Email instructions (optional) - e.g. mention relocating in July, keep under 120 words"
               rows={2}
               className="w-full rounded-xl border border-border-hairline bg-surface px-3 py-2 text-[13px] focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none transition-shadow"
             />
           </div>
 
-          {/* What will run */}
-          <div className="li-card p-4 space-y-2">
+          <div className="li-card p-4 space-y-2 shrink-0">
             <h3 className="text-[13px] font-semibold text-on-surface">
               This run will:
             </h3>
@@ -448,22 +430,24 @@ export function QuickApplyForm({
               )}
             </div>
           </div>
+        </div>
+      </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+        <div className="lg:col-span-7" aria-hidden />
+        <div className="lg:col-span-5 space-y-3">
           {error && (
             <div className="rounded-xl bg-error-container text-on-error-container border border-error/20 p-3 text-[13px]">
               {error}
             </div>
           )}
-
           <button
             type="button"
             disabled={!canSubmit || pending}
             onClick={() => void handleSubmit()}
             className="li-btn-primary w-full justify-center disabled:opacity-50"
           >
-            {pending
-              ? "Opening pipeline…"
-              : "Start auto-apply"}
+            {pending ? "Opening pipeline…" : "Start auto-apply"}
           </button>
         </div>
       </div>

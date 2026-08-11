@@ -9,6 +9,13 @@ export type GoogleDocsParseResult =
 export const GOOGLE_DOC_CONVERT_HINT =
   "Word (.doc/.docx) files on Drive are not supported. In Google Drive, right-click the file → Open with → Google Docs, then paste the new docs.google.com/document/... URL from the address bar.";
 
+/**
+ * drive.file cannot open an arbitrary Doc by pasted URL until the user
+ * selects it in Google Picker (or the app created it).
+ */
+export const GOOGLE_DOC_SCOPE_HINT =
+  "Can't open that Doc with current Google permissions. Use “Choose from Drive”, pick the Doc, then Sync — pasting a link alone is not enough.";
+
 export function parseGoogleDocsUrl(input: string): GoogleDocsParseResult {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -111,8 +118,8 @@ export function resolveGoogleDocsId(input: string): GoogleDocsParseResult {
 }
 
 /**
- * Map Google API failures (e.g. Docs API called on a .docx Drive file) to a
- * user-facing conversion hint.
+ * Map Google API failures to a user-facing hint.
+ * Permission/scope errors must not be mislabeled as "Word file".
  */
 export function explainGoogleDocFetchError(error: unknown): string {
   const message =
@@ -122,13 +129,28 @@ export function explainGoogleDocFetchError(error: unknown): string {
         ? error
         : "";
   const lower = message.toLowerCase();
+
+  // Real Word / wrong MIME — only when the API says so (not bare 403).
   if (
-    /not.*google.?doc|unsupported|invalid.*document|failedprecondition|404|not found|forbidden|403|the caller does not have permission/i.test(
+    /mime|docx|msword|word processing|application\/vnd\.openxmlformats|not a google doc/i.test(
       lower,
-    ) ||
-    /mime|docx|msword|word processing/i.test(lower)
+    )
   ) {
     return GOOGLE_DOC_CONVERT_HINT;
   }
+
+  // drive.file: pasted URL to a Doc the app has never opened via Picker.
+  if (
+    /insufficient.*(scope|permission)|caller does not have permission|forbidden|403|permission.?denied|unauthorized|401|login required/i.test(
+      lower,
+    )
+  ) {
+    return GOOGLE_DOC_SCOPE_HINT;
+  }
+
+  if (/404|not found|invalid.*document|failedprecondition/i.test(lower)) {
+    return "Google Doc not found or not a Document. Check the link, or use Choose from Drive.";
+  }
+
   return message || "Could not open that Google Doc. Check the link and try again.";
 }

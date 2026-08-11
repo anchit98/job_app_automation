@@ -138,6 +138,47 @@ export class DriveClient {
     return res.data.webViewLink ?? null;
   }
 
+  /**
+   * Metadata probe before Docs sync — distinguishes Word uploads vs
+   * drive.file access denied on a pasted Doc URL.
+   */
+  async getFileMetadata(fileId: string): Promise<{
+    id: string;
+    name: string | null;
+    mimeType: string | null;
+  }> {
+    const drive = this.drive();
+    const res = await drive.files.get({
+      fileId,
+      fields: "id,name,mimeType",
+      supportsAllDrives: true,
+    });
+    return {
+      id: res.data.id ?? fileId,
+      name: res.data.name ?? null,
+      mimeType: res.data.mimeType ?? null,
+    };
+  }
+
+  async assertReadableGoogleDoc(fileId: string): Promise<void> {
+    const meta = await this.getFileMetadata(fileId);
+    const mime = meta.mimeType ?? "";
+    if (mime === GOOGLE_DOC_MIME) return;
+    if (
+      /officedocument\.wordprocessingml|msword|application\/octet-stream/i.test(
+        mime,
+      ) ||
+      /\.docx?$/i.test(meta.name ?? "")
+    ) {
+      throw new Error(
+        "Word (.doc/.docx) files on Drive are not supported. In Google Drive, right-click the file → Open with → Google Docs, then use Choose from Drive on the new Google Doc.",
+      );
+    }
+    throw new Error(
+      `That Drive file is not a Google Doc (type: ${mime || "unknown"}). Open it with Google Docs first, then use Choose from Drive.`,
+    );
+  }
+
   async listInFolder(parentId: string) {
     const drive = this.drive();
     const res = await drive.files.list({

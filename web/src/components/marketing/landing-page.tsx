@@ -144,7 +144,7 @@ const aiPoints = [
 const faqs = [
   {
     q: "What does JobApp OS access in my Google account?",
-    a: "With your consent, JobApp OS uses Google Drive and Google Docs to create and update tailored resumes and cover letters and export PDFs, and uses Gmail to create outreach and follow-up drafts (with PDF attachments when ready). It does not auto-send email on your behalf. You can revoke access anytime in your Google Account settings. See our Privacy Policy for full details.",
+    a: "With your consent, JobApp OS uses Google Drive and Google Docs only for files you choose or that the app creates (tailored resumes, cover letters, PDFs), and uses Gmail to create outreach drafts — not to send mail for you. You can revoke access anytime in your Google Account settings. See our Privacy Policy for full details.",
   },
   {
     q: "Will emails ever be sent without my approval?",

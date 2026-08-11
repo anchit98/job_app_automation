@@ -57,6 +57,7 @@ export async function isSetupReadyForUserId(userId: string): Promise<boolean> {
 /**
  * One-time setup gate for paid users:
  * Connect Google + profile (name, location, phone, LinkedIn) + master resume.
+ * Onboarding UI order: Google → basics → Doc sync → contact & links.
  */
 export const getSetupReadiness = cache(async (): Promise<SetupReadiness> => {
   const user = await getCurrentUser();

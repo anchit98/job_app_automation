@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { QuickApplyForm } from "@/components/pipeline/quick-apply-form";
-import { FreshJobsBanner } from "@/components/dashboard/fresh-jobs-hack";
 import { getMasterCoverLetter } from "@/app/actions/cover-letter";
 
 export default async function QuickApplyPage() {
@@ -20,14 +19,8 @@ export default async function QuickApplyPage() {
             <span className="material-symbols-outlined text-[16px]">arrow_back</span>
             Back to jobs
           </Link>
-          <h1 className="li-page-title mt-1">Apply</h1>
-          <p className="li-meta mt-0.5">
-            Paste a JD — contacts are optional. AI generates your package on the
-            server. Without contacts, cold email and Gmail drafts are skipped.
-          </p>
         </div>
       </div>
-      <FreshJobsBanner />
       <QuickApplyForm
         llmEngine="openai"
         coverLetterSynced={coverLetterSynced}

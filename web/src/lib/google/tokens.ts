@@ -48,6 +48,17 @@ export async function markGoogleTokensRevoked(userId?: string) {
 }
 
 export async function disconnectGoogle(userId?: string) {
+  // Revoke at Google first so reconnect asks only for the current scopes
+  // (include_granted_scopes alone is not enough if the prior grant still exists).
+  const row = await getGoogleTokensRow(userId);
+  if (row?.encrypted_refresh_token) {
+    try {
+      const refreshToken = decryptSecret(row.encrypted_refresh_token);
+      await revokeGoogleTokenAtSource(refreshToken);
+    } catch (error) {
+      console.warn("[google] revoke on disconnect failed:", error);
+    }
+  }
   await deleteGoogleTokensRow(userId);
 }
 

@@ -71,6 +71,33 @@ export async function upsertProfile(input: ProfileInput) {
   return { ok: true };
 }
 
+/** Step 2 — name / headline / location only (keeps existing contact fields). */
+export async function upsertProfileBasics(input: {
+  full_name: string;
+  headline?: string;
+  location: string;
+}) {
+  const full_name = requireTrimmed(input.full_name, "Full name");
+  const location = requireTrimmed(input.location, "Location");
+  const existing = await getProfileRow().catch(() => null);
+
+  await upsertProfileRow({
+    full_name,
+    headline: input.headline?.trim() || null,
+    location,
+    timezone: existing?.timezone ?? "Asia/Kolkata",
+    preferred_tone: existing?.preferred_tone ?? null,
+  });
+
+  await writeAuditLog("profile.basics_upsert", "profiles", "local", {
+    full_name,
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/onboarding");
+  return { ok: true };
+}
+
 export async function getProfile() {
   return await getProfileRow();
 }
@@ -145,13 +172,6 @@ export async function syncSignatureLinksFromResume(options?: {
   overwrite?: boolean;
 }) {
   const profile = await getProfileRow();
-  if (!profile?.full_name?.trim()) {
-    return {
-      ok: false as const,
-      error: "Save your full name on the profile first.",
-    };
-  }
-
   const master = await getMasterResumeRow();
   if (!master?.content) {
     return { ok: false as const, error: "No master resume found to extract from." };
@@ -165,26 +185,28 @@ export async function syncSignatureLinksFromResume(options?: {
   const extracted = extractSignatureFieldsFromResume(parsed.data);
   const merged = mergeSignatureFields(profile, extracted, options?.overwrite);
 
-  await upsertProfileRow({
-    full_name: profile.full_name,
-    headline: profile.headline,
-    location: profile.location,
-    timezone: profile.timezone,
-    preferred_tone: profile.preferred_tone,
-    phone: merged.phone,
-    linkedin_url: merged.linkedin_url,
-    github_url: merged.github_url,
-    portfolio_url: merged.portfolio_url,
-  });
+  if (profile?.full_name?.trim()) {
+    await upsertProfileRow({
+      full_name: profile.full_name,
+      headline: profile.headline,
+      location: profile.location,
+      timezone: profile.timezone,
+      preferred_tone: profile.preferred_tone,
+      phone: merged.phone,
+      linkedin_url: merged.linkedin_url,
+      github_url: merged.github_url,
+      portfolio_url: merged.portfolio_url,
+    });
 
-  await writeAuditLog("profile.signature_synced", "profiles", "local", {
-    extracted,
-    merged,
-    overwrite: options?.overwrite ?? false,
-  });
+    await writeAuditLog("profile.signature_synced", "profiles", "local", {
+      extracted,
+      merged,
+      overwrite: options?.overwrite ?? false,
+    });
 
-  revalidatePath("/onboarding");
-  revalidatePath("/dashboard");
+    revalidatePath("/onboarding");
+    revalidatePath("/dashboard");
+  }
 
   return { ok: true as const, fields: merged };
 }

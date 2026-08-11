@@ -15,6 +15,7 @@ import {
   labelForAuditAction,
   labelForPromptKind,
   statusChangeDetail,
+  withoutFollowUpTimelineEvents,
   type TimelineEvent,
 } from "@/lib/tracker/timeline";
 import { isLikelyDuplicate } from "@/lib/tracker/duplicates";
@@ -360,7 +361,7 @@ export async function listApplicationTimeline(
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
 
-  return events;
+  return withoutFollowUpTimelineEvents(events);
 }
 
 export async function findSimilarApplications(

@@ -1,15 +1,23 @@
 import { google } from "googleapis";
 import { env } from "@/lib/env";
 
-export const GOOGLE_SCOPES = [
+/** Scopes every Connect Google user gets (Apply + onboarding). */
+export const GOOGLE_USER_SCOPES = [
   "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.send",
-  // drive.file alone cannot read/copy the user's existing master Google Doc.
-  "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/documents",
 ] as const;
+
+/**
+ * Extra scopes only for admin Connect Google (password reset / payment emails).
+ * Not shown on the normal user consent screen.
+ */
+export const GOOGLE_ADMIN_EXTRA_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.send",
+] as const;
+
+/** @deprecated Prefer GOOGLE_USER_SCOPES + optional admin extras. */
+export const GOOGLE_SCOPES = GOOGLE_USER_SCOPES;
 
 export function createOAuth2Client() {
   return new google.auth.OAuth2(
@@ -19,14 +27,21 @@ export function createOAuth2Client() {
   );
 }
 
-export function getGoogleAuthUrl(state: string) {
+export function getGoogleAuthUrl(
+  state: string,
+  options?: { includeAdminSend?: boolean },
+) {
   const client = createOAuth2Client();
+  const scope = options?.includeAdminSend
+    ? [...GOOGLE_USER_SCOPES, ...GOOGLE_ADMIN_EXTRA_SCOPES]
+    : [...GOOGLE_USER_SCOPES];
   return client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: [...GOOGLE_SCOPES],
+    scope,
     state,
-    include_granted_scopes: true,
+    // false: do not re-attach previously granted scopes (gmail.readonly, etc.)
+    include_granted_scopes: false,
   });
 }
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { upsertProfile, syncSignatureLinksFromResume } from "@/app/actions/profile";
+import { upsertProfile, upsertProfileBasics } from "@/app/actions/profile";
 import { upsertMasterResume } from "@/app/actions/master-resume";
 import { syncMasterFromGoogleDoc } from "@/app/actions/master-resume-sync";
 import { syncCoverLetterFromGoogleDoc } from "@/app/actions/cover-letter-sync";
@@ -14,10 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { profileAvatarSrc } from "@/lib/profile-avatar";
-import { parseGoogleDocsUrl } from "@/lib/google/docs-url";
 import { formatAppDateTime } from "@/lib/datetime/india";
-import { profileFieldsComplete } from "@/lib/setup/profile-complete";
 import { linkedinUrlError } from "@/lib/contacts/validate";
+import { GoogleDocPickerButton } from "@/components/google/google-doc-picker";
 import type { MasterCoverLetter, MasterResume, Profile } from "@/lib/db/types";
 
 const RESUME_STRUCTURE_REF_URL =
@@ -61,6 +60,7 @@ export function OnboardingForms({
   const [location, setLocation] = useState(profile?.location ?? "");
   const [phone, setPhone] = useState(profile?.phone ?? "");
   const [linkedinUrl, setLinkedinUrl] = useState(profile?.linkedin_url ?? "");
+  const [linkedinBlurError, setLinkedinBlurError] = useState<string | null>(null);
   const [githubUrl, setGithubUrl] = useState(profile?.github_url ?? "");
   const [portfolioUrl, setPortfolioUrl] = useState(profile?.portfolio_url ?? "");
   const [resumeJson, setResumeJson] = useState(() =>
@@ -73,15 +73,7 @@ export function OnboardingForms({
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [docId, setDocId] = useState(() => {
-    const layout = masterResume?.doc_layout as { master_doc_id?: string } | null;
-    return layout?.master_doc_id ?? "";
-  });
   const [syncing, startSync] = useTransition();
-  const [coverLetterDocId, setCoverLetterDocId] = useState(() => {
-    const layout = masterCoverLetter?.doc_layout as { master_doc_id?: string } | null;
-    return layout?.master_doc_id ?? "";
-  });
   const [syncingCoverLetter, startCoverLetterSync] = useTransition();
   const [resumeSynced, setResumeSynced] = useState(
     hasMasterResumeContent(masterResume?.content),
@@ -99,12 +91,10 @@ export function OnboardingForms({
     }
   }, [setupReady, profile?.setup_guide_collapsed]);
 
-  const profileDone = profileFieldsComplete({
-    full_name: fullName,
-    location,
-    phone,
-    linkedin_url: linkedinUrl,
-  });
+  const basicsDone = Boolean(fullName.trim() && location.trim());
+  const contactDone = Boolean(
+    phone.trim() && linkedinUrl.trim() && !linkedinUrlError(linkedinUrl),
+  );
   const masterDone = resumeSynced || hasMasterResumeContent(masterResume?.content);
 
   const checklistSteps = [
@@ -114,14 +104,19 @@ export function OnboardingForms({
       hint: "Drive, Docs & Gmail drafts",
     },
     {
-      done: profileDone,
+      done: basicsDone,
       label: "2. Save profile",
-      hint: "Name, location, phone & LinkedIn",
+      hint: "Name, headline & location",
     },
     {
       done: masterDone,
-      label: "3. Sync master resume",
-      hint: "Paste your Google Doc URL",
+      label: "3. Sync documents",
+      hint: "Resume required · cover optional",
+    },
+    {
+      done: contactDone,
+      label: "4. Contact & links",
+      hint: "Phone & LinkedIn required",
     },
   ];
   const completedCount = checklistSteps.filter((s) => s.done).length;
@@ -148,13 +143,40 @@ export function OnboardingForms({
   }
 
   function clearResumeFieldsLocal() {
-    setDocId("");
     setResumeJson(blankMasterResumeJson());
     setResumeSynced(false);
   }
 
   function clearCoverLetterFieldsLocal() {
-    setCoverLetterDocId("");
+    // Cover letter state comes from server props after reset + refresh.
+  }
+
+  function applySignatureFields(fields: {
+    phone: string | null;
+    linkedin_url: string | null;
+    github_url: string | null;
+    portfolio_url: string | null;
+  } | null | undefined) {
+    if (!fields) return false;
+    let filled = false;
+    if (fields.phone) {
+      setPhone(fields.phone);
+      filled = true;
+    }
+    if (fields.linkedin_url) {
+      setLinkedinUrl(fields.linkedin_url);
+      setLinkedinBlurError(null);
+      filled = true;
+    }
+    if (fields.github_url) {
+      setGithubUrl(fields.github_url);
+      filled = true;
+    }
+    if (fields.portfolio_url) {
+      setPortfolioUrl(fields.portfolio_url);
+      filled = true;
+    }
+    return filled;
   }
 
   function runReset(
@@ -197,12 +219,25 @@ export function OnboardingForms({
     });
   }
 
-  function validateProfileFields(): string | null {
+  function validateBasicsFields(): string | null {
     if (!fullName.trim()) return "Full name is required.";
     if (!location.trim()) return "Location is required.";
+    return null;
+  }
+
+  function validateContactFields(): string | null {
     if (!phone.trim()) return "Contact number is required.";
-    if (!linkedinUrl.trim()) return "LinkedIn URL is required.";
-    return linkedinUrlError(linkedinUrl);
+    if (!linkedinUrl.trim()) {
+      setLinkedinBlurError("LinkedIn URL is required.");
+      return "LinkedIn URL is required.";
+    }
+    const linkedinErr = linkedinUrlError(linkedinUrl);
+    setLinkedinBlurError(linkedinErr);
+    return linkedinErr;
+  }
+
+  function validateProfileFields(): string | null {
+    return validateBasicsFields() ?? validateContactFields();
   }
 
   function profilePayload() {
@@ -217,29 +252,38 @@ export function OnboardingForms({
     };
   }
 
-  function pullLinksFromResume() {
+  function saveBasicsOnly() {
     setError(null);
     setMessage(null);
+    const validationError = validateBasicsFields();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     startTransition(async () => {
-      const result = await syncSignatureLinksFromResume({ overwrite: true });
-      if (!result.ok) {
-        setError(result.error);
-        return;
+      try {
+        await upsertProfileBasics({
+          full_name: fullName,
+          headline,
+          location,
+        });
+        setMessage("Profile saved.");
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
       }
-      if (result.fields) {
-        if (result.fields.phone) setPhone(result.fields.phone);
-        if (result.fields.linkedin_url) setLinkedinUrl(result.fields.linkedin_url);
-        if (result.fields.github_url) setGithubUrl(result.fields.github_url);
-        if (result.fields.portfolio_url) setPortfolioUrl(result.fields.portfolio_url);
-      }
-      setMessage("Signature links pulled from master resume.");
     });
   }
 
-  function saveProfileOnly() {
+  function saveContactOnly() {
     setError(null);
     setMessage(null);
-    const validationError = validateProfileFields();
+    const basicsError = validateBasicsFields();
+    if (basicsError) {
+      setError(`${basicsError} Save Step 2 first.`);
+      return;
+    }
+    const validationError = validateContactFields();
     if (validationError) {
       setError(validationError);
       return;
@@ -247,7 +291,7 @@ export function OnboardingForms({
     startTransition(async () => {
       try {
         await upsertProfile(profilePayload());
-        setMessage("Profile saved.");
+        setMessage("Contact & links saved.");
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
@@ -477,7 +521,7 @@ export function OnboardingForms({
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <ol className="grid gap-2 sm:grid-cols-3">
+          <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {checklistSteps.map((step) => (
               <li
                 key={step.label}
@@ -505,7 +549,7 @@ export function OnboardingForms({
       ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        {/* Profile */}
+        {/* Profile basics */}
         <div className="lg:col-span-4 li-card p-4 space-y-4">
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2">
@@ -531,18 +575,14 @@ export function OnboardingForms({
               </button>
             </div>
             <h2 className="li-section-title">Your profile</h2>
-            <p className="li-meta">
-              Full name, location, contact number, and LinkedIn are required.
-              Optional links still help cold-email drafts.
-            </p>
             <ProfileAvatarUploader
               avatarSrc={profileAvatarSrc(profile)}
               name={fullName || profile?.full_name}
               size={56}
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
-            <div className="sm:col-span-2 lg:col-span-1 2xl:col-span-2">
+          <div className="grid gap-3">
+            <div>
               <Label htmlFor="full_name">Full name *</Label>
               <Input
                 id="full_name"
@@ -571,144 +611,14 @@ export function OnboardingForms({
               />
             </div>
           </div>
-
-          <div className="pt-3 border-t border-border-muted space-y-3">
-            <div>
-              <h3 className="text-[13px] font-semibold text-on-surface">
-                Contact &amp; signature
-              </h3>
-              <p className="li-meta mt-0.5">
-                Phone and LinkedIn are required. GitHub and portfolio are
-                optional extras for outreach drafts.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={pullLinksFromResume}
-              disabled={pending || !masterDone}
-              className="text-[13px] font-semibold text-primary hover:underline disabled:opacity-50"
-            >
-              Pull links from master resume
-            </button>
-            <div className="grid gap-3">
-              <div>
-                <Label htmlFor="phone">Contact number *</Label>
-                <Input
-                  id="phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+1-555-000-0000"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="linkedin_url">LinkedIn URL *</Label>
-                <Input
-                  id="linkedin_url"
-                  type="url"
-                  value={linkedinUrl}
-                  onChange={(e) => setLinkedinUrl(e.target.value)}
-                  placeholder="https://www.linkedin.com/in/..."
-                  required
-                />
-                <p className="mt-1 text-[12px] text-on-surface-variant">
-                  Must include https:// — e.g. https://www.linkedin.com/in/your-name
-                </p>
-              </div>
-              <div>
-                <Label htmlFor="github_url">GitHub URL</Label>
-                <Input
-                  id="github_url"
-                  type="url"
-                  value={githubUrl}
-                  onChange={(e) => setGithubUrl(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="portfolio_url">Portfolio URL</Label>
-                <Input
-                  id="portfolio_url"
-                  type="url"
-                  value={portfolioUrl}
-                  onChange={(e) => setPortfolioUrl(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
           <Button
             type="button"
-            onClick={isAdmin ? saveAll : saveProfileOnly}
-            disabled={pending || !profileDone}
+            onClick={isAdmin ? saveAll : saveBasicsOnly}
+            disabled={pending || !basicsDone}
             className="w-full"
           >
             {pending ? "Saving..." : "Save profile"}
           </Button>
-        </div>
-
-        {/* Structure references (replaces JSON for normal users) */}
-        <div className="lg:col-span-4 li-card p-4 space-y-3 flex flex-col min-h-[420px]">
-          <div className="space-y-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
-              Step 3 · prepare
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">
-                library_books
-              </span>
-              <h2 className="li-section-title">Structure references</h2>
-            </div>
-            <p className="li-meta">
-              Open these view-only templates, make a copy in your Drive, then
-              rebuild your resume / cover letter to match the structure. Sync
-              your Doc in the next column.
-            </p>
-          </div>
-          <ul className="space-y-2 text-[13px]">
-            <li>
-              <a
-                href={RESUME_STRUCTURE_REF_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline"
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  open_in_new
-                </span>
-                Resume structure reference
-              </a>
-            </li>
-            <li>
-              <a
-                href={COVER_LETTER_STRUCTURE_REF_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline"
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  open_in_new
-                </span>
-                Cover letter structure reference
-              </a>
-            </li>
-          </ul>
-          <div className="rounded-lg border border-border-hairline bg-surface-container-low px-3 py-3 space-y-2 text-[13px] text-on-surface-variant leading-6">
-            <p>
-              <strong className="text-on-surface">How to do it</strong>
-            </p>
-            <ol className="list-decimal pl-4 space-y-1.5">
-              <li>Open the resume reference → File → Make a copy (recommended)</li>
-              <li>Or use any clear Google Docs resume you already have</li>
-              <li>
-                Paste your Doc URL into “Master resume Doc” and Sync — we adapt to
-                your layout and keep your formatting on Apply
-              </li>
-            </ol>
-          </div>
-          <p className="li-meta mt-auto rounded-md border border-border-hairline bg-surface-container-low px-3 py-2">
-            Links are <strong>view only</strong>. Always work in your own copy.
-            Google Docs sync best when you build in Docs (not Word/PDF paste).
-          </p>
         </div>
 
         {/* Master docs */}
@@ -717,7 +627,7 @@ export function OnboardingForms({
             <div className="space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
-                  Step 3 · sync
+                  Step 3
                 </span>
                 <button
                   type="button"
@@ -725,7 +635,7 @@ export function OnboardingForms({
                   onClick={() =>
                     runReset(
                       "resume",
-                      "Clear the master resume Doc URL and synced resume data?",
+                      "Clear the synced master resume data?",
                     )
                   }
                   className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-on-surface-variant hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
@@ -744,27 +654,64 @@ export function OnboardingForms({
                 <h2 className="li-section-title">Master resume Doc</h2>
               </div>
             </div>
-            <p className="li-meta">
-              Required. Paste a Google Docs URL (docs.google.com/document/...),
-              then Sync. Word (.doc/.docx) uploads on Drive will not work until
-              you open them with Google Docs. Sync flags ATS issues before
-              saving.
-            </p>
-            <div>
-              <Label>Google Docs URL</Label>
-              <Input
-                value={docId}
-                onChange={(e) => setDocId(e.target.value)}
-                placeholder="https://docs.google.com/document/d/<ID>/edit"
-              />
-              <p className="mt-1 text-[12px] text-on-surface-variant">
-                Must be a Google Doc link — not a Drive file link or Word file.
-                Right-click in Drive → Open with → Google Docs, then paste that
-                URL.
-              </p>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <div>
+            <a
+              href={RESUME_STRUCTURE_REF_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                open_in_new
+              </span>
+              Resume structure reference
+            </a>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <GoogleDocPickerButton
+                  label={syncing ? "Syncing…" : "Choose from Drive"}
+                  title="Choose master resume Google Doc"
+                  disabled={!googleConnected || syncing}
+                  onPicked={(doc) => {
+                    setError(null);
+                    setMessage(`Selected “${doc.name}”. Syncing…`);
+                    startSync(async () => {
+                      try {
+                        const res = await syncMasterFromGoogleDoc(doc.id);
+                        if (res.content) {
+                          setResumeJson(JSON.stringify(res.content, null, 2));
+                          setResumeSynced(Object.keys(res.content).length > 0);
+                        }
+                        const linksFilled = applySignatureFields(
+                          res.signature_fields,
+                        );
+                        setMessage(
+                          `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects, ${res.skills} skills)${
+                            res.sync_mode === "smart_agent"
+                              ? " · adapted to your Doc layout"
+                              : ""
+                          }${
+                            linksFilled
+                              ? " · contact links filled from resume"
+                              : ""
+                          }.`,
+                        );
+                        router.refresh();
+                      } catch (e) {
+                        setError(
+                          e instanceof Error ? e.message : "Sync failed",
+                        );
+                      }
+                    });
+                  }}
+                  onError={(msg) => setError(msg)}
+                />
+                {!googleConnected ? (
+                  <span className="text-[12px] text-on-surface-variant">
+                    Connect Google first
+                  </span>
+                ) : null}
+              </div>
+              <div className="text-right">
                 <span className="li-meta uppercase tracking-wide block">
                   Last sync
                 </span>
@@ -776,44 +723,6 @@ export function OnboardingForms({
                       : "Never synced"}
                 </span>
               </div>
-              <Button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setMessage(null);
-                  const parsed = parseGoogleDocsUrl(docId);
-                  if (!parsed.ok) {
-                    setError(parsed.error);
-                    return;
-                  }
-                  if (!googleConnected) {
-                    setError("Connect Google first (step 1).");
-                    return;
-                  }
-                  startSync(async () => {
-                    try {
-                      const res = await syncMasterFromGoogleDoc(parsed.docId);
-                      if (res.content) {
-                        setResumeJson(JSON.stringify(res.content, null, 2));
-                        setResumeSynced(Object.keys(res.content).length > 0);
-                      }
-                      setMessage(
-                        `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects, ${res.skills} skills)${
-                          res.sync_mode === "smart_agent"
-                            ? " · adapted to your Doc layout"
-                            : ""
-                        }.`,
-                      );
-                      router.refresh();
-                    } catch (e) {
-                      setError(e instanceof Error ? e.message : "Sync failed");
-                    }
-                  });
-                }}
-                disabled={syncing}
-              >
-                {syncing ? "Syncing..." : "Sync Doc"}
-              </Button>
             </div>
           </div>
 
@@ -829,7 +738,7 @@ export function OnboardingForms({
                 onClick={() =>
                   runReset(
                     "cover",
-                    "Clear the cover letter Doc URL and synced template?",
+                    "Clear the synced cover letter template?",
                   )
                 }
                 className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-on-surface-variant hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
@@ -841,26 +750,46 @@ export function OnboardingForms({
                 Reset
               </button>
             </div>
-            <p className="li-meta">
-              Recommended. Greeting + exactly 5 body paragraphs + Warm regards.
-              Use a Google Doc link (not Word on Drive). Sync flags ATS readiness
-              before saving.
-            </p>
-            <div>
-              <Label>Google Docs URL</Label>
-              <Input
-                value={coverLetterDocId}
-                onChange={(e) => setCoverLetterDocId(e.target.value)}
-                placeholder="https://docs.google.com/document/d/<ID>/edit"
-              />
-              <p className="mt-1 text-[12px] text-on-surface-variant">
-                Must be a Google Doc link — not a Drive file link or Word file.
-                Right-click in Drive → Open with → Google Docs, then paste that
-                URL.
-              </p>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <div>
+            <a
+              href={COVER_LETTER_STRUCTURE_REF_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                open_in_new
+              </span>
+              Cover letter structure reference
+            </a>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <GoogleDocPickerButton
+                  label={
+                    syncingCoverLetter ? "Syncing…" : "Choose from Drive"
+                  }
+                  title="Choose cover letter Google Doc"
+                  disabled={!googleConnected || syncingCoverLetter}
+                  onPicked={(doc) => {
+                    setError(null);
+                    setMessage(`Selected “${doc.name}”. Syncing…`);
+                    startCoverLetterSync(async () => {
+                      try {
+                        const res = await syncCoverLetterFromGoogleDoc(doc.id);
+                        setMessage(
+                          `Cover letter template synced - ${res.body_slots} body slots mapped.`,
+                        );
+                        router.refresh();
+                      } catch (e) {
+                        setError(
+                          e instanceof Error ? e.message : "Sync failed",
+                        );
+                      }
+                    });
+                  }}
+                  onError={(msg) => setError(msg)}
+                />
+              </div>
+              <div className="text-right">
                 <span className="li-meta uppercase tracking-wide block">
                   Last sync
                 </span>
@@ -870,38 +799,87 @@ export function OnboardingForms({
                     : "Never synced"}
                 </span>
               </div>
-              <Button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setMessage(null);
-                  const parsed = parseGoogleDocsUrl(coverLetterDocId);
-                  if (!parsed.ok) {
-                    setError(parsed.error);
-                    return;
-                  }
-                  if (!googleConnected) {
-                    setError("Connect Google first (step 1).");
-                    return;
-                  }
-                  startCoverLetterSync(async () => {
-                    try {
-                      const res = await syncCoverLetterFromGoogleDoc(parsed.docId);
-                      setMessage(
-                        `Cover letter template synced - ${res.body_slots} body slots mapped.`,
-                      );
-                      router.refresh();
-                    } catch (e) {
-                      setError(e instanceof Error ? e.message : "Sync failed");
-                    }
-                  });
-                }}
-                disabled={syncingCoverLetter}
-              >
-                {syncingCoverLetter ? "Syncing..." : "Sync Doc"}
-              </Button>
             </div>
           </div>
+        </div>
+
+        {/* Contact + links */}
+        <div className="lg:col-span-4 li-card p-4 space-y-4">
+          <div className="space-y-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
+              Step 4
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">call</span>
+              <h2 className="li-section-title">Contact & links</h2>
+            </div>
+          </div>
+          <div className="grid gap-3">
+            <div>
+              <Label htmlFor="phone">Contact number *</Label>
+              <Input
+                id="phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1-555-000-0000"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="linkedin_url">LinkedIn URL *</Label>
+              <Input
+                id="linkedin_url"
+                type="url"
+                value={linkedinUrl}
+                onChange={(e) => {
+                  setLinkedinUrl(e.target.value);
+                  setLinkedinBlurError(null);
+                }}
+                onBlur={() => {
+                  const value = linkedinUrl.trim();
+                  if (!value) {
+                    setLinkedinBlurError(null);
+                    return;
+                  }
+                  setLinkedinBlurError(linkedinUrlError(value));
+                }}
+                placeholder="https://www.linkedin.com/in/..."
+                aria-invalid={Boolean(linkedinBlurError)}
+                required
+              />
+              {linkedinBlurError ? (
+                <p className="mt-1 text-[12px] text-error" role="alert">
+                  {linkedinBlurError}
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <Label htmlFor="github_url">GitHub URL</Label>
+              <Input
+                id="github_url"
+                type="url"
+                value={githubUrl}
+                onChange={(e) => setGithubUrl(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="portfolio_url">Portfolio URL</Label>
+              <Input
+                id="portfolio_url"
+                type="url"
+                value={portfolioUrl}
+                onChange={(e) => setPortfolioUrl(e.target.value)}
+              />
+            </div>
+          </div>
+          <Button
+            type="button"
+            onClick={saveContactOnly}
+            disabled={pending || !contactDone}
+            className="w-full"
+          >
+            {pending ? "Saving..." : "Save contact & links"}
+          </Button>
         </div>
       </div>
 

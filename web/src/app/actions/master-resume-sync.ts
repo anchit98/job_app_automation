@@ -25,6 +25,12 @@ interface SyncResult {
   content: Record<string, unknown>;
   /** heuristic = fast local parse; smart_agent = OpenAI template mapper */
   sync_mode?: "heuristic" | "smart_agent";
+  signature_fields?: {
+    phone: string | null;
+    linkedin_url: string | null;
+    github_url: string | null;
+    portfolio_url: string | null;
+  } | null;
 }
 
 /**
@@ -52,6 +58,7 @@ export async function syncMasterFromGoogleDoc(
   let synced: Awaited<ReturnType<typeof syncMasterResumeFromDoc>>;
   let templateDocId: string;
   try {
+    await drive.assertReadableGoogleDoc(docId);
     synced = await syncMasterResumeFromDoc(docs, docId);
     templateDocId = await drive.ensureMasterTemplateCopy(docId);
   } catch (error) {
@@ -75,7 +82,9 @@ export async function syncMasterFromGoogleDoc(
   });
 
   const { syncSignatureLinksFromResume } = await import("@/app/actions/profile");
-  await syncSignatureLinksFromResume({ overwrite: true }).catch(() => null);
+  const links = await syncSignatureLinksFromResume({ overwrite: true }).catch(
+    () => null,
+  );
 
   revalidatePath("/onboarding");
   revalidatePath("/dashboard");
@@ -91,5 +100,6 @@ export async function syncMasterFromGoogleDoc(
     synced_at: syncedAt,
     content: content as unknown as Record<string, unknown>,
     sync_mode: sync_mode ?? "heuristic",
+    signature_fields: links?.ok ? links.fields : null,
   };
 }

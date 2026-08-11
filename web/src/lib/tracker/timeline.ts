@@ -64,3 +64,23 @@ export function statusChangeDetail(payload: Record<string, unknown> | null): str
   }
   return null;
 }
+
+/** Follow-ups are not surfaced in application activity yet. */
+export function isFollowUpTimelineEvent(event: TimelineEvent): boolean {
+  if (event.kind === "prompt" && event.prompt_kind === "follow_up") {
+    return true;
+  }
+  if (event.kind === "audit") {
+    return (
+      event.action.startsWith("follow_up.") ||
+      event.action.startsWith("follow_ups.")
+    );
+  }
+  return false;
+}
+
+export function withoutFollowUpTimelineEvents(
+  events: TimelineEvent[],
+): TimelineEvent[] {
+  return events.filter((event) => !isFollowUpTimelineEvent(event));
+}

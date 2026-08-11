@@ -84,6 +84,18 @@ export const env = {
     return configured;
   },
   googleTokenEncryptionKey: () => required("GOOGLE_TOKEN_ENCRYPTION_KEY"),
+  /** Browser API key for Google Picker (restrict by HTTP referrer in Cloud Console). */
+  googlePickerApiKey: () =>
+    optional(
+      "NEXT_PUBLIC_GOOGLE_API_KEY",
+      optional("GOOGLE_PICKER_API_KEY"),
+    ),
+  /** Optional Cloud project number for Picker setAppId. */
+  googlePickerAppId: () =>
+    optional(
+      "NEXT_PUBLIC_GOOGLE_APP_ID",
+      optional("GOOGLE_PICKER_APP_ID"),
+    ),
   resumeMasterDocId: () => optional("RESUME_MASTER_DOC_ID"),
   coverLetterMasterDocId: () =>
     optional(
