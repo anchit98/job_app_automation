@@ -7,6 +7,7 @@ import {
   getGoogleTokensRow,
   markGoogleTokensRevokedRow,
   saveGoogleTokensRow,
+  clearDriveRootId,
 } from "@/lib/db/queries";
 import {
   createOAuth2Client,
@@ -60,6 +61,9 @@ export async function disconnectGoogle(userId?: string) {
     }
   }
   await deleteGoogleTokensRow(userId);
+  // Old JobApp OS Drive folder is often unreachable after revoke / reconnect
+  // with drive.file — force a fresh root on next sync.
+  await clearDriveRootId(userId).catch(() => {});
 }
 
 export async function getGoogleAuthClient(userId?: string) {

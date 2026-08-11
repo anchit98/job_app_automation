@@ -1,6 +1,6 @@
 import { Readable } from "stream";
 import { google } from "googleapis";
-import { getProfileRow, setDriveRootId } from "@/lib/db/queries";
+import { getProfileRow, setDriveRootId, clearDriveRootId } from "@/lib/db/queries";
 import { DRIVE_ROOT_FOLDER_NAME } from "@/lib/db/types";
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -114,8 +114,20 @@ export class DriveClient {
 
     const profile = await getProfileRow();
     if (profile?.drive_root_id) {
-      this.rootFolderId = profile.drive_root_id;
-      return this.rootFolderId;
+      try {
+        // drive.file: after reconnect/revoke the old JobApp OS folder may be
+        // invisible — verify before nesting _Master under it.
+        await this.getFileMetadata(profile.drive_root_id);
+        this.rootFolderId = profile.drive_root_id;
+        return this.rootFolderId;
+      } catch (error) {
+        if (!isDriveAccessDenied(error)) throw error;
+        console.warn(
+          "[drive] stale drive_root_id; creating a new JobApp OS folder:",
+          profile.drive_root_id,
+        );
+        await clearDriveRootId();
+      }
     }
 
     const rootId = await this.ensureFolder(DRIVE_ROOT_FOLDER_NAME);

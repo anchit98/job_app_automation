@@ -189,6 +189,14 @@ export async function setDriveRootId(driveRootId: string, userId?: string) {
        ON CONFLICT (user_id) DO UPDATE SET drive_root_id = excluded.drive_root_id`, uid, driveRootId);
 }
 
+export async function clearDriveRootId(userId?: string) {
+  const uid = await currentUserId(userId);
+  await dbRun(
+    `UPDATE profiles SET drive_root_id = NULL WHERE user_id = ?`,
+    uid,
+  );
+}
+
 export async function getProfileAvatarRow(userId?: string): Promise<{
   data: string;
   mime: string;
