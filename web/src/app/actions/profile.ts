@@ -168,6 +168,8 @@ export async function removeProfileAvatar() {
 
 export async function syncSignatureLinksFromResume(options?: {
   overwrite?: boolean;
+  /** Skip layout revalidation (Doc sync — avoids production Flight digest). */
+  skipRevalidate?: boolean;
 }) {
   const profile = await getProfileRow();
   const master = await getMasterResumeRow();
@@ -202,8 +204,10 @@ export async function syncSignatureLinksFromResume(options?: {
       overwrite: options?.overwrite ?? false,
     });
 
-    revalidatePath("/onboarding");
-    revalidatePath("/dashboard");
+    if (!options?.skipRevalidate) {
+      revalidatePath("/onboarding");
+      revalidatePath("/dashboard");
+    }
   }
 
   return { ok: true as const, fields: merged };

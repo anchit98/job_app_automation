@@ -680,6 +680,10 @@ export function OnboardingForms({
                     startSync(async () => {
                       try {
                         const res = await syncMasterFromGoogleDoc(doc.id);
+                        if (!res.ok) {
+                          setError(res.error);
+                          return;
+                        }
                         if (res.content) {
                           setResumeJson(JSON.stringify(res.content, null, 2));
                           setResumeSynced(Object.keys(res.content).length > 0);
@@ -778,6 +782,10 @@ export function OnboardingForms({
                     startCoverLetterSync(async () => {
                       try {
                         const res = await syncCoverLetterFromGoogleDoc(doc.id);
+                        if (!res.ok) {
+                          setError(res.error);
+                          return;
+                        }
                         if (res.synced_at) setCoverSyncedAt(res.synced_at);
                         setMessage(
                           `Cover letter template synced - ${res.body_slots} body slots mapped.`,

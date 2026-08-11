@@ -202,38 +202,41 @@ export class DriveClient {
 
   /**
    * Confirm the file is a Google Doc the user can open.
-   * With drive.file, Drive metadata often 404s for Docs the app did not create
-   * or Picker-grant; Docs API still works — accept that as readable.
+   * Prefer Docs API first (documents scope). Drive metadata with drive.file
+   * often 404s even after Picker until the grant settles — Docs is the
+   * reliable probe for sync.
    */
   async assertReadableGoogleDoc(fileId: string): Promise<void> {
     try {
-      const meta = await this.getFileMetadata(fileId);
-      const mime = meta.mimeType ?? "";
-      if (mime === GOOGLE_DOC_MIME) return;
-      if (
-        /officedocument\.wordprocessingml|msword|application\/octet-stream/i.test(
-          mime,
-        ) ||
-        /\.docx?$/i.test(meta.name ?? "")
-      ) {
-        throw new Error(
-          "Word (.doc/.docx) files on Drive are not supported. In Google Drive, right-click the file → Open with → Google Docs, then use Choose from Drive on the new Google Doc.",
-        );
-      }
-      throw new Error(
-        `That Drive file is not a Google Doc (type: ${mime || "unknown"}). Open it with Google Docs first, then use Choose from Drive.`,
-      );
-    } catch (error) {
-      if (!isDriveAccessDenied(error)) throw error;
+      await this.docs().documents.get({
+        documentId: fileId,
+        fields: "documentId,title",
+      });
+      return;
+    } catch (docsError) {
       try {
-        await this.docs().documents.get({
-          documentId: fileId,
-          fields: "documentId,title",
-        });
-        return;
-      } catch {
-        throw error;
+        const meta = await this.getFileMetadata(fileId);
+        const mime = meta.mimeType ?? "";
+        if (mime === GOOGLE_DOC_MIME) return;
+        if (
+          /officedocument\.wordprocessingml|msword|application\/octet-stream/i.test(
+            mime,
+          ) ||
+          /\.docx?$/i.test(meta.name ?? "")
+        ) {
+          throw new Error(
+            "Word (.doc/.docx) files on Drive are not supported. In Google Drive, right-click the file → Open with → Google Docs, then use Choose from Drive on the new Google Doc.",
+          );
+        }
+        if (mime && mime !== GOOGLE_DOC_MIME) {
+          throw new Error(
+            `That Drive file is not a Google Doc (type: ${mime}). Open it with Google Docs first, then use Choose from Drive.`,
+          );
+        }
+      } catch (driveError) {
+        if (!isDriveAccessDenied(driveError)) throw driveError;
       }
+      throw docsError;
     }
   }
 

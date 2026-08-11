@@ -149,7 +149,7 @@ export function explainGoogleDocFetchError(error: unknown): string {
   }
 
   if (/404|not found|invalid.*document|failedprecondition/i.test(lower)) {
-    return "Google Doc not found or not a Document. Check the link, or use Choose from Drive.";
+    return "Google Doc not found or not readable yet. Reconnect Google if you just changed permissions, then use “Choose from Drive” again (pick a Google Doc you own, not a Word/PDF).";
   }
 
   return message || "Could not open that Google Doc. Check the link and try again.";
