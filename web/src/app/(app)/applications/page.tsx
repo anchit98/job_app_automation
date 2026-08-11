@@ -6,6 +6,13 @@ import {
 } from "@/lib/follow-ups/queries";
 import { ApplicationsTable } from "@/components/applications/applications-table";
 
+type PipelineSummary = Awaited<
+  ReturnType<typeof getApplicationPipelineSummaries>
+>[string];
+type DueFollowUp = Awaited<
+  ReturnType<typeof getDueFollowUpsByApplicationIds>
+>[string];
+
 export default async function ApplicationsPage({
   searchParams,
 }: {
@@ -17,9 +24,13 @@ export default async function ApplicationsPage({
   // Follow-up / contact lookups are optional UI enrichment. A slow pooler must
   // not take down the whole Jobs page (opaque "Server Components render" error).
   const [summaries, withContacts, dueByApp] = await Promise.all([
-    getApplicationPipelineSummaries(ids).catch(() => ({})),
+    getApplicationPipelineSummaries(ids).catch(
+      () => ({}) as Record<string, PipelineSummary>,
+    ),
     getApplicationsWithContacts(ids).catch(() => new Set<string>()),
-    getDueFollowUpsByApplicationIds(ids).catch(() => ({})),
+    getDueFollowUpsByApplicationIds(ids).catch(
+      () => ({}) as Record<string, DueFollowUp>,
+    ),
   ]);
   const items = result.items.map((item) => ({
     ...item,
