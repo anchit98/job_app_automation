@@ -14,10 +14,12 @@ export default async function ApplicationsPage({
   const params = await searchParams;
   const result = await searchApplicationsFromParams(params);
   const ids = result.items.map((i) => i.id);
+  // Follow-up / contact lookups are optional UI enrichment. A slow pooler must
+  // not take down the whole Jobs page (opaque "Server Components render" error).
   const [summaries, withContacts, dueByApp] = await Promise.all([
-    getApplicationPipelineSummaries(ids),
-    getApplicationsWithContacts(ids),
-    getDueFollowUpsByApplicationIds(ids),
+    getApplicationPipelineSummaries(ids).catch(() => ({})),
+    getApplicationsWithContacts(ids).catch(() => new Set<string>()),
+    getDueFollowUpsByApplicationIds(ids).catch(() => ({})),
   ]);
   const items = result.items.map((item) => ({
     ...item,
@@ -32,8 +34,7 @@ export default async function ApplicationsPage({
         <div>
           <h1 className="li-page-title">Jobs</h1>
           <p className="text-[14px] text-on-surface-variant mt-1">
-            Search, filter, and track every role in your pipeline. Follow up on
-            rows that have a contact when a follow-up is due.
+            Search, filter, and track every role in your pipeline.
           </p>
         </div>
       </div>
