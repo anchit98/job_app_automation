@@ -10,11 +10,11 @@ export const GOOGLE_DOC_CONVERT_HINT =
   "Word (.doc/.docx) files on Drive are not supported. In Google Drive, right-click the file → Open with → Google Docs, then paste the new docs.google.com/document/... URL from the address bar.";
 
 /**
- * drive.file cannot open an arbitrary Doc by pasted URL until the user
- * selects it in Google Picker (or the app created it).
+ * Shown when neither Drive nor Docs API can open the file (revoked Google,
+ * wrong account, or non-Doc). Prefer Choose from Drive for a clear grant.
  */
 export const GOOGLE_DOC_SCOPE_HINT =
-  "Can't open that Doc with current Google permissions. Use “Choose from Drive”, pick the Doc, then Sync — pasting a link alone is not enough.";
+  "Can't open that Doc with current Google permissions. Reconnect Google, then use “Choose from Drive” and pick the Doc.";
 
 export function parseGoogleDocsUrl(input: string): GoogleDocsParseResult {
   const trimmed = input.trim();

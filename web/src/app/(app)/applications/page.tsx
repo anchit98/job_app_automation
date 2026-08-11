@@ -6,12 +6,20 @@ import {
 } from "@/lib/follow-ups/queries";
 import { ApplicationsTable } from "@/components/applications/applications-table";
 
-type PipelineSummary = Awaited<
-  ReturnType<typeof getApplicationPipelineSummaries>
->[string];
-type DueFollowUp = Awaited<
-  ReturnType<typeof getDueFollowUpsByApplicationIds>
->[string];
+type PipelineSummary = {
+  pipeline_id: string;
+  status: string;
+  current_stage: string | null;
+  error: string | null;
+  can_resume: boolean;
+};
+
+type DueFollowUp = {
+  id: string;
+  sequence: 1 | 2;
+  due_at: string;
+  contact_name: string | null;
+};
 
 export default async function ApplicationsPage({
   searchParams,
@@ -21,22 +29,37 @@ export default async function ApplicationsPage({
   const params = await searchParams;
   const result = await searchApplicationsFromParams(params);
   const ids = result.items.map((i) => i.id);
-  // Follow-up / contact lookups are optional UI enrichment. A slow pooler must
-  // not take down the whole Jobs page (opaque "Server Components render" error).
-  const [summaries, withContacts, dueByApp] = await Promise.all([
-    getApplicationPipelineSummaries(ids).catch(
-      () => ({}) as Record<string, PipelineSummary>,
-    ),
-    getApplicationsWithContacts(ids).catch(() => new Set<string>()),
-    getDueFollowUpsByApplicationIds(ids).catch(
-      () => ({}) as Record<string, DueFollowUp>,
-    ),
-  ]);
+
+  let summaries: Record<string, PipelineSummary> = {};
+  let withContacts = new Set<string>();
+  let dueByApp: Record<string, DueFollowUp> = {};
+
+  // Optional enrichment only — never fail the Jobs page on pooler timeouts.
+  try {
+    summaries = await getApplicationPipelineSummaries(ids);
+  } catch {
+    summaries = {};
+  }
+  try {
+    withContacts = await getApplicationsWithContacts(ids);
+  } catch {
+    withContacts = new Set<string>();
+  }
+  try {
+    dueByApp = await getDueFollowUpsByApplicationIds(ids);
+  } catch {
+    dueByApp = {};
+  }
+
   const items = result.items.map((item) => ({
     ...item,
-    pipeline: summaries[item.id] ?? null,
+    pipeline: Object.prototype.hasOwnProperty.call(summaries, item.id)
+      ? summaries[item.id]
+      : null,
     has_contact: withContacts.has(item.id),
-    due_follow_up: dueByApp[item.id] ?? null,
+    due_follow_up: Object.prototype.hasOwnProperty.call(dueByApp, item.id)
+      ? dueByApp[item.id]
+      : null,
   }));
 
   return (

@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { writeAuditLog } from "@/lib/audit";
 import { upsertMasterCoverLetterRow } from "@/lib/db/queries";
 import { env } from "@/lib/env";
@@ -60,8 +59,7 @@ export async function syncCoverLetterFromGoogleDoc(
     body_slot_count: layout.body_slots.length,
   });
 
-  revalidatePath("/onboarding");
-  revalidatePath("/dashboard");
+  // Avoid revalidatePath after sync — same Flight digest risk as master resume.
 
   return {
     ok: true,

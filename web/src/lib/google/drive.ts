@@ -8,8 +8,30 @@ const MASTER_FOLDER_NAME = "_Master";
 const MASTER_TEMPLATE_NAME = "Master_Resume_Template";
 const COVER_LETTER_TEMPLATE_NAME = "Master_Cover_Letter_Template";
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 type GoogleAuthClient = InstanceType<typeof google.auth.OAuth2>;
+
+function isDriveAccessDenied(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : String(error ?? "");
+  const status =
+    typeof error === "object" &&
+    error &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "number"
+      ? (error as { code: number }).code
+      : null;
+  if (status === 403 || status === 404) return true;
+  return /not found|file not found|insufficient|permission|forbidden|403|404/i.test(
+    message,
+  );
+}
 
 export class DriveClient {
   private rootFolderId: string | null = null;
@@ -19,6 +41,24 @@ export class DriveClient {
 
   private drive() {
     return google.drive({ version: "v3", auth: this.auth });
+  }
+
+  private docs() {
+    return google.docs({ version: "v1", auth: this.auth });
+  }
+
+  private async bearerToken(): Promise<string> {
+    const result = await this.auth.getAccessToken();
+    const token =
+      typeof result === "string"
+        ? result
+        : result && typeof result === "object" && "token" in result
+          ? (result as { token?: string | null }).token
+          : null;
+    if (!token) {
+      throw new Error("Google access token unavailable. Reconnect Google.");
+    }
+    return token;
   }
 
   private folderCacheKey(name: string, parentId?: string): string {
@@ -160,23 +200,41 @@ export class DriveClient {
     };
   }
 
+  /**
+   * Confirm the file is a Google Doc the user can open.
+   * With drive.file, Drive metadata often 404s for Docs the app did not create
+   * or Picker-grant; Docs API still works — accept that as readable.
+   */
   async assertReadableGoogleDoc(fileId: string): Promise<void> {
-    const meta = await this.getFileMetadata(fileId);
-    const mime = meta.mimeType ?? "";
-    if (mime === GOOGLE_DOC_MIME) return;
-    if (
-      /officedocument\.wordprocessingml|msword|application\/octet-stream/i.test(
-        mime,
-      ) ||
-      /\.docx?$/i.test(meta.name ?? "")
-    ) {
+    try {
+      const meta = await this.getFileMetadata(fileId);
+      const mime = meta.mimeType ?? "";
+      if (mime === GOOGLE_DOC_MIME) return;
+      if (
+        /officedocument\.wordprocessingml|msword|application\/octet-stream/i.test(
+          mime,
+        ) ||
+        /\.docx?$/i.test(meta.name ?? "")
+      ) {
+        throw new Error(
+          "Word (.doc/.docx) files on Drive are not supported. In Google Drive, right-click the file → Open with → Google Docs, then use Choose from Drive on the new Google Doc.",
+        );
+      }
       throw new Error(
-        "Word (.doc/.docx) files on Drive are not supported. In Google Drive, right-click the file → Open with → Google Docs, then use Choose from Drive on the new Google Doc.",
+        `That Drive file is not a Google Doc (type: ${mime || "unknown"}). Open it with Google Docs first, then use Choose from Drive.`,
       );
+    } catch (error) {
+      if (!isDriveAccessDenied(error)) throw error;
+      try {
+        await this.docs().documents.get({
+          documentId: fileId,
+          fields: "documentId,title",
+        });
+        return;
+      } catch {
+        throw error;
+      }
     }
-    throw new Error(
-      `That Drive file is not a Google Doc (type: ${mime || "unknown"}). Open it with Google Docs first, then use Choose from Drive.`,
-    );
   }
 
   async listInFolder(parentId: string) {
@@ -187,6 +245,76 @@ export class DriveClient {
       pageSize: 100,
     });
     return res.data.files ?? [];
+  }
+
+  /**
+   * When drive.file cannot Drive-copy an arbitrary source Doc, export via the
+   * Docs export URL (works with documents scope) and re-import as a new Doc
+   * the app owns under drive.file.
+   */
+  private async importGoogleDocViaDocsExport(
+    sourceDocId: string,
+    name: string,
+    parentId: string,
+  ): Promise<string> {
+    const token = await this.bearerToken();
+    const exportRes = await fetch(
+      `https://docs.google.com/document/d/${sourceDocId}/export?format=docx`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!exportRes.ok) {
+      const detail = await exportRes.text().catch(() => "");
+      throw new Error(
+        `Could not export Google Doc for template copy (${exportRes.status}). ${detail.slice(0, 180)}`,
+      );
+    }
+    const contentType = exportRes.headers.get("content-type") ?? "";
+    const buffer = Buffer.from(await exportRes.arrayBuffer());
+    if (
+      buffer.length < 64 ||
+      /text\/html/i.test(contentType) ||
+      buffer.subarray(0, 15).toString("utf8").includes("<!DOCTYPE")
+    ) {
+      throw new Error(
+        "Could not export that Google Doc. Open it in Docs, confirm you own it, then try Choose from Drive again.",
+      );
+    }
+
+    const drive = this.drive();
+    const created = await drive.files.create({
+      requestBody: {
+        name,
+        mimeType: GOOGLE_DOC_MIME,
+        parents: [parentId],
+      },
+      media: {
+        mimeType: DOCX_MIME,
+        body: Readable.from(buffer),
+      },
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    if (!created.data.id) {
+      throw new Error(`Failed to import Google Doc template: ${name}`);
+    }
+    return created.data.id;
+  }
+
+  /**
+   * Prefer native Drive copy (works after Picker / app-owned files). Fall back
+   * to Docs export → Drive import so pasted Doc URLs still sync under drive.file.
+   */
+  private async copyOrImportGoogleDoc(
+    sourceDocId: string,
+    name: string,
+    parentId: string,
+  ): Promise<string> {
+    try {
+      return await this.copyFile(sourceDocId, name, parentId);
+    } catch (error) {
+      if (!isDriveAccessDenied(error)) throw error;
+      return this.importGoogleDocViaDocsExport(sourceDocId, name, parentId);
+    }
   }
 
   /**
@@ -205,7 +333,7 @@ export class DriveClient {
     if (oldTemplate?.id) {
       await this.deleteFile(oldTemplate.id);
     }
-    return this.copyFile(
+    return this.copyOrImportGoogleDoc(
       sourceDocId,
       MASTER_TEMPLATE_NAME,
       masterFolderId,
@@ -224,7 +352,7 @@ export class DriveClient {
     if (oldTemplate?.id) {
       await this.deleteFile(oldTemplate.id);
     }
-    return this.copyFile(
+    return this.copyOrImportGoogleDoc(
       sourceDocId,
       COVER_LETTER_TEMPLATE_NAME,
       masterFolderId,
@@ -266,8 +394,7 @@ export class DriveClient {
     const res = await drive.files.export(
       {
         fileId,
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        mimeType: DOCX_MIME,
       },
       { responseType: "arraybuffer" },
     );

@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { DocsClient } from "@/lib/google/docs";
 import {
@@ -86,8 +85,8 @@ export async function syncMasterFromGoogleDoc(
     () => null,
   );
 
-  revalidatePath("/onboarding");
-  revalidatePath("/dashboard");
+  // Do not revalidatePath here — production Flight refresh after this action
+  // previously surfaced an opaque Server Components digest on onboarding.
 
   return {
     ok: true,

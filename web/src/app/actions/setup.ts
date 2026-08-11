@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { writeAuditLog } from "@/lib/audit";
 import { dbRun } from "@/lib/db";
 import {
@@ -56,11 +55,6 @@ export async function setSetupGuideCollapsed(collapsed: boolean) {
   return { ok: true as const };
 }
 
-function revalidateSetupPaths() {
-  revalidatePath("/onboarding");
-  revalidatePath("/dashboard");
-}
-
 /** Clear profile text fields + avatar (keeps timezone / setup flags). */
 export async function resetSetupProfile() {
   const user = await requireUser();
@@ -77,7 +71,7 @@ export async function resetSetupProfile() {
   });
   await clearProfileAvatarRow();
   await writeAuditLog("setup.profile_reset", "profiles", user.id);
-  revalidateSetupPaths();
+  // Client updates local state — skip revalidatePath (Flight digest risk).
   return { ok: true as const };
 }
 
@@ -98,7 +92,6 @@ export async function resetSetupMasterResume() {
     doc_synced_at: null,
   });
   await writeAuditLog("setup.master_resume_reset", "master_resume", user.id);
-  revalidateSetupPaths();
   return { ok: true as const };
 }
 
@@ -115,7 +108,6 @@ export async function resetSetupCoverLetter() {
     "master_cover_letter",
     user.id,
   );
-  revalidateSetupPaths();
   return { ok: true as const };
 }
 
