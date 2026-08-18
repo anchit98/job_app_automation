@@ -22,6 +22,7 @@ import {
   submitResumeResponse,
 } from "@/app/actions/resume";
 import { writeAuditLog } from "@/lib/audit";
+import { refundCredit, spendCredit } from "@/lib/billing/entitlements";
 import { runAsUser } from "@/lib/auth/request-user";
 import { sanitizeJd } from "@/lib/jd/sanitize";
 import { truncateJdIfNeeded } from "@/lib/tracker/jd";
@@ -300,6 +301,23 @@ export async function startQuickApplyPipeline(input: z.infer<typeof startSchema>
       };
     }
 
+    // Metered: free accounts get a small number of Apply runs. Charged after
+    // input validation so a rejected form never costs a credit, and refunded
+    // below if the application row cannot be created.
+    const applyCredit = await spendCredit("apply");
+    if (!applyCredit.allowed) {
+      return {
+        ok: false as const,
+        error:
+          applyCredit.reason ??
+          "You have used all your free Apply runs. Upgrade to continue.",
+        needs_upgrade: true as const,
+        // The UI turns this into a link — a paywall with no way to pay is a
+        // dead end.
+        upgrade_url: "/billing" as const,
+      };
+    }
+
     const applicationId = await insertApplication({
       company: parsed.data.company?.trim() || null,
       role: parsed.data.role?.trim() || null,
@@ -337,6 +355,9 @@ export async function startQuickApplyPipeline(input: z.infer<typeof startSchema>
       similar_applications: [] as const,
     };
   } catch (e) {
+    // The credit was charged before the application row existed; give it back
+    // so a server-side failure never costs the user an Apply run.
+    await refundCredit("apply").catch(() => {});
     const message =
       e instanceof Error ? e.message : "Failed to start auto-apply pipeline.";
     console.error("startQuickApplyPipeline failed:", e);

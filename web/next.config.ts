@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
       dynamic: 30,
       static: 180,
     },
+    serverActions: {
+      // Master resume PDF upload. Default is 1MB, which rejects ordinary
+      // resume PDFs with embedded fonts. Headroom over the 8MB action-side
+      // cap covers multipart boundary/header overhead.
+      bodySizeLimit: "10mb",
+    },
   },
 };
 

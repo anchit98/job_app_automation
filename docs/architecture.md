@@ -37,7 +37,7 @@
 ### Data & Auth
 - **Supabase Postgres** (remote; connection via `postgres` npm package)
 - **Email/password auth** — `bcryptjs` passwords, `jose` JWT session cookie (`applyforge_session`, 30 days)
-- **`users` + `sessions`** tables; middleware gates all non-public routes
+- **`users` + `sessions`** tables; proxy gates all non-public routes
 - **Multi-tenant** — `profiles`, `applications`, `pipelines`, `google_tokens`, `extension_tokens`, etc. all keyed by `user_id`
 - **Google OAuth** — Drive + Gmail scopes; separate from app login
 
@@ -70,7 +70,7 @@ flowchart LR
     subgraph Vercel["Vercel / Local"]
         API["Server Actions + Route Handlers"]
         LLM["OpenAI gpt-4.1-mini"]
-        Middleware["Auth Middleware"]
+        Proxy["Auth Proxy"]
     end
     subgraph Supabase
         PG[("Postgres")]
@@ -86,7 +86,7 @@ flowchart LR
 
     User --> UI
     UI --> API
-    Middleware --> API
+    Proxy --> API
     API --> LLM
     API --> PG
     API --> Drive
@@ -104,7 +104,7 @@ flowchart LR
 |---|---|
 | Signup / login | `bcryptjs` + `users` table; forms at `/signup`, `/login` |
 | Session | JWT (`jose`) in `applyforge_session` httpOnly cookie; `sessions` table in Postgres |
-| Middleware | `middleware.ts` verifies JWT on every non-public route; redirects to `/login` |
+| Proxy | `proxy.ts` verifies JWT on every non-public route; redirects to `/login` |
 | Multi-tenant | Every query helper resolves `user_id` from session (`currentUserId()`) |
 | Password recovery | Forgot-password email with one-time token; `/reset-password` |
 | Forced reset | `users.must_reset_password` → `/reset-password-required` |

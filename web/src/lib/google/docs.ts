@@ -57,6 +57,69 @@ export class DocsClient {
     });
   }
 
+  /**
+   * Replace a document's whole body with the given lines, applying real list
+   * bullets to the ones marked as bullets.
+   *
+   * Used for PDF imports: Drive's conversion produces one giant paragraph per
+   * role with no list formatting, so the Doc is rebuilt from normalized lines
+   * before master-sync reads it.
+   */
+  async rewriteBody(
+    docId: string,
+    lines: Array<{ text: string; bullet: boolean }>,
+  ): Promise<void> {
+    const doc = await this.getDocument(docId);
+    const endIndex = doc.body?.content?.at(-1)?.endIndex ?? 2;
+
+    // Docs keeps a trailing newline that cannot be deleted; clear everything
+    // before it, then insert the rebuilt body in one shot.
+    const clearRequests: docs_v1.Schema$Request[] =
+      endIndex > 2
+        ? [
+            {
+              deleteContentRange: {
+                range: { startIndex: 1, endIndex: endIndex - 1 },
+              },
+            },
+          ]
+        : [];
+
+    const body = lines.map((l) => l.text).join("\n") + "\n";
+
+    // Ranges are computed against the inserted text, and bulleting a range
+    // shifts every index after it — hence the back-to-front order. Requests
+    // inside one batchUpdate are applied in sequence, so the whole rewrite
+    // fits in a single round trip; the previous one-call-per-bullet-run loop
+    // was the bulk of the import wait.
+    const bulletRanges: Array<{ start: number; end: number }> = [];
+    let cursor = 1;
+    let runStart: number | null = null;
+    lines.forEach((line, i) => {
+      const start = cursor;
+      const end = cursor + line.text.length + 1;
+      cursor = end;
+      if (line.bullet) {
+        if (runStart === null) runStart = start;
+        if (i === lines.length - 1 || !lines[i + 1].bullet) {
+          bulletRanges.push({ start: runStart, end });
+          runStart = null;
+        }
+      }
+    });
+
+    await this.batchUpdate(docId, [
+      ...clearRequests,
+      { insertText: { location: { index: 1 }, text: body } },
+      ...bulletRanges.reverse().map((range) => ({
+        createParagraphBullets: {
+          range: { startIndex: range.start, endIndex: range.end },
+          bulletPreset: "BULLET_DISC_CIRCLE_SQUARE",
+        },
+      })),
+    ]);
+  }
+
   /** Insert plain text at the start of a new/empty document. */
   async insertPlainText(docId: string, text: string): Promise<void> {
     const doc = await this.getDocument(docId);

@@ -11,6 +11,7 @@ const paidLinks = [
   { href: "/dashboard", icon: "dashboard", label: "Dashboard" },
   { href: "/apply", icon: "rocket_launch", label: "Apply" },
   { href: "/applications", icon: "work", label: "Jobs" },
+  { href: "/builder", icon: "draw", label: "Builder" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -22,6 +23,9 @@ function isActive(pathname: string, href: string) {
   }
   if (href === "/apply") {
     return pathname === "/apply" || pathname.startsWith("/apply/");
+  }
+  if (href === "/builder") {
+    return pathname === "/builder" || pathname.startsWith("/builder/");
   }
   if (href === "/onboarding") {
     return pathname === "/onboarding" || pathname.startsWith("/onboarding/");

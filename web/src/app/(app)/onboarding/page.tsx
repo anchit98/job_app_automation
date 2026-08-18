@@ -5,6 +5,7 @@ import { getMasterCoverLetter } from "@/app/actions/cover-letter";
 import { getCurrentUser } from "@/lib/auth/user";
 import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { getSetupReadiness } from "@/lib/setup/readiness";
+import { listBuilderCvVersions } from "@/lib/builder/queries";
 import { OnboardingForms } from "@/components/onboarding/onboarding-forms";
 import { GoogleConnectModal } from "@/components/onboarding/google-connect-modal";
 import { GoogleOAuthQueryCleaner } from "@/components/onboarding/google-oauth-query-cleaner";
@@ -26,6 +27,7 @@ export default async function OnboardingPage({
     user,
     googleState,
     readiness,
+    builderCvs,
   ] = await Promise.all([
     getProfile().catch(() => null),
     getMasterResume().catch(() => null),
@@ -33,6 +35,9 @@ export default async function OnboardingPage({
     getCurrentUser().catch(() => null),
     getGoogleConnectedState(),
     getSetupReadiness().catch(() => null),
+    // Only the newest build is offered — older ones live in /builder, and a
+    // list of near-identical CVs here is a choice nobody wants to make.
+    listBuilderCvVersions(undefined, 1).catch(() => []),
   ]);
 
   let resolvedProfile = profile;
@@ -70,6 +75,7 @@ export default async function OnboardingPage({
         profile={resolvedProfile}
         masterResume={masterResume}
         masterCoverLetter={masterCoverLetter}
+        latestBuilderCv={builderCvs[0] ?? null}
         isAdmin={Boolean(user?.is_admin)}
         googleConnected={googleConnected || googleState !== false}
         setupReady={setupReady}
