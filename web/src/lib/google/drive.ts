@@ -5,11 +5,14 @@ import { DRIVE_ROOT_FOLDER_NAME } from "@/lib/db/types";
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const MASTER_FOLDER_NAME = "_Master";
+const BUILT_CV_FOLDER_NAME = "CV Builder";
+const IMPORTED_FOLDER_NAME = "Imported Resumes";
 const MASTER_TEMPLATE_NAME = "Master_Resume_Template";
 const COVER_LETTER_TEMPLATE_NAME = "Master_Cover_Letter_Template";
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PDF_MIME = "application/pdf";
 
 type GoogleAuthClient = InstanceType<typeof google.auth.OAuth2>;
 
@@ -260,6 +263,73 @@ export class DriveClient {
       pageSize: 100,
     });
     return res.data.files ?? [];
+  }
+
+  /**
+   * Import a resume file (PDF or Word) as a real Google Doc.
+   *
+   * Apply copies the master Doc and swaps text with replaceAllText, so the
+   * master must be an editable Doc — a PDF or .docx can never be the master
+   * itself. Drive converts on import when the target mimeType is a Google Doc,
+   * which also runs OCR for scanned PDF pages, so the file lands as a Doc the
+   * app owns under drive.file and the normal sync path applies unchanged.
+   */
+  async importFileAsGoogleDoc(
+    buffer: Buffer,
+    name: string,
+    parentId: string,
+    sourceMime: string = PDF_MIME,
+  ): Promise<string> {
+    const drive = this.drive();
+    const created = await drive.files.create({
+      requestBody: {
+        name,
+        mimeType: GOOGLE_DOC_MIME,
+        parents: [parentId],
+      },
+      media: {
+        mimeType: sourceMime,
+        body: Readable.from(buffer),
+      },
+      // ocrLanguage only applies when Drive falls back to OCR for image-only
+      // PDF pages; text-layer PDFs and .docx are extracted directly.
+      ...(sourceMime === PDF_MIME ? { ocrLanguage: "en" } : {}),
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    if (!created.data.id) {
+      throw new Error(`Failed to convert that file into a Google Doc: ${name}`);
+    }
+    return created.data.id;
+  }
+
+  /**
+   * App-internal template folder.
+   *
+   * Only `Master_Resume_Template` / `Master_Cover_Letter_Template` belong here
+   * — `ensureMasterTemplateCopy` deletes and replaces files by those names, so
+   * anything else stored alongside them is at risk and clutters the folder.
+   * User-facing artifacts go in the two folders below.
+   */
+  async ensureMasterFolder(): Promise<string> {
+    const rootId = await this.ensureRootFolder();
+    return this.ensureFolder(MASTER_FOLDER_NAME, rootId);
+  }
+
+  /** PDFs produced by the CV builder. */
+  async ensureBuiltCvFolder(): Promise<string> {
+    const rootId = await this.ensureRootFolder();
+    return this.ensureFolder(BUILT_CV_FOLDER_NAME, rootId);
+  }
+
+  /**
+   * Docs converted from an uploaded PDF/Word resume. Kept because the user is
+   * told to open and correct them, so they must not be buried next to the
+   * app's own templates.
+   */
+  async ensureImportedResumeFolder(): Promise<string> {
+    const rootId = await this.ensureRootFolder();
+    return this.ensureFolder(IMPORTED_FOLDER_NAME, rootId);
   }
 
   /**

@@ -5,7 +5,7 @@ import { appCookieOptions } from "@/lib/auth/cookie-options";
 /**
  * Clears a cryptographically valid but DB-revoked session cookie (e.g. after
  * global session wipe) and sends the browser to login. Used when app layout
- * finds no SessionUser but middleware still passed a JWT.
+ * finds no SessionUser but proxy still passed a JWT.
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);

@@ -7,42 +7,23 @@ import {
   resolveGoogleDocsId,
 } from "@/lib/google/docs-url";
 import { DriveClient } from "@/lib/google/drive";
-import { upsertMasterResumeRow } from "@/lib/db/queries";
 import { env } from "@/lib/env";
-import { syncMasterResumeFromDoc } from "@/lib/resume/master-sync";
-import { writeAuditLog } from "@/lib/audit";
+import { requireUser } from "@/lib/auth/user";
+import {
+  GOOGLE_DOC_MIME,
+  MAX_RESUME_BYTES,
+  PDF_MIME,
+  detectImportableMime,
+  importBytesAndSync,
+  syncFromReadableDoc,
+  type MasterImportResult,
+  type MasterSyncFailure,
+  type MasterSyncSuccess,
+} from "@/lib/resume/master-import";
 
-type SyncSuccess = {
-  ok: true;
-  slots: number;
-  headline: string;
-  experience_roles: number;
-  projects: number;
-  skills: number;
-  education: number;
-  synced_at: string;
-  content: Record<string, unknown>;
-  /** heuristic = fast local parse; smart_agent = OpenAI template mapper */
-  sync_mode?: "heuristic" | "smart_agent";
-  signature_fields?: {
-    phone: string | null;
-    linkedin_url: string | null;
-    github_url: string | null;
-    portfolio_url: string | null;
-  } | null;
-};
+export type SyncMasterResult = MasterSyncSuccess | MasterSyncFailure;
+export type SyncMasterFromPdfResult = MasterImportResult;
 
-type SyncFailure = { ok: false; error: string };
-
-export type SyncMasterResult = SyncSuccess | SyncFailure;
-
-/**
- * Pull the master Google Doc content into DB. Called on-demand when the user
- * updates their master doc.
- *
- * Returns `{ ok:false, error }` instead of throwing — production digests
- * thrown Server Action errors into an opaque RSC message.
- */
 export async function syncMasterFromGoogleDoc(
   docIdInput?: string,
 ): Promise<SyncMasterResult> {
@@ -65,55 +46,13 @@ export async function syncMasterFromGoogleDoc(
     const docs = new DocsClient(auth);
     const drive = new DriveClient(auth);
 
-    let synced: Awaited<ReturnType<typeof syncMasterResumeFromDoc>>;
-    let templateDocId: string;
     try {
       await drive.assertReadableGoogleDoc(docId);
-      synced = await syncMasterResumeFromDoc(docs, docId);
-      templateDocId = await drive.ensureMasterTemplateCopy(docId);
+      return await syncFromReadableDoc(docs, drive, docId);
     } catch (error) {
       console.error("[master-resume-sync] google doc failed:", error);
       return { ok: false, error: explainGoogleDocFetchError(error) };
     }
-    const { content, layout, sync_mode } = synced;
-
-    const syncedAt = new Date().toISOString();
-    await upsertMasterResumeRow({
-      content: content as unknown as Record<string, unknown>,
-      doc_id: templateDocId,
-      doc_layout: layout as unknown as Record<string, unknown>,
-      doc_synced_at: syncedAt,
-    });
-
-    await writeAuditLog("master_resume.doc_synced", "master_resume", "1", {
-      source_doc_id: docId,
-      template_doc_id: templateDocId,
-      slot_count: layout.slots.length,
-      sync_mode: sync_mode ?? "heuristic",
-    });
-
-    const { syncSignatureLinksFromResume } = await import(
-      "@/app/actions/profile"
-    );
-    // Skip revalidatePath inside signature sync — Flight digest risk.
-    const links = await syncSignatureLinksFromResume({
-      overwrite: true,
-      skipRevalidate: true,
-    }).catch(() => null);
-
-    return {
-      ok: true,
-      slots: layout.slots.length,
-      headline: content.headline,
-      experience_roles: content.experience.length,
-      projects: content.projects.length,
-      skills: content.skills.length,
-      education: content.education.length,
-      synced_at: syncedAt,
-      content: content as unknown as Record<string, unknown>,
-      sync_mode: sync_mode ?? "heuristic",
-      signature_fields: links?.ok ? links.fields : null,
-    };
   } catch (error) {
     console.error("[master-resume-sync] unexpected:", error);
     return {
@@ -122,6 +61,124 @@ export async function syncMasterFromGoogleDoc(
         error instanceof Error
           ? error.message
           : "Resume sync failed. Try Choose from Drive again.",
+    };
+  }
+}
+
+/** Accept a resume from the user's device: PDF, .docx or .doc. */
+export async function syncMasterFromPdfUpload(
+  formData: FormData,
+): Promise<SyncMasterFromPdfResult> {
+  try {
+    await requireUser();
+
+    const file = formData.get("resume_pdf");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, error: "Choose a PDF or Word file to upload." };
+    }
+    // Browsers sometimes report an empty type for drag-and-drop files, so the
+    // extension is checked too rather than rejecting a valid resume.
+    const sourceMime = detectImportableMime(file.type, file.name || "");
+    if (!sourceMime) {
+      return {
+        ok: false,
+        error:
+          "Unsupported file. Choose a PDF, .docx or .doc — or pick a Google Doc from Drive.",
+      };
+    }
+    if (file.size > MAX_RESUME_BYTES) {
+      return {
+        ok: false,
+        error: `That file is ${(file.size / 1_000_000).toFixed(1)} MB. Choose a resume under ${MAX_RESUME_BYTES / 1_000_000} MB.`,
+      };
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    if (
+      sourceMime === PDF_MIME &&
+      buffer.subarray(0, 5).toString("latin1") !== "%PDF-"
+    ) {
+      return {
+        ok: false,
+        error: "That file is not a readable PDF. Re-export it and try again.",
+      };
+    }
+
+    return await importBytesAndSync(buffer, sourceMime, file.name || "", {
+      source: "device_upload",
+    });
+  } catch (error) {
+    console.error("[master-resume-sync] device upload unexpected:", error);
+    return {
+      ok: false,
+      error:
+        error instanceof Error ? error.message : "Upload failed. Try again.",
+    };
+  }
+}
+
+/**
+ * Sync from a file picked in Google Drive.
+ *
+ * A Google Doc syncs directly; a PDF or Word file picked from Drive is
+ * downloaded and converted first, exactly like a device upload.
+ */
+export async function syncMasterFromDriveFile(
+  fileId: string,
+  mimeType: string,
+): Promise<SyncMasterFromPdfResult> {
+  try {
+    await requireUser();
+    if (!fileId?.trim()) {
+      return { ok: false, error: "No file selected." };
+    }
+
+    if (mimeType === GOOGLE_DOC_MIME) {
+      const result = await syncMasterFromGoogleDoc(fileId);
+      if (!result.ok) return result;
+      return {
+        ...result,
+        converted_doc_id: fileId,
+        converted_doc_url: `https://docs.google.com/document/d/${fileId}/edit`,
+      };
+    }
+
+    const sourceMime = detectImportableMime(mimeType, "");
+    if (!sourceMime) {
+      return {
+        ok: false,
+        error:
+          "Pick a Google Doc, PDF or Word file. Sheets, slides and images cannot be resumes.",
+      };
+    }
+
+    const auth = await getGoogleAuthClient();
+    const drive = new DriveClient(auth);
+    let buffer: Buffer;
+    try {
+      // drive.file covers files the user just granted through the Picker.
+      buffer = await drive.getFile(fileId);
+    } catch (error) {
+      console.error("[master-resume-sync] drive download failed:", error);
+      return { ok: false, error: explainGoogleDocFetchError(error) };
+    }
+    if (buffer.length > MAX_RESUME_BYTES) {
+      return {
+        ok: false,
+        error: `That file is ${(buffer.length / 1_000_000).toFixed(1)} MB. Choose a resume under ${MAX_RESUME_BYTES / 1_000_000} MB.`,
+      };
+    }
+
+    return await importBytesAndSync(buffer, sourceMime, "", {
+      source: "drive_picker_file",
+      drive_file_id: fileId,
+    });
+  } catch (error) {
+    console.error("[master-resume-sync] drive file sync unexpected:", error);
+    return {
+      ok: false,
+      error:
+        error instanceof Error ? error.message : "Drive sync failed. Try again.",
     };
   }
 }

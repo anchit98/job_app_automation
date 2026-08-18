@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { startQuickApplyPipeline } from "@/app/actions/pipeline";
 import type { PipelineLlmEngine } from "@/lib/pipeline/types";
 
@@ -162,6 +163,8 @@ export function QuickApplyForm({
   );
   const [contacts, setContacts] = useState<ContactRow[]>([emptyContact()]);
   const [error, setError] = useState<string | null>(null);
+  /** Set when the failure was a paywall, so the error can offer a way out. */
+  const [upgradeUrl, setUpgradeUrl] = useState<string | null>(null);
 
   const contactCount = useMemo(
     () => contacts.filter((c) => c.name.trim() && c.email.trim()).length,
@@ -202,6 +205,12 @@ export function QuickApplyForm({
 
       if (!result.ok) {
         setError(result.error);
+        // Out of free Apply runs — offer the way forward instead of a dead end.
+        setUpgradeUrl(
+          "needs_upgrade" in result && result.needs_upgrade
+            ? ("upgrade_url" in result ? result.upgrade_url : "/billing")
+            : null,
+        );
         setPending(false);
         return;
       }
@@ -437,8 +446,22 @@ export function QuickApplyForm({
         <div className="lg:col-span-7" aria-hidden />
         <div className="lg:col-span-5 space-y-3">
           {error && (
-            <div className="rounded-xl bg-error-container text-on-error-container border border-error/20 p-3 text-[13px]">
-              {error}
+            <div className="rounded-xl bg-error-container text-on-error-container border border-error/20 p-3 text-[13px] space-y-2">
+              <p>{error}</p>
+              {upgradeUrl && (
+                <Link
+                  href={upgradeUrl}
+                  className="inline-flex items-center gap-1 font-semibold underline"
+                >
+                  See plans
+                  <span
+                    className="material-symbols-outlined text-[16px]"
+                    aria-hidden
+                  >
+                    arrow_forward
+                  </span>
+                </Link>
+              )}
             </div>
           )}
           <button

@@ -1,0 +1,216 @@
+/*
+ * Live CV preview — ported from ResumeBuilderV2's LivePreview.css.
+ *
+ * The A4 page itself stays deliberately white/black serif: it is a paper
+ * preview of the PDF, so it must not follow the app theme. Everything around
+ * it (chrome, controls, empty state) uses JobApp OS tokens instead of the old
+ * --bg-tertiary / --text-muted variables.
+ */
+
+.live-preview-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+  color: var(--color-on-surface-variant);
+  text-align: center;
+  gap: 12px;
+  padding: 24px;
+}
+
+.live-preview-empty h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.live-preview-empty p {
+  font-size: 13px;
+  max-width: 280px;
+}
+
+.live-preview-container {
+  background-color: var(--color-surface-container-high);
+  overflow: hidden;
+  padding: 24px 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  position: relative;
+  border-radius: 12px;
+  min-height: 420px;
+}
+
+.live-preview-container.is-zoomed {
+  overflow: auto;
+  padding: 24px;
+}
+
+.live-preview-page-wrapper {
+  /* Width/height are set inline from the JS-computed scale so the box matches
+     the scaled sheet exactly and never overflows its column. */
+  overflow: hidden;
+}
+
+.live-preview-page {
+  width: 794px;
+  min-height: 1122px;
+  transform-origin: top left;
+  background-color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  padding: 56px 42px;
+  font-family: "Times New Roman", Times, serif;
+  color: #000;
+  line-height: 1.4;
+  font-size: 15px;
+}
+
+.lp-header {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.lp-name {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.lp-contact {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  font-size: 10pt;
+  color: #333;
+  margin-top: 4px;
+}
+
+.lp-contact-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lp-contact a {
+  color: #333;
+  text-decoration: none;
+}
+
+.lp-section {
+  margin-bottom: 12px;
+}
+
+.lp-section-title {
+  font-size: 12pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  border-bottom: 1px solid #000;
+  padding-bottom: 2px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.lp-summary-text {
+  text-align: justify;
+  line-height: 1.4;
+}
+
+.lp-item {
+  margin-bottom: 8px;
+}
+
+.lp-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11pt;
+  gap: 12px;
+}
+
+.lp-item-header strong {
+  font-weight: 700;
+}
+
+.lp-item-sub {
+  font-size: 11pt;
+}
+
+.lp-bullets {
+  margin-top: 4px;
+  margin-bottom: 0;
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.lp-bullets li {
+  margin-bottom: 2px;
+  text-align: justify;
+}
+
+.lp-skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lp-skill-row {
+  font-size: 11pt;
+}
+
+/* The page is a paper facsimile — app typography must not leak into it. */
+.live-preview-page h1,
+.live-preview-page h2,
+.live-preview-page h3,
+.live-preview-page p,
+.live-preview-page ul {
+  margin: 0;
+  box-shadow: none;
+  background: none;
+  -webkit-text-fill-color: initial;
+}
+
+.live-preview-controls {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-surface-container-highest, rgba(16, 16, 16, 0.85));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-outline-variant);
+  padding: 6px 14px;
+  border-radius: 100px;
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.live-preview-controls button {
+  background: none;
+  border: none;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 50%;
+}
+
+.live-preview-controls button:hover {
+  color: var(--color-on-surface);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.live-preview-zoom-level {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 36px;
+  text-align: center;
+  user-select: none;
+  color: var(--color-on-surface);
+}

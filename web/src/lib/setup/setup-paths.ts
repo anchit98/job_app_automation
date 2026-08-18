@@ -8,6 +8,10 @@ export const SETUP_ALLOWED_PREFIXES = [
   "/admin-center",
   "/privacy-policy",
   "/terms",
+  // The builder is how a user with no resume produces one, so it has to be
+  // reachable *before* the master-resume step of setup is satisfied —
+  // gating it behind setup would make that path impossible to complete.
+  "/builder",
 ] as const;
 
 export function setupAllowed(pathname: string): boolean {
