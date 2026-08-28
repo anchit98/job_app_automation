@@ -8,6 +8,10 @@
  */
 export const BASE_TEMPLATE = String.raw`\documentclass[letterpaper,11pt]{article}
 
+% Must precede hyperref, which loads url itself: without this a long demo link
+% is one unbreakable box that runs off the page.
+\PassOptionsToPackage{hyphens}{url}
+
 \usepackage{latexsym}
 \usepackage[empty]{fullpage}
 \usepackage{titlesec}
@@ -19,6 +23,7 @@ export const BASE_TEMPLATE = String.raw`\documentclass[letterpaper,11pt]{article
 \usepackage{fancyhdr}
 \usepackage[english]{babel}
 \usepackage{tabularx}
+\usepackage{array}
 \usepackage{hyphenat}
 \usepackage{fontawesome}
 \input{glyphtounicode}
@@ -39,6 +44,11 @@ export const BASE_TEMPLATE = String.raw`\documentclass[letterpaper,11pt]{article
 \raggedbottom
 \raggedright
 \setlength{\tabcolsep}{0in}
+
+% Long unbroken tokens (stack lists, URLs in bullets) used to punch past the
+% right margin. Let TeX stretch a line rather than overfull it.
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
 
 \titleformat{\section}{
   \vspace{-4pt}\scshape\raggedright\large
@@ -76,9 +86,14 @@ export const BASE_TEMPLATE = String.raw`\documentclass[letterpaper,11pt]{article
     \end{tabular*}\vspace{-5pt}
 }
 
+% Both cells wrap. The original used l and r columns, which are single-line:
+% a project with a real tech stack ("React, Node.js, PostgreSQL, Redis, Docker,
+% AWS Lambda") pushed the right cell straight off the page and over whatever
+% sat beside it. Fixed-width p-columns let the stack run onto a second line
+% instead, and \raggedleft keeps it flush right the way it was before.
 \newcommand{\resumeProjectHeading}[2]{
     \vspace{-2pt}\item
-    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+    \begin{tabular*}{0.97\textwidth}[t]{@{}p{0.46\textwidth}@{\extracolsep{\fill}}>{\raggedleft\arraybackslash}p{0.46\textwidth}@{}}
      \textbf{#1} & #2 \\
     \end{tabular*}\vspace{-7pt}
 }

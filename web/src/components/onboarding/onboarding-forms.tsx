@@ -28,7 +28,25 @@ import {
 } from "@/components/google/google-doc-picker";
 import { setCvAsMasterResume } from "@/app/actions/builder";
 import type { BuilderCvVersion } from "@/lib/builder/queries";
-import type { MasterCoverLetter, MasterResume, Profile } from "@/lib/db/types";
+import {
+  FIELD_LABELS,
+  isProfessionalField,
+  type ProfessionalField,
+} from "@/lib/builder/types";
+import type {
+  MasterCoverLetter,
+  MasterResume,
+  MasterResumeSource,
+  Profile,
+} from "@/lib/db/types";
+import {
+  MASTER_SOURCE_ICONS,
+  describeMasterSource,
+} from "@/lib/resume/master-source";
+import {
+  DOCUMENT_UPLOAD_ACCEPT,
+  checkDocumentUpload,
+} from "@/lib/resume/upload-formats";
 
 /**
  * One server round trip does convert → rebuild → sync, so this step text is
@@ -118,6 +136,20 @@ export function OnboardingForms({
   );
   const [coverSyncedAt, setCoverSyncedAt] = useState<string | null>(
     masterCoverLetter?.doc_synced_at ?? null,
+  );
+  /**
+   * Which of the four routes produced the master resume Apply will use.
+   * Tracked in state so the badges update the moment a sync finishes, rather
+   * than showing the server-rendered value until the next full reload.
+   */
+  const [masterSource, setMasterSource] = useState<MasterResumeSource | null>(
+    masterResume?.source ?? null,
+  );
+  const [masterSourceLabel, setMasterSourceLabel] = useState<string | null>(
+    masterResume?.source_label ?? null,
+  );
+  const [masterSourceRef, setMasterSourceRef] = useState<string | null>(
+    masterResume?.source_ref ?? null,
   );
   // Incomplete setup always starts expanded so post-payment onboarding is clear.
   // Collapsed preference only applies after setup is finished.
@@ -228,12 +260,23 @@ export function OnboardingForms({
       { ok: true }
     >,
     suffix = "",
+    /** Mirrors what the server just recorded on master_resume. */
+    source?: {
+      source: MasterResumeSource;
+      label?: string | null;
+      ref?: string | null;
+    },
   ) {
     if (res.content) {
       setResumeJson(JSON.stringify(res.content, null, 2));
       setResumeSynced(Object.keys(res.content).length > 0);
     }
     if (res.synced_at) setResumeSyncedAt(res.synced_at);
+    if (source) {
+      setMasterSource(source.source);
+      setMasterSourceLabel(source.label ?? null);
+      setMasterSourceRef(source.ref ?? null);
+    }
     const linksFilled = applySignatureFields(res.signature_fields);
     setMessage(
       `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects, ${res.skills} skills)${
@@ -262,6 +305,15 @@ export function OnboardingForms({
         setConvertedDocUrl(res.converted_doc_url);
         setResumeSynced(true);
         setResumeSyncedAt(new Date().toISOString());
+        setMasterSource("builder");
+        // Same wording the server records, so the line does not change on the
+        // next page load.
+        setMasterSourceLabel(
+          isProfessionalField(latestBuilderCv?.professional_field ?? "")
+            ? `${FIELD_LABELS[latestBuilderCv!.professional_field as ProfessionalField]} CV`
+            : "General CV",
+        );
+        setMasterSourceRef(res.version_id);
         setMessage(
           `Master resume set from your built CV — ${res.slots} editable slots.`,
         );
@@ -817,7 +869,11 @@ export function OnboardingForms({
                       {formatAppDateTime(latestBuilderCv.created_at)}
                     </span>
                   </span>
-                  {latestBuilderCv.synced_to_master_at ? (
+                  {/* "In use" means THIS CV is the master right now — not
+                      merely that it was pushed there once. A later Drive pick
+                      or device upload takes the title with it. */}
+                  {masterSource === "builder" &&
+                  masterSourceRef === latestBuilderCv.id ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-success-container px-2 py-0.5 text-[11px] font-semibold text-on-success-container">
                       <span
                         className="material-symbols-outlined text-[13px]"
@@ -834,7 +890,11 @@ export function OnboardingForms({
                       disabled={syncing}
                       className="shrink-0 li-btn-secondary text-[12px] disabled:opacity-50"
                     >
-                      {syncing ? "Working…" : "Use this"}
+                      {syncing
+                        ? "Working…"
+                        : latestBuilderCv.synced_to_master_at
+                          ? "Use again"
+                          : "Use this"}
                     </button>
                   ) : (
                     // A dead disabled button just looks broken — send the user
@@ -895,6 +955,7 @@ export function OnboardingForms({
                         const res = await syncMasterFromDriveFile(
                           doc.id,
                           doc.mimeType,
+                          doc.name,
                         );
                         if (!res.ok) {
                           setError(res.error);
@@ -907,6 +968,7 @@ export function OnboardingForms({
                           isDoc
                             ? ""
                             : " Check the converted Doc before your first Apply.",
+                          { source: "drive_file", label: doc.name, ref: doc.id },
                         );
                       } catch (e) {
                         setMessage(null);
@@ -924,7 +986,7 @@ export function OnboardingForms({
                 <input
                   ref={resumePdfInputRef}
                   type="file"
-                  accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                  accept={DOCUMENT_UPLOAD_ACCEPT}
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -934,6 +996,13 @@ export function OnboardingForms({
                     setError(null);
                     setMessage(null);
                     setConvertedDocUrl(null);
+                    // `accept` only pre-filters the OS dialog — the user can
+                    // still switch it to "All files", so check what arrived.
+                    const allowed = checkDocumentUpload(file);
+                    if (!allowed.ok) {
+                      setError(allowed.error);
+                      return;
+                    }
                     const sizeKb = Math.round(file.size / 1024);
                     setBusy(
                       `Uploading “${file.name}” (${sizeKb} KB) — converting to a Google Doc…`,
@@ -955,6 +1024,7 @@ export function OnboardingForms({
                         applyResumeSyncSuccess(
                           res,
                           " Check the converted Doc before your first Apply.",
+                          { source: "device_upload", label: file.name },
                         );
                       } catch (e) {
                         setMessage(null);
@@ -972,7 +1042,7 @@ export function OnboardingForms({
                   type="button"
                   disabled={!googleConnected || syncing}
                   onClick={() => resumePdfInputRef.current?.click()}
-                  title="Pick a resume from this device — PDF or Word, converted to a Google Doc automatically"
+                  title="Pick a resume from this device — PDF (.pdf) or Word (.docx), converted to a Google Doc automatically"
                   className="inline-flex w-full items-center justify-center gap-1.5 li-btn-secondary text-[13px] disabled:opacity-50"
                 >
                   <span
@@ -987,7 +1057,28 @@ export function OnboardingForms({
                 </button>
               </div>
               {!googleConnected ? <ConnectGoogleHint /> : null}
+              {/* Which resume Apply will actually copy. Four routes can
+                  produce it, and until this line existed there was no way to
+                  tell which one had won. */}
               <div className="flex items-baseline justify-between gap-2 border-t border-outline-variant pt-2">
+                <span className="li-meta uppercase tracking-wide">In use</span>
+                <span className="flex min-w-0 items-center gap-1 text-[13px] font-semibold text-on-surface">
+                  {masterDone && masterSource ? (
+                    <span
+                      className="material-symbols-outlined text-[16px] text-primary shrink-0"
+                      aria-hidden
+                    >
+                      {MASTER_SOURCE_ICONS[masterSource]}
+                    </span>
+                  ) : null}
+                  <span className="truncate">
+                    {masterDone
+                      ? describeMasterSource(masterSource, masterSourceLabel)
+                      : "No master resume yet"}
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
                 <span className="li-meta uppercase tracking-wide">
                   Last sync
                 </span>
@@ -1100,7 +1191,7 @@ export function OnboardingForms({
                 <input
                   ref={coverLetterFileInputRef}
                   type="file"
-                  accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                  accept={DOCUMENT_UPLOAD_ACCEPT}
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -1110,6 +1201,11 @@ export function OnboardingForms({
                     setError(null);
                     setMessage(null);
                     setCoverConvertedDocUrl(null);
+                    const allowed = checkDocumentUpload(file);
+                    if (!allowed.ok) {
+                      setError(allowed.error);
+                      return;
+                    }
                     const sizeKb = Math.round(file.size / 1024);
                     setBusy(
                       `Uploading “${file.name}” (${sizeKb} KB) — converting to a Google Doc…`,

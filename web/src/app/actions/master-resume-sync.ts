@@ -17,15 +17,19 @@ import {
   importBytesAndSync,
   syncFromReadableDoc,
   type MasterImportResult,
+  type MasterSourceInfo,
   type MasterSyncFailure,
   type MasterSyncSuccess,
 } from "@/lib/resume/master-import";
+import { checkDocumentUpload } from "@/lib/resume/upload-formats";
 
 export type SyncMasterResult = MasterSyncSuccess | MasterSyncFailure;
 export type SyncMasterFromPdfResult = MasterImportResult;
 
 export async function syncMasterFromGoogleDoc(
   docIdInput?: string,
+  /** Overridden by callers that already know a better source (Drive pick). */
+  sourceInfo?: MasterSourceInfo,
 ): Promise<SyncMasterResult> {
   try {
     const raw = (docIdInput ?? env.resumeMasterDocId()).trim();
@@ -48,7 +52,13 @@ export async function syncMasterFromGoogleDoc(
 
     try {
       await drive.assertReadableGoogleDoc(docId);
-      return await syncFromReadableDoc(docs, drive, docId);
+      return await syncFromReadableDoc(
+        docs,
+        drive,
+        docId,
+        {},
+        sourceInfo ?? { source: "google_doc", ref: docId },
+      );
     } catch (error) {
       console.error("[master-resume-sync] google doc failed:", error);
       return { ok: false, error: explainGoogleDocFetchError(error) };
@@ -65,7 +75,7 @@ export async function syncMasterFromGoogleDoc(
   }
 }
 
-/** Accept a resume from the user's device: PDF, .docx or .doc. */
+/** Accept a resume from the user's device: PDF or .docx only. */
 export async function syncMasterFromPdfUpload(
   formData: FormData,
 ): Promise<SyncMasterFromPdfResult> {
@@ -74,16 +84,18 @@ export async function syncMasterFromPdfUpload(
 
     const file = formData.get("resume_pdf");
     if (!(file instanceof File) || file.size === 0) {
-      return { ok: false, error: "Choose a PDF or Word file to upload." };
+      return { ok: false, error: "Choose a PDF or Word (.docx) file to upload." };
     }
-    // Browsers sometimes report an empty type for drag-and-drop files, so the
-    // extension is checked too rather than rejecting a valid resume.
+    // `accept` on the input only sets the file dialog's default filter — the
+    // user can still switch it to "All files", so the real gate is here.
+    const allowed = checkDocumentUpload({ name: file.name ?? "", type: file.type });
+    if (!allowed.ok) return { ok: false, error: allowed.error };
     const sourceMime = detectImportableMime(file.type, file.name || "");
     if (!sourceMime) {
       return {
         ok: false,
         error:
-          "Unsupported file. Choose a PDF, .docx or .doc — or pick a Google Doc from Drive.",
+          "Unsupported file. Choose a PDF or .docx — or pick a Google Doc from Drive.",
       };
     }
     if (file.size > MAX_RESUME_BYTES) {
@@ -104,9 +116,13 @@ export async function syncMasterFromPdfUpload(
       };
     }
 
-    return await importBytesAndSync(buffer, sourceMime, file.name || "", {
-      source: "device_upload",
-    });
+    return await importBytesAndSync(
+      buffer,
+      sourceMime,
+      file.name || "",
+      { source: "device_upload" },
+      { source: "device_upload", label: file.name || null },
+    );
   } catch (error) {
     console.error("[master-resume-sync] device upload unexpected:", error);
     return {
@@ -126,6 +142,8 @@ export async function syncMasterFromPdfUpload(
 export async function syncMasterFromDriveFile(
   fileId: string,
   mimeType: string,
+  /** Picker-supplied name, kept so the profile can name the file in use. */
+  fileName?: string,
 ): Promise<SyncMasterFromPdfResult> {
   try {
     await requireUser();
@@ -134,7 +152,11 @@ export async function syncMasterFromDriveFile(
     }
 
     if (mimeType === GOOGLE_DOC_MIME) {
-      const result = await syncMasterFromGoogleDoc(fileId);
+      const result = await syncMasterFromGoogleDoc(fileId, {
+        source: "drive_file",
+        label: fileName || null,
+        ref: fileId,
+      });
       if (!result.ok) return result;
       return {
         ...result,
@@ -169,10 +191,13 @@ export async function syncMasterFromDriveFile(
       };
     }
 
-    return await importBytesAndSync(buffer, sourceMime, "", {
-      source: "drive_picker_file",
-      drive_file_id: fileId,
-    });
+    return await importBytesAndSync(
+      buffer,
+      sourceMime,
+      fileName || "",
+      { source: "drive_picker_file", drive_file_id: fileId },
+      { source: "drive_file", label: fileName || null, ref: fileId },
+    );
   } catch (error) {
     console.error("[master-resume-sync] drive file sync unexpected:", error);
     return {

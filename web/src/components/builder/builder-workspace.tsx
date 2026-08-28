@@ -1,6 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import {
   generateCv,
   loadCvVersionForEdit,
@@ -11,7 +17,13 @@ import { FieldPicker } from "@/components/builder/field-picker";
 import { LivePreview } from "@/components/builder/live-preview";
 import { StringListEditor } from "@/components/builder/string-list-editor";
 import type { BuilderCvVersion } from "@/lib/builder/queries";
-import { FIELD_SECTION_ORDER } from "@/lib/builder/latex-engine";
+import {
+  SECTION_LABELS,
+  resolveSectionOrder,
+  type SectionName,
+} from "@/lib/builder/latex-engine";
+import type { MasterResumeSource } from "@/lib/db/types";
+import { describeMasterSource } from "@/lib/resume/master-source";
 import {
   FIELD_CONFIG,
   LINK_LABELS,
@@ -39,6 +51,8 @@ export function BuilderWorkspace({
   initialVersions,
   hasChosenField,
   googleConnected,
+  initialMasterSource,
+  initialMasterSourceRef,
 }: {
   initialProfile: BuilderProfile;
   initialVersions: BuilderCvVersion[];
@@ -46,6 +60,10 @@ export function BuilderWorkspace({
   hasChosenField: boolean;
   /** Drive actions need Google; downloads and editing do not. */
   googleConnected: boolean;
+  /** Which route produced the master resume Apply uses right now. */
+  initialMasterSource: MasterResumeSource | null;
+  /** Builder version id when the master came from here — else null. */
+  initialMasterSourceRef: string | null;
 }) {
   const [profile, setProfile] = useState<BuilderProfile>(initialProfile);
   const [versions, setVersions] = useState(initialVersions);
@@ -56,11 +74,55 @@ export function BuilderWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Only one resume can be the master, and it is not always this page's — a
+  // later Drive pick or device upload replaces it. Tracking the live source
+  // here is what stops an old built CV from claiming "In use" forever.
+  const [masterSource, setMasterSource] = useState(initialMasterSource);
+  const [masterSourceRef, setMasterSourceRef] = useState(initialMasterSourceRef);
+  /**
+   * One editor section open at a time.
+   *
+   * Fully expanded the form ran several screens long, so reaching a later
+   * section meant scrolling past everything above it. An accordion keeps the
+   * column short enough that any section stays one click away.
+   */
+  const [openSection, setOpenSection] = useState<string>("basics");
+  function toggleSection(id: string) {
+    setOpenSection((current) => (current === id ? "" : id));
+  }
 
-  // Preview mirrors the LaTeX engine: same field, same section order.
+  /**
+   * Height of the two-column area, measured rather than hard-coded.
+   *
+   * A `calc(100vh - 10.5rem)` guess has to assume how tall the header above is,
+   * and that header wraps differently per industry and window width — leaving
+   * the page scrolling by whatever the guess was off by. Measuring where the
+   * grid actually starts pins its bottom edge to the window every time.
+   */
+  const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
+  const [gridHeight, setGridHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!gridEl) return;
+    const update = () => {
+      // Below `lg` the columns stack and the page scrolls normally.
+      if (!window.matchMedia("(min-width: 64rem)").matches) {
+        setGridHeight(null);
+        return;
+      }
+      const top = gridEl.getBoundingClientRect().top + window.scrollY;
+      const next = Math.max(420, Math.round(window.innerHeight - top - 16));
+      setGridHeight((current) => (current === next ? current : next));
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [gridEl]);
+
+  // The single source of truth for what this CV contains and in what order —
+  // the same call the PDF makes, so form, preview and PDF cannot disagree.
   const activeSections = useMemo(
-    () => FIELD_SECTION_ORDER[profile.professional_field] ?? [],
-    [profile.professional_field],
+    () => resolveSectionOrder(profile),
+    [profile],
   );
   const fieldConfig = FIELD_CONFIG[profile.professional_field];
   const unusedSkillSuggestions = useMemo(() => {
@@ -165,6 +227,8 @@ export function BuilderWorkspace({
         setMessage(
           `Master resume updated — ${res.slots} editable slots. Apply is ready.`,
         );
+        setMasterSource("builder");
+        setMasterSourceRef(res.version_id);
         setVersions((prev) =>
           prev.map((v) =>
             v.id === versionId
@@ -193,6 +257,226 @@ export function BuilderWorkspace({
     );
   }
 
+  // Editor cards keyed exactly like the preview's sections. Rendering them in
+  // `activeSections` order is what stops the form from asking for Skills before
+  // Projects while the CV prints Projects before Skills.
+  const sectionEditors: Partial<Record<SectionName, React.ReactNode>> = {
+    experience: (
+      <RepeatableSection<BuilderExperience>
+        title="Work experience"
+        open={openSection === "experience"}
+        onToggle={() => toggleSection("experience")}
+        items={profile.experience ?? []}
+        onChange={(experience) => patch({ experience })}
+        blank={{
+          company: "",
+          role: "",
+          start_date: "",
+          end_date: "",
+          location: "",
+          description: [""],
+        }}
+        render={(item, update) => (
+          <>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                placeholder="Company"
+                value={item.company}
+                onChange={(e) => update({ company: e.target.value })}
+              />
+              <Input
+                placeholder="Role"
+                value={item.role}
+                onChange={(e) => update({ role: e.target.value })}
+              />
+              <Input
+                placeholder="Location"
+                value={item.location ?? ""}
+                onChange={(e) => update({ location: e.target.value })}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  placeholder="Start"
+                  value={item.start_date ?? ""}
+                  onChange={(e) => update({ start_date: e.target.value })}
+                />
+                <Input
+                  placeholder="End"
+                  value={item.end_date ?? ""}
+                  onChange={(e) => update({ end_date: e.target.value })}
+                />
+              </div>
+            </div>
+            <StringListEditor
+              label="Description / bullet points"
+              values={item.description ?? []}
+              onChange={(description) => update({ description })}
+              placeholder="Led a team of 5 engineers to..."
+              addLabel="Add bullet"
+            />
+          </>
+        )}
+      />
+    ),
+    education: (
+      <RepeatableSection<BuilderEducation>
+        title="Education"
+        open={openSection === "education"}
+        onToggle={() => toggleSection("education")}
+        items={profile.education ?? []}
+        onChange={(education) => patch({ education })}
+        blank={{
+          institution: "",
+          degree: "",
+          location: "",
+          graduation_date: "",
+        }}
+        render={(item, update) => (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input
+              placeholder="Institution"
+              value={item.institution}
+              onChange={(e) => update({ institution: e.target.value })}
+            />
+            <Input
+              placeholder="Degree"
+              value={item.degree}
+              onChange={(e) => update({ degree: e.target.value })}
+            />
+            <Input
+              placeholder="Location"
+              value={item.location ?? ""}
+              onChange={(e) => update({ location: e.target.value })}
+            />
+            <Input
+              placeholder="Graduation date"
+              value={item.graduation_date ?? ""}
+              onChange={(e) => update({ graduation_date: e.target.value })}
+            />
+          </div>
+        )}
+      />
+    ),
+    skills: (
+      <RepeatableSection<BuilderSkillCategory>
+        title="Skills"
+        open={openSection === "skills"}
+        onToggle={() => toggleSection("skills")}
+        items={profile.skills ?? []}
+        onChange={(skills) => patch({ skills })}
+        blank={{ category_name: "", skills: [""] }}
+        /* Category names that matter in this profession — one tap adds one. */
+        footer={
+          unusedSkillSuggestions.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12px] text-on-surface-variant">
+                Suggested for {fieldConfig.label}:
+              </span>
+              {unusedSkillSuggestions.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() =>
+                    patch({
+                      skills: [
+                        ...(profile.skills ?? []),
+                        { category_name: name, skills: [] },
+                      ],
+                    })
+                  }
+                  className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-2.5 py-1 text-[12px] font-semibold text-on-surface-variant hover:text-on-surface hover:bg-[var(--ghost-hover)]"
+                >
+                  <span
+                    className="material-symbols-outlined text-[14px]"
+                    aria-hidden
+                  >
+                    add
+                  </span>
+                  {name}
+                </button>
+              ))}
+            </div>
+          ) : null
+        }
+        render={(item, update) => (
+          <div className="grid gap-2">
+            <Input
+              placeholder="Category (e.g. Languages)"
+              value={item.category_name}
+              onChange={(e) => update({ category_name: e.target.value })}
+            />
+            <StringListEditor
+              values={item.skills ?? []}
+              onChange={(skills) => update({ skills })}
+              placeholder="Skill..."
+              addLabel="Add"
+              variant="tag"
+            />
+          </div>
+        )}
+      />
+    ),
+    projects: (
+      <RepeatableSection<BuilderProject>
+        title="Projects"
+        open={openSection === "projects"}
+        onToggle={() => toggleSection("projects")}
+        items={profile.projects ?? []}
+        onChange={(projects) => patch({ projects })}
+        blank={{
+          name: "",
+          demo_link: "",
+          technologies: "",
+          description: [""],
+        }}
+        render={(item, update) => (
+          <>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                placeholder="Project name"
+                value={item.name}
+                onChange={(e) => update({ name: e.target.value })}
+              />
+              <Input
+                placeholder="Demo link"
+                value={item.demo_link ?? ""}
+                onChange={(e) => update({ demo_link: e.target.value })}
+              />
+            </div>
+            <Input
+              placeholder="Technologies"
+              value={item.technologies ?? ""}
+              onChange={(e) => update({ technologies: e.target.value })}
+            />
+            <StringListEditor
+              label="Description / bullet points"
+              values={item.description ?? []}
+              onChange={(description) => update({ description })}
+              placeholder="Built an AI agent that..."
+              addLabel="Add bullet"
+            />
+          </>
+        )}
+      />
+    ),
+    certifications: (
+      <CollapsibleCard
+        title="Certifications"
+        summary={countSummary(filledCount(profile.certifications), "certification")}
+        open={openSection === "certifications"}
+        onToggle={() => toggleSection("certifications")}
+      >
+              <StringListEditor
+                values={profile.certifications ?? []}
+                onChange={(certifications) => patch({ certifications })}
+                placeholder="AWS Solutions Architect - Associate"
+                addLabel="Add certification"
+              />
+
+      </CollapsibleCard>
+    ),
+  };
+
   return (
     <div className="space-y-4">
       <div className="li-card p-4 flex flex-wrap items-center justify-between gap-3">
@@ -201,6 +485,12 @@ export function BuilderWorkspace({
           <p className="text-[13px] text-on-surface-variant mt-0.5">
             {FIELD_LABELS[profile.professional_field]} · edits show in the
             preview instantly
+          </p>
+          {/* "What does picking an industry even do?" — this is the answer,
+              stated as the concrete section sequence it produces. */}
+          <p className="text-[12px] text-on-surface-variant mt-1">
+            <span className="font-semibold">Section order on your CV:</span>{" "}
+            {activeSections.map((name) => SECTION_LABELS[name]).join(" → ")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -234,11 +524,25 @@ export function BuilderWorkspace({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-12 items-start">
-        {/* Editor */}
-        <div className="lg:col-span-6 space-y-4">
-          <section className="li-card p-4 space-y-3">
-            <h2 className="li-section-title">Basics</h2>
+      {/* On a wide screen the two columns own the rest of the window and scroll
+          independently, so the CV is always on screen while you edit.
+          `position: sticky` cannot do this here: the app shell sets
+          `overflow-x: hidden` on <body>, which makes body a scroll container
+          and stops a sticky child from ever pinning to the viewport. */}
+      <div
+        className="grid gap-4 lg:grid-cols-12"
+        ref={setGridEl}
+        style={gridHeight ? { height: gridHeight } : undefined}
+      >
+        {/* Editor — narrower than the preview now: the form is a series of
+            short fields, the CV is the thing worth looking at. */}
+        <div className="lg:col-span-5 space-y-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+          <CollapsibleCard
+            title="Basics"
+            summary={profile.name || "Name, summary and contact links"}
+            open={openSection === "basics"}
+            onToggle={() => toggleSection("basics")}
+          >
             <div>
               <Label htmlFor="b-name">Full name *</Label>
               <Input
@@ -319,210 +623,22 @@ export function BuilderWorkspace({
                 ))}
               </div>
             ) : null}
-          </section>
+          </CollapsibleCard>
 
-          <RepeatableSection<BuilderExperience>
-            title="Work experience"
-            items={profile.experience ?? []}
-            onChange={(experience) => patch({ experience })}
-            blank={{
-              company: "",
-              role: "",
-              start_date: "",
-              end_date: "",
-              location: "",
-              description: [""],
-            }}
-            render={(item, update) => (
-              <>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Input
-                    placeholder="Company"
-                    value={item.company}
-                    onChange={(e) => update({ company: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Role"
-                    value={item.role}
-                    onChange={(e) => update({ role: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Location"
-                    value={item.location ?? ""}
-                    onChange={(e) => update({ location: e.target.value })}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      placeholder="Start"
-                      value={item.start_date ?? ""}
-                      onChange={(e) => update({ start_date: e.target.value })}
-                    />
-                    <Input
-                      placeholder="End"
-                      value={item.end_date ?? ""}
-                      onChange={(e) => update({ end_date: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <StringListEditor
-                  label="Description / bullet points"
-                  values={item.description ?? []}
-                  onChange={(description) => update({ description })}
-                  placeholder="Led a team of 5 engineers to..."
-                  addLabel="Add bullet"
-                />
-              </>
-            )}
-          />
-
-          <RepeatableSection<BuilderEducation>
-            title="Education"
-            items={profile.education ?? []}
-            onChange={(education) => patch({ education })}
-            blank={{
-              institution: "",
-              degree: "",
-              location: "",
-              graduation_date: "",
-            }}
-            render={(item, update) => (
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Input
-                  placeholder="Institution"
-                  value={item.institution}
-                  onChange={(e) => update({ institution: e.target.value })}
-                />
-                <Input
-                  placeholder="Degree"
-                  value={item.degree}
-                  onChange={(e) => update({ degree: e.target.value })}
-                />
-                <Input
-                  placeholder="Location"
-                  value={item.location ?? ""}
-                  onChange={(e) => update({ location: e.target.value })}
-                />
-                <Input
-                  placeholder="Graduation date"
-                  value={item.graduation_date ?? ""}
-                  onChange={(e) => update({ graduation_date: e.target.value })}
-                />
-              </div>
-            )}
-          />
-
-          <RepeatableSection<BuilderSkillCategory>
-            title="Skills"
-            items={profile.skills ?? []}
-            onChange={(skills) => patch({ skills })}
-            blank={{ category_name: "", skills: [""] }}
-            /* Category names that matter in this profession — one tap adds one. */
-            footer={
-              unusedSkillSuggestions.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[12px] text-on-surface-variant">
-                    Suggested for {fieldConfig.label}:
-                  </span>
-                  {unusedSkillSuggestions.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() =>
-                        patch({
-                          skills: [
-                            ...(profile.skills ?? []),
-                            { category_name: name, skills: [] },
-                          ],
-                        })
-                      }
-                      className="inline-flex items-center gap-1 rounded-full border border-outline-variant px-2.5 py-1 text-[12px] font-semibold text-on-surface-variant hover:text-on-surface hover:bg-[var(--ghost-hover)]"
-                    >
-                      <span
-                        className="material-symbols-outlined text-[14px]"
-                        aria-hidden
-                      >
-                        add
-                      </span>
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              ) : null
-            }
-            render={(item, update) => (
-              <div className="grid gap-2">
-                <Input
-                  placeholder="Category (e.g. Languages)"
-                  value={item.category_name}
-                  onChange={(e) => update({ category_name: e.target.value })}
-                />
-                <StringListEditor
-                  values={item.skills ?? []}
-                  onChange={(skills) => update({ skills })}
-                  placeholder="Skill..."
-                  addLabel="Add"
-                  variant="tag"
-                />
-              </div>
-            )}
-          />
-
-          {activeSections.includes("projects") && (
-            <RepeatableSection<BuilderProject>
-              title="Projects"
-              items={profile.projects ?? []}
-              onChange={(projects) => patch({ projects })}
-              blank={{
-                name: "",
-                demo_link: "",
-                technologies: "",
-                description: [""],
-              }}
-              render={(item, update) => (
-                <>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      placeholder="Project name"
-                      value={item.name}
-                      onChange={(e) => update({ name: e.target.value })}
-                    />
-                    <Input
-                      placeholder="Demo link"
-                      value={item.demo_link ?? ""}
-                      onChange={(e) => update({ demo_link: e.target.value })}
-                    />
-                  </div>
-                  <Input
-                    placeholder="Technologies"
-                    value={item.technologies ?? ""}
-                    onChange={(e) => update({ technologies: e.target.value })}
-                  />
-                  <StringListEditor
-                    label="Description / bullet points"
-                    values={item.description ?? []}
-                    onChange={(description) => update({ description })}
-                    placeholder="Built an AI agent that..."
-                    addLabel="Add bullet"
-                  />
-                </>
-              )}
-            />
+          {/* Printed order drives the form order. */}
+          {activeSections.map((name) =>
+            sectionEditors[name] ? (
+              <Fragment key={name}>{sectionEditors[name]}</Fragment>
+            ) : null,
           )}
 
-          {activeSections.includes("certifications") && (
-            <section className="li-card p-4 space-y-2">
-              <h2 className="li-section-title">Certifications</h2>
-              <StringListEditor
-                values={profile.certifications ?? []}
-                onChange={(certifications) => patch({ certifications })}
-                placeholder="AWS Solutions Architect - Associate"
-                addLabel="Add certification"
-              />
-            </section>
-          )}
-
-          <section className="li-card p-4 space-y-3">
-            <h2 className="li-section-title">Your CVs</h2>
+          <CollapsibleCard
+            title="Your CVs"
+            summary={`Master in use: ${describeMasterSource(masterSource, null)}`}
+            open={openSection === "cvs"}
+            onToggle={() => toggleSection("cvs")}
+          >
+            
             {versions.length === 0 ? (
               <p className="text-[13px] text-on-surface-variant">
                 Nothing generated yet.
@@ -583,7 +699,7 @@ export function BuilderWorkspace({
                           Open in Drive
                         </a>
                       ) : null}
-                      {v.synced_to_master_at ? (
+                      {masterSource === "builder" && masterSourceRef === v.id ? (
                         <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-on-success-container bg-success-container rounded-full px-2 py-0.5">
                           <span
                             className="material-symbols-outlined text-[14px]"
@@ -600,7 +716,9 @@ export function BuilderWorkspace({
                           disabled={pending}
                           className="text-[13px] font-semibold text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                         >
-                          Use as master resume
+                          {v.synced_to_master_at
+                            ? "Use as master again"
+                            : "Use as master resume"}
                         </button>
                       ) : (
                         // Offer the unblocking step rather than a dead control.
@@ -625,12 +743,15 @@ export function BuilderWorkspace({
                 ))}
               </ul>
             )}
-          </section>
+          
+          </CollapsibleCard>
         </div>
 
-        {/* Live preview */}
-        <div className="lg:col-span-6 lg:sticky lg:top-4">
-          <LivePreview data={profile} activeSections={activeSections} />
+        {/* Live preview — the wider of the two columns, and the one worth the
+            space. It owns its full column height, so scrolling the form beside
+            it never moves the CV. */}
+        <div className="lg:col-span-7 lg:h-full lg:min-h-0">
+          <LivePreview data={profile} />
         </div>
       </div>
 
@@ -684,6 +805,68 @@ function Toasts({
   );
 }
 
+function filledCount(values: string[] | undefined): number {
+  return (values ?? []).filter((v) => v && v.trim()).length;
+}
+
+/** "3 entries" / "1 certification" / "Nothing added yet" for a collapsed header. */
+function countSummary(count: number, noun = "entry"): string {
+  if (count === 0) return "Nothing added yet";
+  const plural = noun === "entry" ? "entries" : `${noun}s`;
+  return `${count} ${count === 1 ? noun : plural}`;
+}
+
+/**
+ * One editor section, collapsed unless it is the open one.
+ *
+ * The collapsed header still says how much is in there, so folding a section
+ * away never hides whether it has been filled in.
+ */
+function CollapsibleCard({
+  title,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="li-card overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 p-3.5 text-left hover:bg-[var(--ghost-hover)]"
+      >
+        <span className="min-w-0">
+          <span className="block li-section-title">{title}</span>
+          {summary ? (
+            <span className="mt-0.5 block li-meta truncate">{summary}</span>
+          ) : null}
+        </span>
+        <span
+          className={`material-symbols-outlined shrink-0 text-[22px] text-on-surface-variant transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        >
+          expand_more
+        </span>
+      </button>
+      {open ? (
+        <div className="space-y-3 border-t border-outline-variant p-4">
+          {children}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 /** Add / remove / edit a list of structured entries. */
 function RepeatableSection<T>({
   title,
@@ -692,6 +875,8 @@ function RepeatableSection<T>({
   onChange,
   render,
   footer,
+  open,
+  onToggle,
 }: {
   title: string;
   items: T[];
@@ -700,22 +885,16 @@ function RepeatableSection<T>({
   render: (item: T, update: (patch: Partial<T>) => void) => React.ReactNode;
   /** Extra controls under the list — e.g. per-field suggestion chips. */
   footer?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <section className="li-card p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="li-section-title">{title}</h2>
-        <button
-          type="button"
-          onClick={() => onChange([...items, { ...blank }])}
-          className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
-        >
-          <span className="material-symbols-outlined text-[16px]" aria-hidden>
-            add
-          </span>
-          Add
-        </button>
-      </div>
+    <CollapsibleCard
+      title={title}
+      summary={countSummary(items.length)}
+      open={open}
+      onToggle={onToggle}
+    >
       {items.length === 0 ? (
         <p className="text-[13px] text-on-surface-variant">Nothing added yet.</p>
       ) : (
@@ -755,7 +934,19 @@ function RepeatableSection<T>({
           ))}
         </ul>
       )}
+      {/* Add sits under the list now — the card header is one big toggle
+          button, and a button cannot be nested inside another button. */}
+      <button
+        type="button"
+        onClick={() => onChange([...items, { ...blank }])}
+        className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
+      >
+        <span className="material-symbols-outlined text-[16px]" aria-hidden>
+          add
+        </span>
+        Add {title.toLowerCase()}
+      </button>
       {footer}
-    </section>
+    </CollapsibleCard>
   );
 }

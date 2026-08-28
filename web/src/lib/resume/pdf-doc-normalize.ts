@@ -26,9 +26,30 @@ const DATE_RANGE_GLOBAL_RE = new RegExp(DATE_RANGE_SOURCE, "gi");
 const RULE_RE = /^[-_=]{10,}$/;
 
 const SECTION_HEADING_RE =
-  /^(WORK\s+EXPERIENCE|EXPERIENCE|PROFESSIONAL\s+EXPERIENCE|EMPLOYMENT(\s+HISTORY)?|CAREER(\s+HISTORY)?|PROJECTS|KEY\s+PROJECTS|SELECTED\s+PROJECTS|CASE\s+STUDIES|SKILLS|TECHNICAL\s+SKILLS|TECH\s+STACK|TOOLS|EDUCATION|ACADEMICS?|QUALIFICATIONS|CERTIFICATIONS?|ACHIEVEMENTS?|SUMMARY|PROFILE)\s*:?\s*$/i;
+  /^(WORK\s+EXPERIENCE|EXPERIENCE|PROFESSIONAL\s+EXPERIENCE|EMPLOYMENT(\s+HISTORY)?|CAREER(\s+HISTORY)?|PROJECTS|KEY\s+PROJECTS|SELECTED\s+PROJECTS|CASE\s+STUDIES|SKILLS|TECHNICAL\s+SKILLS|TECH\s+STACK|TOOLS|EDUCATION|ACADEMICS?|QUALIFICATIONS|CERTIFICATIONS?|LICENS(?:E|ES|URES?)|ACHIEVEMENTS?|AWARDS(\s*(&|AND)\s*HONou?RS)?|HONou?RS|PUBLICATIONS?|RESEARCH|PATENTS?|VOLUNTEER(\s+EXPERIENCE)?|LEADERSHIP|ACTIVITIES|EXTRA[\s-]?CURRICULARS?|INTERESTS|HOBBIES|LANGUAGES|COURSEWORK|RELEVANT\s+COURSEWORK|TRAININGS?|WORKSHOPS?|REFERENCES|OBJECTIVE|SUMMARY|PROFESSIONAL\s+SUMMARY|PROFILE|ABOUT(\s+ME)?|CONTACT(\s+INFORMATION)?)\s*:?\s*$/i;
 
-export type NormalizedLineKind = "heading" | "bullet" | "plain";
+/**
+ * A heading the list above does not name — "CLINICAL ROTATIONS", "BAR
+ * ADMISSIONS". Resumes invent section titles constantly, and treating one as
+ * body text collapses everything under it into the previous section.
+ *
+ * Deliberately strict: short, all-caps, no digits and no sentence punctuation,
+ * so a shouted job title inside a bullet cannot pass for a section.
+ */
+function looksLikeUnlistedHeading(text: string): boolean {
+  if (text.length > 40 || text.split(/\s+/).length > 4) return false;
+  if (/[.,;:!?()\d@|]/.test(text.replace(/:$/, ""))) return false;
+  const letters = text.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 3) return false;
+  return letters === letters.toUpperCase();
+}
+
+export type NormalizedLineKind =
+  | "title"
+  | "heading"
+  | "subheading"
+  | "bullet"
+  | "plain";
 
 export interface NormalizedLine {
   text: string;
@@ -135,6 +156,8 @@ export function normalizeConvertedPdfParagraphs(
   const lines: NormalizedLine[] = [];
   let section: "experience" | "projects" | "skills" | "education" | "other" =
     "other";
+  /** The first real line of a resume is the candidate's name. */
+  let seenFirstLine = false;
 
   for (const raw of rawParagraphs) {
     // The converter prefixes contact rows with a long rule; drop the rule but
@@ -142,6 +165,16 @@ export function normalizeConvertedPdfParagraphs(
     let text = raw.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
     text = text.replace(/[-_=]{10,}/g, " ").replace(/\s+/g, " ").trim();
     if (!text || RULE_RE.test(text)) continue;
+
+    if (!seenFirstLine) {
+      seenFirstLine = true;
+      // Only when it reads like a name — a resume that opens with "SUMMARY"
+      // falls through to the heading branch below instead.
+      if (!SECTION_HEADING_RE.test(text) && text.length <= 60) {
+        lines.push({ text, kind: "title" });
+        continue;
+      }
+    }
 
     if (SECTION_HEADING_RE.test(text)) {
       const upper = text.toUpperCase();
@@ -158,9 +191,18 @@ export function normalizeConvertedPdfParagraphs(
       continue;
     }
 
+    // A heading we do not recognise, and only while no known section is open.
+    // Inside EDUCATION an all-caps institution ("HARVARD UNIVERSITY") looks
+    // identical from here, and inside SKILLS so does a caps-written stack —
+    // promoting either to a heading would corrupt content that parses fine.
+    if (section === "other" && looksLikeUnlistedHeading(text)) {
+      lines.push({ text, kind: "heading" });
+      continue;
+    }
+
     if (section === "education") {
       for (const entry of splitEducationRun(text)) {
-        lines.push({ text: entry, kind: "plain" });
+        lines.push({ text: entry, kind: "subheading" });
       }
       continue;
     }
@@ -192,7 +234,7 @@ function emitContentChunk(text: string, lines: NormalizedLine[]): void {
     if (!startsAsBullet) {
       const split = splitHeaderFromBody(text);
       if (split) {
-        lines.push({ text: split.header, kind: "plain" });
+        lines.push({ text: split.header, kind: "subheading" });
         for (const part of splitOnBulletSeparators(split.body)) {
           const clean = stripLeadingGlyph(part);
           if (clean) lines.push({ text: clean, kind: "bullet" });
@@ -219,13 +261,53 @@ function emitContentChunk(text: string, lines: NormalizedLine[]): void {
     if (firstClean) {
       lines.push({
         text: firstClean,
-        kind: rest.length === 0 && isSkillLine(firstClean) ? "bullet" : "plain",
+        kind:
+          rest.length === 0 && isSkillLine(firstClean)
+            ? "bullet"
+            : // A title line with bullets under it is a sub-header; a lone
+              // line with no bullets is ordinary prose (a summary paragraph).
+              rest.length > 0
+              ? "subheading"
+              : "plain",
       });
     }
     for (const part of rest) {
       const clean = stripLeadingGlyph(part);
       if (clean) lines.push({ text: clean, kind: "bullet" });
     }
+}
+
+/**
+ * Should the converted Doc be rebuilt at all?
+ *
+ * Rebuilding replaces the body with plain text and re-applies only the
+ * structure this module can infer, so it throws away anything Drive got right
+ * — inline bold, links, columns, spacing. That is a good trade when the
+ * conversion glued whole roles into single paragraphs, and a bad one when it
+ * came through clean. Repair only on evidence of damage.
+ */
+export function convertedDocNeedsRepair(
+  rawParagraphs: string[],
+  normalized: NormalizedLine[],
+  existingBulletParagraphs: number,
+): boolean {
+  const nonEmpty = rawParagraphs.filter((p) => p.trim()).length;
+  if (nonEmpty === 0) return false;
+
+  // A paragraph long enough to hold several bullets, with the separators still
+  // in it, is the signature of the glue-everything conversion.
+  const gluedParagraphs = rawParagraphs.filter(
+    (p) => p.length > 200 && /\s[-–—•]\s/.test(p),
+  ).length;
+  if (gluedParagraphs > 0) return true;
+
+  // Splitting found substantially more lines than the Doc has paragraphs, so
+  // its paragraph boundaries do not match the resume's real structure.
+  if (normalized.length > nonEmpty * 1.25) return true;
+
+  // No list formatting anywhere, yet the text clearly has bullets to make.
+  const bulletLines = normalized.filter((l) => l.kind === "bullet").length;
+  return existingBulletParagraphs === 0 && bulletLines >= 3;
 }
 
 /** Slot text must be unique in the Doc — drop exact repeats. */

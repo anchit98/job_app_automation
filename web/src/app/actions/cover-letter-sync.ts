@@ -13,6 +13,7 @@ import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { syncMasterCoverLetterFromDoc } from "@/lib/cover-letter/master-sync";
 import { normalizeConvertedCoverLetterParagraphs } from "@/lib/cover-letter/pdf-doc-normalize";
 import { requireUser } from "@/lib/auth/user";
+import { checkDocumentUpload } from "@/lib/resume/upload-formats";
 
 const PDF_MIME = "application/pdf";
 const DOCX_MIME =
@@ -210,7 +211,7 @@ async function importCoverLetterBytesAndSync(
   }
 }
 
-/** Accept a cover letter from the user's device: PDF, .docx or .doc. */
+/** Accept a cover letter from the user's device: PDF or .docx only. */
 export async function syncCoverLetterFromUpload(
   formData: FormData,
 ): Promise<SyncCoverLetterFromFileResult> {
@@ -219,14 +220,17 @@ export async function syncCoverLetterFromUpload(
 
     const file = formData.get("cover_letter_file");
     if (!(file instanceof File) || file.size === 0) {
-      return { ok: false, error: "Choose a PDF or Word file to upload." };
+      return { ok: false, error: "Choose a PDF or Word (.docx) file to upload." };
     }
+    // Same rule as the resume upload — `accept` is a hint, this is the gate.
+    const allowed = checkDocumentUpload({ name: file.name ?? "", type: file.type });
+    if (!allowed.ok) return { ok: false, error: allowed.error };
     const sourceMime = detectImportableMime(file.type, file.name || "");
     if (!sourceMime) {
       return {
         ok: false,
         error:
-          "Unsupported file. Choose a PDF, .docx or .doc — or pick a Google Doc from Drive.",
+          "Unsupported file. Choose a PDF or .docx — or pick a Google Doc from Drive.",
       };
     }
     if (file.size > MAX_COVER_LETTER_BYTES) {

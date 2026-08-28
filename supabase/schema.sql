@@ -146,6 +146,11 @@ CREATE TABLE IF NOT EXISTS master_resume (
   doc_id TEXT,
   doc_layout TEXT,
   doc_synced_at TEXT,
+  -- Which route produced the resume in use: builder | device_upload |
+  -- drive_file | google_doc | manual. NULL on rows synced before tracking.
+  source TEXT,
+  source_label TEXT,
+  source_ref TEXT,
   created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
   updated_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
 );

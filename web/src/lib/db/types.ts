@@ -30,12 +30,26 @@ export interface Profile {
   updated_at: string;
 }
 
+/** Where the current master resume came from — see MASTER_SOURCE_LABELS. */
+export type MasterResumeSource =
+  | "builder"
+  | "device_upload"
+  | "drive_file"
+  | "google_doc"
+  | "manual";
+
 export interface MasterResume {
   content: Record<string, unknown>;
   rules: Record<string, unknown>;
   doc_id: string | null;
   doc_layout: Record<string, unknown> | null;
   doc_synced_at: string | null;
+  /** Null on rows written before source tracking existed. */
+  source: MasterResumeSource | null;
+  /** Human name of the source: file name, Doc title, or the CV's field. */
+  source_label: string | null;
+  /** Builder version id / Drive file id / Doc id, for exact matching. */
+  source_ref: string | null;
   created_at: string;
   updated_at: string;
 }

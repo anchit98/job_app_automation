@@ -30,27 +30,52 @@
   max-width: 280px;
 }
 
-.live-preview-container {
+/* The shell holds the zoom controls still while the sheet scrolls under them. */
+.live-preview-shell {
+  position: relative;
+  border-radius: 12px;
   background-color: var(--color-surface-container-high);
-  overflow: hidden;
-  padding: 24px 0;
+  /* Fills the column, which on a wide screen is a fixed slice of the window.
+     The min/max only bite in the stacked layout, where the column has no
+     height of its own. */
+  height: 100%;
+  min-height: 420px;
+  max-height: calc(100vh - 5.5rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.live-preview-scroll {
+  /* A CV is routinely two or three pages; clipping at one page hid the rest
+     with no way to reach it. Scroll vertically, never horizontally — the sheet
+     is already scaled to fit the column's width. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Always reserve the scrollbar gutter. The fit scale is computed from this
+     box's clientWidth, so a scrollbar that appears and disappears as the
+     scaled page crosses the max-height boundary feeds width changes back
+     into the scale — an oscillation that locks the renderer. */
+  scrollbar-gutter: stable;
+  /* Nearly the full window height: this is the thing the user is actually
+     looking at, and the old short box rendered the page as a postage stamp. */
+  /* min-height:0 is what allows this to shrink inside the flex shell instead
+     of forcing the column taller than the window. */
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px 0;
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  position: relative;
   border-radius: 12px;
-  min-height: 420px;
-}
-
-.live-preview-container.is-zoomed {
-  overflow: auto;
-  padding: 24px;
+  overscroll-behavior: contain;
 }
 
 .live-preview-page-wrapper {
   /* Width/height are set inline from the JS-computed scale so the box matches
-     the scaled sheet exactly and never overflows its column. */
+     the scaled sheet exactly: the width keeps the column from overflowing, the
+     height lets the scroller reach the last line of a multi-page CV. */
   overflow: hidden;
+  flex: none;
 }
 
 .live-preview-page {
@@ -135,6 +160,30 @@
   font-weight: 700;
 }
 
+/* Matches the LaTeX heading rows: bold line, then a smaller italic line. */
+.lp-item-sub-row {
+  font-size: 10.5pt;
+}
+
+.lp-item-left {
+  min-width: 0;
+}
+
+/* Long tech stacks wrap here instead of pushing the row wider, mirroring the
+   wrapping p-column the PDF's project heading now uses. */
+.lp-item-right {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.lp-demo-link {
+  color: #1a0dab;
+  text-decoration: none;
+  margin-right: 6px;
+  font-style: italic;
+}
+
 .lp-item-sub {
   font-size: 11pt;
 }
@@ -149,6 +198,7 @@
 .lp-bullets li {
   margin-bottom: 2px;
   text-align: justify;
+  overflow-wrap: anywhere;
 }
 
 .lp-skills-list {
@@ -177,6 +227,8 @@
   position: absolute;
   bottom: 16px;
   right: 16px;
+  /* Anchored to the shell, not the scroller, so zooming stays reachable at
+     any scroll position. */
   display: flex;
   align-items: center;
   gap: 8px;

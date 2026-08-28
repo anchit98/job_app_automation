@@ -15,10 +15,14 @@ import {
   upsertBuilderProfile,
 } from "@/lib/builder/queries";
 import {
+  FIELD_LABELS,
   type BuilderProfile,
+  type ProfessionalField,
   emptyBuilderProfile,
   isProfessionalField,
 } from "@/lib/builder/types";
+import { getMasterResumeRow } from "@/lib/db/queries";
+import type { MasterResumeSource } from "@/lib/db/types";
 import { DriveClient } from "@/lib/google/drive";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { PDF_MIME, importBytesAndSync } from "@/lib/resume/master-import";
@@ -46,21 +50,28 @@ export type LoadBuilderResult = {
   versions: Awaited<ReturnType<typeof listBuilderCvVersions>>;
   /** False on a first visit — the UI opens on the industry step instead. */
   has_profile: boolean;
+  /** Which route produced the master resume Apply uses right now. */
+  master_source: MasterResumeSource | null;
+  /** Builder version id when master_source is "builder" — else null. */
+  master_source_ref: string | null;
 };
 
 /** Everything the builder page needs in one round trip. */
 export async function loadBuilder(): Promise<LoadBuilderResult | Failure> {
   try {
     const user = await requireUser();
-    const [profile, versions] = await Promise.all([
+    const [profile, versions, master] = await Promise.all([
       getBuilderProfile(),
       listBuilderCvVersions(),
+      getMasterResumeRow().catch(() => null),
     ]);
     return {
       ok: true,
       profile: profile ?? emptyBuilderProfile(user.full_name ?? ""),
       versions,
       has_profile: Boolean(profile),
+      master_source: master?.source ?? null,
+      master_source_ref: master?.source_ref ?? null,
     };
   } catch (error) {
     console.error("[builder] load failed:", error);
@@ -233,7 +244,7 @@ export async function loadCvVersionForEdit(
 }
 
 export type UseAsMasterResult =
-  | { ok: true; slots: number; converted_doc_url: string }
+  | { ok: true; slots: number; converted_doc_url: string; version_id: string }
   | Failure;
 
 /**
@@ -262,10 +273,22 @@ export async function setCvAsMasterResume(
       return { ok: false, error: "That version has no PDF to sync." };
     }
 
-    const result = await importBytesAndSync(pdf, PDF_MIME, "builder-cv.pdf", {
-      source: "builder_cv",
-      builder_version_id: versionId,
-    });
+    const fieldLabel = isProfessionalField(version.professional_field ?? "")
+      ? FIELD_LABELS[version.professional_field as ProfessionalField]
+      : "General";
+    const result = await importBytesAndSync(
+      pdf,
+      PDF_MIME,
+      "builder-cv.pdf",
+      { source: "builder_cv", builder_version_id: versionId },
+      // Recorded on master_resume so the profile can say which resume is live
+      // — and so an older built CV stops claiming "In use" once it is replaced.
+      {
+        source: "builder",
+        label: `${fieldLabel} CV`,
+        ref: versionId,
+      },
+    );
     if (!result.ok) return result;
 
     await markVersionSyncedToMaster(versionId);
@@ -275,6 +298,7 @@ export async function setCvAsMasterResume(
       ok: true,
       slots: result.slots,
       converted_doc_url: result.converted_doc_url,
+      version_id: versionId,
     };
   } catch (error) {
     console.error("[builder] use-as-master failed:", error);

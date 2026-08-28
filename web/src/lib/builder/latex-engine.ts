@@ -33,6 +33,29 @@ export type SectionName =
   | "languages"
   | "coursework";
 
+/**
+ * Section headings exactly as they are printed on the PDF.
+ *
+ * The live preview reads the same map, so a heading can never say "Summary" on
+ * screen and "Professional Summary" on the page.
+ */
+export const SECTION_LABELS: Record<SectionName, string> = {
+  summary: "Professional Summary",
+  education: "Education",
+  experience: "Work Experience",
+  projects: "Projects",
+  skills: "Skills",
+  certifications: "Certifications",
+  publications: "Publications",
+  awards: "Awards & Honors",
+  volunteer: "Volunteer Experience",
+  languages: "Languages",
+  coursework: "Relevant Coursework",
+};
+
+/** Every section name, in the canonical order used when appending extras. */
+export const SECTION_NAMES = Object.keys(SECTION_LABELS) as SectionName[];
+
 /** Also drives which sections the live preview renders, and in what order. */
 export const FIELD_SECTION_ORDER: Record<ProfessionalField, SectionName[]> = {
   tech: [
@@ -86,6 +109,31 @@ export function escapeLatex(value: unknown): string {
   return text.replace(/[\\&%$#{}~^]/g, (ch) => replacements[ch] ?? ch);
 }
 
+/**
+ * Escape a URL for the first argument of \href.
+ *
+ * Only the characters TeX consumes before hyperref can see them are escaped —
+ * comment, parameter, group, alignment and math-shift. A query string's `&` is
+ * the one that actually bit: a project demo link sits inside a tabular cell,
+ * where a bare `&` reads as a column break. `~` and `_` are legal in URLs and
+ * hyperref passes them through, so escaping the full set (as escapeLatex does)
+ * would corrupt the link itself.
+ */
+export function escapeLatexUrl(value: string | undefined): string {
+  if (!value) return "";
+  return value
+    .trim()
+    // A backslash is never valid in a URL and is the one character hyperref
+    // cannot recover from — drop it rather than trying to escape it.
+    .replace(/\\/g, "")
+    .replace(/([%#{}&$])/g, "\\$1");
+}
+
+/** The section-heading line, titled from the shared label map. */
+function sectionHeading(name: SectionName): string {
+  return `\\section{${escapeLatex(SECTION_LABELS[name])}}`;
+}
+
 function nonEmpty(values: readonly (string | undefined)[]): string[] {
   return values.filter((v): v is string => Boolean(v && v.trim()));
 }
@@ -105,27 +153,27 @@ function headerSection(profile: BuilderProfile): string {
   }
   if (contact.linkedin) {
     items.push(
-      String.raw`\faLinkedinSquare \hspace{.5pt} \href{${escapeLatex(contact.linkedin)}}{LinkedIn}`,
+      String.raw`\faLinkedinSquare \hspace{.5pt} \href{${escapeLatexUrl(contact.linkedin)}}{LinkedIn}`,
     );
   }
   if (contact.github) {
     items.push(
-      String.raw`\faGithub \hspace{.5pt} \href{${escapeLatex(contact.github)}}{GitHub}`,
+      String.raw`\faGithub \hspace{.5pt} \href{${escapeLatexUrl(contact.github)}}{GitHub}`,
     );
   }
   if (contact.portfolio) {
     items.push(
-      String.raw`\faGlobe \hspace{.5pt} \href{${escapeLatex(contact.portfolio)}}{Portfolio}`,
+      String.raw`\faGlobe \hspace{.5pt} \href{${escapeLatexUrl(contact.portfolio)}}{Portfolio}`,
     );
   }
   if (contact.website) {
     items.push(
-      String.raw`\faGlobe \hspace{.5pt} \href{${escapeLatex(contact.website)}}{Website}`,
+      String.raw`\faGlobe \hspace{.5pt} \href{${escapeLatexUrl(contact.website)}}{Website}`,
     );
   }
   if (contact.twitter) {
     items.push(
-      String.raw`\faTwitter \hspace{.5pt} \href{${escapeLatex(contact.twitter)}}{Twitter}`,
+      String.raw`\faTwitter \hspace{.5pt} \href{${escapeLatexUrl(contact.twitter)}}{Twitter}`,
     );
   }
   if (contact.location) {
@@ -144,13 +192,13 @@ function headerSection(profile: BuilderProfile): string {
 function summarySection(profile: BuilderProfile): string {
   const summary = profile.professional_summary;
   if (!summary?.trim()) return "";
-  return `\\section{Professional Summary}\n\\small{${escapeLatex(summary)}}\n`;
+  return `${sectionHeading("summary")}\n\\small{${escapeLatex(summary)}}\n`;
 }
 
 function educationSection(education: BuilderEducation[]): string {
   if (!education?.length) return "";
   const lines = [
-    String.raw`\section{Education}`,
+    sectionHeading("education"),
     String.raw`\vspace{-1pt}`,
     String.raw`\resumeSubHeadingListStart`,
   ];
@@ -177,7 +225,7 @@ function bulletList(description: string[] | undefined): string[] {
 function experienceSection(experience: BuilderExperience[]): string {
   if (!experience?.length) return "";
   const lines = [
-    String.raw`\section{Work Experience}`,
+    sectionHeading("experience"),
     String.raw`\vspace{-1pt}`,
     String.raw`\resumeSubHeadingListStart`,
   ];
@@ -196,14 +244,14 @@ function experienceSection(experience: BuilderExperience[]): string {
 function projectsSection(projects: BuilderProject[]): string {
   if (!projects?.length) return "";
   const lines = [
-    String.raw`\section{Projects}`,
+    sectionHeading("projects"),
     String.raw`\vspace{3pt}`,
     String.raw`\resumeSubHeadingListStart`,
   ];
   for (const proj of projects) {
     let rightCol = "";
     if (proj.demo_link) {
-      rightCol = ` \\emph{\\href{${proj.demo_link}}{\\color{blue}Demo}}`;
+      rightCol = ` \\emph{\\href{${escapeLatexUrl(proj.demo_link)}}{\\color{blue}Demo}}`;
     }
     if (proj.technologies) {
       const tech = `\\textit{\\small ${escapeLatex(proj.technologies)}}`;
@@ -221,7 +269,7 @@ function projectsSection(projects: BuilderProject[]): string {
 function skillsSection(skills: BuilderSkillCategory[]): string {
   if (!skills?.length) return "";
   const lines = [
-    String.raw`\section{Skills}`,
+    sectionHeading("skills"),
     String.raw`\vspace{2pt}`,
     String.raw`\resumeSubHeadingListStart`,
     String.raw`\small{\item{`,
@@ -242,7 +290,7 @@ function certificationsSection(certifications: string[]): string {
   const items = nonEmpty(certifications ?? []);
   if (!items.length) return "";
   return [
-    String.raw`\section{Certifications}`,
+    sectionHeading("certifications"),
     String.raw`\vspace{2pt}`,
     String.raw`\resumeSubHeadingListStart`,
     String.raw`\resumeItemListStart`,
@@ -255,7 +303,7 @@ function certificationsSection(certifications: string[]): string {
 function publicationsSection(publications: BuilderPublication[]): string {
   if (!publications?.length) return "";
   const lines = [
-    String.raw`\section{Publications}`,
+    sectionHeading("publications"),
     String.raw`\vspace{2pt}`,
     String.raw`\resumeSubHeadingListStart`,
   ];
@@ -276,7 +324,7 @@ function publicationsSection(publications: BuilderPublication[]): string {
 function awardsSection(awards: BuilderAward[]): string {
   if (!awards?.length) return "";
   const lines = [
-    String.raw`\section{Awards \& Honors}`,
+    sectionHeading("awards"),
     String.raw`\vspace{2pt}`,
     String.raw`\resumeSubHeadingListStart`,
   ];
@@ -297,7 +345,7 @@ function awardsSection(awards: BuilderAward[]): string {
 function volunteerSection(volunteer: BuilderVolunteer[]): string {
   if (!volunteer?.length) return "";
   const lines = [
-    String.raw`\section{Volunteer Experience}`,
+    sectionHeading("volunteer"),
     String.raw`\vspace{-1pt}`,
     String.raw`\resumeSubHeadingListStart`,
   ];
@@ -321,7 +369,7 @@ function languagesSection(languages: string[]): string {
   if (!items.length) return "";
   const list = items.map(escapeLatex).join(", ");
   return [
-    String.raw`\section{Languages}`,
+    sectionHeading("languages"),
     String.raw`\vspace{2pt}`,
     String.raw`\resumeSubHeadingListStart`,
     `\\small{\\item{\\textbf{Languages:} { ${list} }}}`,
@@ -335,7 +383,7 @@ function courseworkSection(coursework: BuilderCoursework | undefined): string {
   const minor = nonEmpty(coursework?.minor_coursework ?? []);
   if (!major.length && !minor.length) return "";
   const lines = [
-    String.raw`\section{Relevant Coursework}`,
+    sectionHeading("coursework"),
     String.raw`\vspace{2pt}`,
     String.raw`\resumeSubHeadingListStart`,
     String.raw`\small{\item{`,
@@ -386,23 +434,40 @@ const SECTION_GENERATORS: Record<SectionName, (p: BuilderProfile) => string> = {
   coursework: (p) => courseworkSection(p.coursework),
 };
 
-/** Build the complete LaTeX document for a builder profile. */
-export function generateLatexContent(profile: BuilderProfile): string {
+/**
+ * The exact section sequence this profile will be printed in.
+ *
+ * The field's default order first, then any section the user filled in that
+ * the default omits — dropping that data would be worse than an unusual order.
+ * Exported because the live preview must render the same sequence; while the
+ * preview kept its own hard-coded order it was simply wrong about the CV.
+ */
+export function resolveSectionOrder(profile: BuilderProfile): SectionName[] {
   const field = isProfessionalField(profile.professional_field)
     ? profile.professional_field
     : "general";
 
   const order: SectionName[] = [...FIELD_SECTION_ORDER[field]];
-  // Sections the user filled in that their field's default order omits still
-  // belong on the page — append them rather than dropping the data.
-  for (const name of Object.keys(SECTION_GENERATORS) as SectionName[]) {
-    if (!order.includes(name)) {
-      const value = (profile as unknown as Record<string, unknown>)[name];
-      if (Array.isArray(value) ? value.length > 0 : Boolean(value)) {
-        order.push(name);
-      }
-    }
+  for (const name of SECTION_NAMES) {
+    if (order.includes(name)) continue;
+    const value = (profile as unknown as Record<string, unknown>)[name];
+    const filled =
+      name === "coursework"
+        ? Boolean(
+            profile.coursework?.major_coursework?.length ||
+              profile.coursework?.minor_coursework?.length,
+          )
+        : Array.isArray(value)
+          ? value.length > 0
+          : Boolean(value);
+    if (filled) order.push(name);
   }
+  return order;
+}
+
+/** Build the complete LaTeX document for a builder profile. */
+export function generateLatexContent(profile: BuilderProfile): string {
+  const order = resolveSectionOrder(profile);
 
   const sections: string[] = [];
   for (const name of order) {

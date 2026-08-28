@@ -21,6 +21,11 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import {
+  FIELD_SECTION_ORDER,
+  SECTION_LABELS,
+} from "@/lib/builder/latex-engine";
+import { FIELD_CONFIG, LINK_LABELS } from "@/lib/builder/field-config";
 import type { ProfessionalField } from "@/lib/builder/types";
 
 const FIELDS: Array<{
@@ -42,11 +47,29 @@ const FIELDS: Array<{
   { key: "general", Icon: Briefcase, label: "General", desc: "Any profession, all-purpose CV", color: "#60a5fa" },
 ];
 
+/**
+ * Spell out what the choice actually changes.
+ *
+ * "Unable to understand what difference it makes" was the complaint, and it was
+ * fair: the picker asserted an effect but never showed it. Each card now names
+ * the section sequence it produces, which is the whole of the difference —
+ * plus the contact links shown by default and the skill groups suggested.
+ */
+function sectionSummary(field: ProfessionalField): string {
+  return FIELD_SECTION_ORDER[field]
+    .map((name) => SECTION_LABELS[name])
+    .join(" → ");
+}
+
+function linkSummary(field: ProfessionalField): string {
+  return FIELD_CONFIG[field].primaryLinks.map((k) => LINK_LABELS[k]).join(", ");
+}
+
 export function FieldPicker({
   selected,
   onSelect,
   title = "Which industry are you in?",
-  subtitle = "This decides which sections appear on your CV and in what order.",
+  subtitle = "It sets the order your CV sections are printed in, which contact links show by default, and which skill groups are suggested. Nothing is deleted — you can change it any time and every section you filled in still prints.",
 }: {
   selected?: ProfessionalField;
   onSelect: (field: ProfessionalField) => void;
@@ -68,7 +91,7 @@ export function FieldPicker({
               type="button"
               onClick={() => onSelect(key)}
               aria-pressed={active}
-              className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+              className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors ${
                 active
                   ? "border-primary bg-primary/10"
                   : "border-outline-variant hover:bg-[var(--ghost-hover)]"
@@ -87,13 +110,21 @@ export function FieldPicker({
                 <span className="block text-[12px] text-on-surface-variant truncate">
                   {desc}
                 </span>
+                <span className="mt-1 block text-[11px] leading-snug text-on-surface-variant">
+                  <span className="font-semibold">Sections:</span>{" "}
+                  {sectionSummary(key)}
+                </span>
+                <span className="block text-[11px] leading-snug text-on-surface-variant">
+                  <span className="font-semibold">Links shown:</span>{" "}
+                  {linkSummary(key)}
+                </span>
               </span>
               {active ? (
-                <span className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-primary">
                   Selected
                 </span>
               ) : (
-                <ArrowRight size={16} className="text-on-surface-variant" />
+                <ArrowRight size={16} className="shrink-0 text-on-surface-variant" />
               )}
             </button>
           );

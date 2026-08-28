@@ -5,9 +5,15 @@
  *
  * Renders an A4 facsimile of what the LaTeX build will produce, so the user
  * sees their CV take shape while typing instead of waiting on a PDF round trip.
- * Section visibility follows the chosen professional field.
+ *
+ * Everything here is driven by the same helpers the PDF uses:
+ * `resolveSectionOrder` for the sequence and `SECTION_LABELS` for the headings.
+ * The old version hard-coded its own order and its own titles, so a tech CV
+ * previewed as Experience-then-Education while the PDF printed
+ * Education-then-Experience, and the header showed raw URLs where the PDF
+ * prints labelled links. Anything shown here must be derived, never restated.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import {
   FileText,
   Globe,
@@ -19,6 +25,11 @@ import {
   Phone,
   Plus,
 } from "lucide-react";
+import {
+  SECTION_LABELS,
+  resolveSectionOrder,
+  type SectionName,
+} from "@/lib/builder/latex-engine";
 import type { BuilderProfile } from "@/lib/builder/types";
 import "./live-preview.css";
 
@@ -26,43 +37,311 @@ const ICON = 11;
 /** A4 at 96dpi — 210mm x 297mm. */
 const PAGE_W = 794;
 const PAGE_H = 1122;
-const CONTAINER_PADDING = 16;
-
-function clean(url: string): string {
-  return url.replace(/^https?:\/\//, "").replace(/^www\./, "");
-}
+const CONTAINER_PADDING = 10;
 
 function filled(values: string[] | undefined): string[] {
   return (values ?? []).filter((v) => v && v.trim());
 }
 
-export function LivePreview({
-  data,
-  activeSections,
+/** Same rule as the LaTeX header: a link prints as its label, not its URL. */
+function ContactLink({
+  href,
+  label,
+  icon,
 }: {
-  data: BuilderProfile;
-  activeSections: string[];
+  href: string;
+  label: string;
+  icon: "link" | "globe";
 }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  return (
+    <span className="lp-contact-item">
+      {icon === "globe" ? <Globe size={ICON} /> : <LinkIcon size={ICON} />}
+      <a href={href} target="_blank" rel="noreferrer">
+        {label}
+      </a>
+    </span>
+  );
+}
+
+/** Bold left / plain right, the shape of every \resumeSubheading row. */
+function ItemRow({
+  left,
+  right,
+  italic = false,
+}: {
+  left: React.ReactNode;
+  right?: React.ReactNode;
+  italic?: boolean;
+}) {
+  if (!left && !right) return null;
+  return (
+    <div className={`lp-item-header ${italic ? "lp-item-sub-row" : ""}`}>
+      <span className="lp-item-left">{left}</span>
+      <span className="lp-item-right">{right}</span>
+    </div>
+  );
+}
+
+function dateRange(start?: string, end?: string): string {
+  const from = start?.trim();
+  const to = end?.trim();
+  if (from && to) return `${from} – ${to}`;
+  return from || to || "";
+}
+
+/**
+ * One renderer per section, keyed exactly like the LaTeX generators.
+ * Returning null is how a section drops out — same condition the engine uses,
+ * so the preview never shows a heading the PDF will omit.
+ */
+const SECTION_RENDERERS: Record<
+  SectionName,
+  (data: BuilderProfile) => React.ReactNode | null
+> = {
+  summary: (data) =>
+    data.professional_summary?.trim() ? (
+      <div className="lp-summary-text">{data.professional_summary}</div>
+    ) : null,
+
+  education: (data) =>
+    data.education?.some((e) => e.institution) ? (
+      <>
+        {data.education.map((edu, i) => (
+          <div key={i} className="lp-item">
+            <ItemRow left={<strong>{edu.institution}</strong>} right={edu.location} />
+            <ItemRow
+              italic
+              left={<i>{edu.degree}</i>}
+              right={<i>{edu.graduation_date}</i>}
+            />
+            {edu.gpa ? (
+              <ul className="lp-bullets">
+                <li>GPA: {edu.gpa}</li>
+              </ul>
+            ) : null}
+          </div>
+        ))}
+      </>
+    ) : null,
+
+  experience: (data) =>
+    data.experience?.some((e) => e.company) ? (
+      <>
+        {data.experience.map((exp, i) => (
+          <div key={i} className="lp-item">
+            <ItemRow left={<strong>{exp.company}</strong>} right={exp.location} />
+            <ItemRow
+              italic
+              left={<i>{exp.role}</i>}
+              right={<i>{dateRange(exp.start_date, exp.end_date)}</i>}
+            />
+            <ul className="lp-bullets">
+              {filled(exp.description).map((desc, j) => (
+                <li key={j}>{desc}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </>
+    ) : null,
+
+  projects: (data) =>
+    data.projects?.some((p) => p.name) ? (
+      <>
+        {data.projects.map((proj, i) => (
+          <div key={i} className="lp-item">
+            <ItemRow
+              left={<strong>{proj.name}</strong>}
+              right={
+                <>
+                  {proj.demo_link ? (
+                    <a
+                      className="lp-demo-link"
+                      href={proj.demo_link}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Demo
+                    </a>
+                  ) : null}
+                  {proj.technologies ? <i>{proj.technologies}</i> : null}
+                </>
+              }
+            />
+            <ul className="lp-bullets">
+              {filled(proj.description).map((desc, j) => (
+                <li key={j}>{desc}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </>
+    ) : null,
+
+  skills: (data) =>
+    data.skills?.length ? (
+      <div className="lp-skills-list">
+        {data.skills
+          .filter((cat) => cat.category_name || filled(cat.skills).length > 0)
+          .map((cat, i) => (
+            <div key={i} className="lp-skill-row">
+              {cat.category_name && <strong>{cat.category_name}: </strong>}
+              <span>{filled(cat.skills).join(", ")}</span>
+            </div>
+          ))}
+      </div>
+    ) : null,
+
+  certifications: (data) =>
+    filled(data.certifications).length ? (
+      <ul className="lp-bullets">
+        {filled(data.certifications).map((cert, i) => (
+          <li key={i}>{cert}</li>
+        ))}
+      </ul>
+    ) : null,
+
+  publications: (data) =>
+    data.publications?.some((p) => p.title) ? (
+      <>
+        {data.publications.map((pub, i) => (
+          <div key={i} className="lp-item">
+            <ItemRow left={<strong>{pub.title}</strong>} right={<i>{pub.date}</i>} />
+            {pub.publisher ? (
+              <div className="lp-item-sub">
+                <i>{pub.publisher}</i>
+              </div>
+            ) : null}
+            {pub.summary ? (
+              <ul className="lp-bullets">
+                <li>{pub.summary}</li>
+              </ul>
+            ) : null}
+          </div>
+        ))}
+      </>
+    ) : null,
+
+  awards: (data) =>
+    data.awards?.some((a) => a.title) ? (
+      <>
+        {data.awards.map((award, i) => (
+          <div key={i} className="lp-item">
+            <ItemRow left={<strong>{award.title}</strong>} right={<i>{award.date}</i>} />
+            {award.awarder ? (
+              <div className="lp-item-sub">
+                <i>{award.awarder}</i>
+              </div>
+            ) : null}
+            {award.summary ? (
+              <ul className="lp-bullets">
+                <li>{award.summary}</li>
+              </ul>
+            ) : null}
+          </div>
+        ))}
+      </>
+    ) : null,
+
+  volunteer: (data) =>
+    data.volunteer?.some((v) => v.organization) ? (
+      <>
+        {data.volunteer.map((vol, i) => (
+          <div key={i} className="lp-item">
+            <ItemRow left={<strong>{vol.organization}</strong>} />
+            <ItemRow
+              italic
+              left={<i>{vol.role}</i>}
+              right={<i>{dateRange(vol.start_date, vol.end_date)}</i>}
+            />
+            <ul className="lp-bullets">
+              {filled(vol.description).map((desc, j) => (
+                <li key={j}>{desc}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </>
+    ) : null,
+
+  languages: (data) =>
+    filled(data.languages).length ? (
+      <div className="lp-skill-row">
+        <strong>Languages: </strong>
+        <span>{filled(data.languages).join(", ")}</span>
+      </div>
+    ) : null,
+
+  coursework: (data) => {
+    const major = filled(data.coursework?.major_coursework);
+    const minor = filled(data.coursework?.minor_coursework);
+    if (!major.length && !minor.length) return null;
+    return (
+      <div className="lp-skills-list">
+        {major.length > 0 && (
+          <div className="lp-skill-row">
+            <strong>Major coursework: </strong>
+            <span>{major.join(", ")}</span>
+          </div>
+        )}
+        {minor.length > 0 && (
+          <div className="lp-skill-row">
+            <strong>Minor coursework: </strong>
+            <span>{minor.join(", ")}</span>
+          </div>
+        )}
+      </div>
+    );
+  },
+};
+
+export function LivePreview({ data }: { data: BuilderProfile }) {
+  // Callback refs, not useRef: the empty state returns before these nodes
+  // exist, so an effect keyed on a ref object would run once against null and
+  // never re-attach once the user starts typing.
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const [pageEl, setPageEl] = useState<HTMLDivElement | null>(null);
   const [manualZoom, setManualZoom] = useState<number | null>(null);
   const [fitScale, setFitScale] = useState(1);
+  /** Unscaled height of the sheet — grows past A4 as content is added. */
+  const [pageHeight, setPageHeight] = useState(PAGE_H);
 
   // Scale is computed here rather than in CSS: a pure-CSS scale leaves the
   // wrapper at full page width, so the A4 sheet overflows a narrower column and
   // gets clipped on both sides. With the factor in JS the outer box can be
   // sized to the *scaled* result, which always fits.
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (!scrollEl) return;
     const update = () => {
-      const available = el.clientWidth - CONTAINER_PADDING * 2;
-      setFitScale(Math.min(1, Math.max(0.2, available / PAGE_W)));
+      const available = scrollEl.clientWidth - CONTAINER_PADDING * 2;
+      const next = Math.min(1, Math.max(0.2, available / PAGE_W));
+      // Quantised, and only committed when it actually moves: belt and braces
+      // against the observer re-entering on a sub-pixel width change.
+      setFitScale((current) =>
+        Math.abs(current - next) < 0.002 ? current : Math.round(next * 500) / 500,
+      );
     };
     const observer = new ResizeObserver(update);
-    observer.observe(el);
+    observer.observe(scrollEl);
     update();
     return () => observer.disconnect();
-  }, []);
+  }, [scrollEl]);
+
+  // A transformed element still reports its untransformed height, so the
+  // wrapper (which is what the scroll container actually sees) has to be told
+  // how tall the scaled sheet is. Without this the wrapper stayed one page
+  // tall and everything below the fold was unreachable.
+  useLayoutEffect(() => {
+    if (!pageEl) return;
+    const update = () => {
+      const next = Math.max(PAGE_H, pageEl.scrollHeight);
+      setPageHeight((current) => (current === next ? current : next));
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(pageEl);
+    update();
+    return () => observer.disconnect();
+  }, [pageEl]);
 
   const scale = manualZoom ?? fitScale;
 
@@ -76,13 +355,90 @@ export function LivePreview({
     );
   }
 
-  const show = (name: string) => activeSections.includes(name);
+  const contact = data.contact ?? {};
+  const order = resolveSectionOrder(data);
+  const sections = order
+    .map((name) => ({ name, body: SECTION_RENDERERS[name](data) }))
+    .filter((s) => s.body !== null);
 
   return (
-    <div
-      className={`live-preview-container ${manualZoom !== null ? "is-zoomed" : ""}`}
-      ref={containerRef}
-    >
+    <div className="live-preview-shell">
+      <div className="live-preview-scroll" ref={setScrollEl}>
+        {/* Outer box is sized to the scaled page so the column never overflows
+            sideways, while its height lets the scroller reach the last line. */}
+        <div
+          className="live-preview-page-wrapper"
+          style={{ width: PAGE_W * scale, height: pageHeight * scale }}
+        >
+          <div
+            className="live-preview-page"
+            ref={setPageEl}
+            style={{ transform: `scale(${scale})` }}
+          >
+            <div className="lp-header">
+              <h1 className="lp-name">{data.name}</h1>
+              {/* Same items, same order, same labels as headerSection(). */}
+              <div className="lp-contact">
+                {contact.phone && (
+                  <span className="lp-contact-item">
+                    <Phone size={ICON} /> {contact.phone}
+                  </span>
+                )}
+                {contact.email && (
+                  <span className="lp-contact-item">
+                    <Mail size={ICON} /> {contact.email}
+                  </span>
+                )}
+                {contact.linkedin && (
+                  <ContactLink href={contact.linkedin} label="LinkedIn" icon="link" />
+                )}
+                {contact.github && (
+                  <ContactLink href={contact.github} label="GitHub" icon="link" />
+                )}
+                {contact.portfolio && (
+                  <ContactLink href={contact.portfolio} label="Portfolio" icon="globe" />
+                )}
+                {contact.website && (
+                  <ContactLink href={contact.website} label="Website" icon="globe" />
+                )}
+                {contact.twitter && (
+                  <ContactLink href={contact.twitter} label="Twitter" icon="link" />
+                )}
+                {contact.location && (
+                  <span className="lp-contact-item">
+                    <MapPin size={ICON} /> {contact.location}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {sections.map(({ name, body }) => (
+              <div key={name} className="lp-section">
+                <h2 className="lp-section-title">{SECTION_LABELS[name]}</h2>
+                {body}
+              </div>
+            ))}
+
+            {/* Custom sections print after everything else, as in the engine. */}
+            {(data.custom_sections ?? []).map((cs, i) => {
+              const items = filled(cs.items);
+              if (!cs.title || items.length === 0) return null;
+              return (
+                <div key={`custom-${i}`} className="lp-section">
+                  <h2 className="lp-section-title">{cs.title}</h2>
+                  <ul className="lp-bullets">
+                    {items.map((item, j) => (
+                      <li key={j}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Outside the scroller so the controls stay put while the CV scrolls. */}
       <div className="live-preview-controls">
         <button
           type="button"
@@ -110,258 +466,6 @@ export function LivePreview({
             <Maximize size={16} />
           </button>
         )}
-      </div>
-
-      {/* Outer box is sized to the scaled page so the column never overflows. */}
-      <div
-        className="live-preview-page-wrapper"
-        style={{ width: PAGE_W * scale, height: PAGE_H * scale }}
-      >
-        <div
-          className="live-preview-page"
-          style={{ transform: `scale(${scale})` }}
-        >
-          <div className="lp-header">
-            <h1 className="lp-name">{data.name}</h1>
-            <div className="lp-contact">
-              {data.contact?.email && (
-                <span className="lp-contact-item">
-                  <Mail size={ICON} /> {data.contact.email}
-                </span>
-              )}
-              {data.contact?.phone && (
-                <span className="lp-contact-item">
-                  <Phone size={ICON} /> {data.contact.phone}
-                </span>
-              )}
-              {data.contact?.location && (
-                <span className="lp-contact-item">
-                  <MapPin size={ICON} /> {data.contact.location}
-                </span>
-              )}
-              {data.contact?.linkedin && (
-                <span className="lp-contact-item">
-                  <LinkIcon size={ICON} /> {clean(data.contact.linkedin)}
-                </span>
-              )}
-              {data.contact?.github && (
-                <span className="lp-contact-item">
-                  <LinkIcon size={ICON} /> {clean(data.contact.github)}
-                </span>
-              )}
-              {data.contact?.portfolio && (
-                <span className="lp-contact-item">
-                  <Globe size={ICON} /> {clean(data.contact.portfolio)}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {show("summary") && data.professional_summary && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Summary</h2>
-              <div className="lp-summary-text">{data.professional_summary}</div>
-            </div>
-          )}
-
-          {show("experience") && data.experience?.some((e) => e.company) && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Experience</h2>
-              {data.experience.map((exp, i) => (
-                <div key={i} className="lp-item">
-                  <div className="lp-item-header">
-                    <strong>{exp.role || "Role"}</strong>
-                    <span>
-                      {exp.start_date}
-                      {exp.end_date ? ` - ${exp.end_date}` : ""}
-                    </span>
-                  </div>
-                  <div className="lp-item-sub">
-                    <i>{exp.company}</i>
-                    {exp.location ? `, ${exp.location}` : ""}
-                  </div>
-                  <ul className="lp-bullets">
-                    {filled(exp.description).map((desc, j) => (
-                      <li key={j}>{desc}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {show("education") && data.education?.some((e) => e.institution) && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Education</h2>
-              {data.education.map((edu, i) => (
-                <div key={i} className="lp-item">
-                  <div className="lp-item-header">
-                    <strong>{edu.institution || "Institution"}</strong>
-                    <span>{edu.graduation_date}</span>
-                  </div>
-                  <div className="lp-item-sub">
-                    {edu.degree}
-                    {edu.gpa ? ` (GPA: ${edu.gpa})` : ""}
-                    {edu.location ? `, ${edu.location}` : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {show("projects") && data.projects?.some((p) => p.name) && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Projects</h2>
-              {data.projects.map((proj, i) => (
-                <div key={i} className="lp-item">
-                  <div className="lp-item-header">
-                    <strong>{proj.name}</strong>
-                    {proj.technologies && <span>{proj.technologies}</span>}
-                  </div>
-                  {proj.demo_link && (
-                    <div className="lp-item-sub">{clean(proj.demo_link)}</div>
-                  )}
-                  <ul className="lp-bullets">
-                    {filled(proj.description).map((desc, j) => (
-                      <li key={j}>{desc}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {show("skills") && data.skills?.length > 0 && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Skills</h2>
-              <div className="lp-skills-list">
-                {data.skills
-                  .filter(
-                    (cat) => cat.category_name || filled(cat.skills).length > 0,
-                  )
-                  .map((cat, i) => (
-                    <div key={i} className="lp-skill-row">
-                      {cat.category_name && <strong>{cat.category_name}: </strong>}
-                      <span>{filled(cat.skills).join(", ")}</span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
-
-          {show("certifications") && filled(data.certifications).length > 0 && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Certifications</h2>
-              <ul className="lp-bullets">
-                {filled(data.certifications).map((cert, i) => (
-                  <li key={i}>{cert}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {show("publications") && data.publications?.some((p) => p.title) && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Publications</h2>
-              {data.publications.map((pub, i) => (
-                <div key={i} className="lp-item">
-                  <strong>{pub.title}</strong>
-                  {pub.publisher && <span> — {pub.publisher}</span>}
-                  {pub.date && <span> ({pub.date})</span>}
-                  {pub.summary && (
-                    <div className="lp-summary-text">{pub.summary}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {show("awards") && data.awards?.some((a) => a.title) && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Awards</h2>
-              {data.awards.map((award, i) => (
-                <div key={i} className="lp-item">
-                  <strong>{award.title}</strong>
-                  {award.awarder && <span> — {award.awarder}</span>}
-                  {award.date && <span> ({award.date})</span>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {show("volunteer") && data.volunteer?.some((v) => v.organization) && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Volunteer Experience</h2>
-              {data.volunteer.map((vol, i) => (
-                <div key={i} className="lp-item">
-                  <div className="lp-item-header">
-                    <strong>{vol.role || "Role"}</strong>
-                    <span>
-                      {vol.start_date}
-                      {vol.end_date ? ` - ${vol.end_date}` : ""}
-                    </span>
-                  </div>
-                  <div className="lp-item-sub">
-                    <i>{vol.organization}</i>
-                  </div>
-                  <ul className="lp-bullets">
-                    {filled(vol.description).map((desc, j) => (
-                      <li key={j}>{desc}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {show("languages") && filled(data.languages).length > 0 && (
-            <div className="lp-section">
-              <h2 className="lp-section-title">Languages</h2>
-              <div className="lp-skills-list">
-                {filled(data.languages).join(", ")}
-              </div>
-            </div>
-          )}
-
-          {show("coursework") &&
-            (filled(data.coursework?.major_coursework).length > 0 ||
-              filled(data.coursework?.minor_coursework).length > 0) && (
-              <div className="lp-section">
-                <h2 className="lp-section-title">Relevant Coursework</h2>
-                {filled(data.coursework?.major_coursework).length > 0 && (
-                  <div className="lp-skill-row">
-                    <strong>Major: </strong>
-                    <span>
-                      {filled(data.coursework?.major_coursework).join(", ")}
-                    </span>
-                  </div>
-                )}
-                {filled(data.coursework?.minor_coursework).length > 0 && (
-                  <div className="lp-skill-row">
-                    <strong>Minor: </strong>
-                    <span>
-                      {filled(data.coursework?.minor_coursework).join(", ")}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-          {(data.custom_sections ?? []).map((cs, i) => {
-            const items = filled(cs.items);
-            if (!cs.title || items.length === 0) return null;
-            return (
-              <div key={`custom-${i}`} className="lp-section">
-                <h2 className="lp-section-title">{cs.title}</h2>
-                <ul className="lp-bullets">
-                  {items.map((item, j) => (
-                    <li key={j}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
       </div>
     </div>
   );

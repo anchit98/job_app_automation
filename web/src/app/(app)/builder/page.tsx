@@ -27,6 +27,8 @@ export default async function BuilderPage() {
       initialVersions={loaded.versions}
       hasChosenField={loaded.has_profile}
       googleConnected={googleState === true}
+      initialMasterSource={loaded.master_source}
+      initialMasterSourceRef={loaded.master_source_ref}
     />
   );
 }

@@ -58,16 +58,29 @@ export class DocsClient {
   }
 
   /**
-   * Replace a document's whole body with the given lines, applying real list
-   * bullets to the ones marked as bullets.
+   * Replace a document's whole body with the given lines, restoring the
+   * structure the conversion lost: real list bullets, section headings as
+   * actual Docs headings, and bold sub-headers for role / project lines.
    *
    * Used for PDF imports: Drive's conversion produces one giant paragraph per
    * role with no list formatting, so the Doc is rebuilt from normalized lines
-   * before master-sync reads it.
+   * before master-sync reads it. The rebuild used to emit flat body text, which
+   * left the reader with no section hierarchy at all — the headings looked
+   * exactly like the bullets under them. Style is re-applied per line kind so
+   * the rebuilt Doc reads like the resume it came from.
    */
   async rewriteBody(
     docId: string,
-    lines: Array<{ text: string; bullet: boolean }>,
+    lines: Array<{
+      text: string;
+      bullet: boolean;
+      /** A section heading — EXPERIENCE, SKILLS, EDUCATION… */
+      heading?: boolean;
+      /** A role / project / degree line: bold, but not a section. */
+      subheading?: boolean;
+      /** The candidate's name at the top of the page. */
+      title?: boolean;
+    }>,
   ): Promise<void> {
     const doc = await this.getDocument(docId);
     const endIndex = doc.body?.content?.at(-1)?.endIndex ?? 2;
@@ -108,9 +121,85 @@ export class DocsClient {
       }
     });
 
+    // Style requests run before the bullet requests and therefore against the
+    // same plain-text indices used above — no offset bookkeeping needed.
+    const styleRequests: docs_v1.Schema$Request[] = [];
+    let styleCursor = 1;
+    for (const line of lines) {
+      const startIndex = styleCursor;
+      const endIndex = styleCursor + line.text.length + 1;
+      styleCursor = endIndex;
+      const range = { startIndex, endIndex };
+
+      if (line.title) {
+        styleRequests.push(
+          {
+            updateParagraphStyle: {
+              range,
+              paragraphStyle: { namedStyleType: "TITLE", alignment: "CENTER" },
+              fields: "namedStyleType,alignment",
+            },
+          },
+          {
+            updateTextStyle: {
+              range,
+              textStyle: { bold: true },
+              fields: "bold",
+            },
+          },
+        );
+        continue;
+      }
+
+      if (line.heading) {
+        styleRequests.push(
+          {
+            updateParagraphStyle: {
+              range,
+              paragraphStyle: {
+                // A real named heading, so the Doc gets an outline and the
+                // section hierarchy survives round trips through Docs.
+                namedStyleType: "HEADING_2",
+                spaceAbove: { magnitude: 10, unit: "PT" },
+                spaceBelow: { magnitude: 2, unit: "PT" },
+              },
+              fields: "namedStyleType,spaceAbove,spaceBelow",
+            },
+          },
+          {
+            // Docs' stock HEADING_2 is large and blue; a resume section is
+            // black, bold and only slightly larger than the body.
+            updateTextStyle: {
+              range,
+              textStyle: {
+                bold: true,
+                fontSize: { magnitude: 12, unit: "PT" },
+                foregroundColor: {
+                  color: { rgbColor: { red: 0, green: 0, blue: 0 } },
+                },
+              },
+              fields: "bold,fontSize,foregroundColor",
+            },
+          },
+        );
+        continue;
+      }
+
+      if (line.subheading) {
+        styleRequests.push({
+          updateTextStyle: {
+            range,
+            textStyle: { bold: true },
+            fields: "bold",
+          },
+        });
+      }
+    }
+
     await this.batchUpdate(docId, [
       ...clearRequests,
       { insertText: { location: { index: 1 }, text: body } },
+      ...styleRequests,
       ...bulletRanges.reverse().map((range) => ({
         createParagraphBullets: {
           range: { startIndex: range.start, endIndex: range.end },
@@ -118,6 +207,21 @@ export class DocsClient {
         },
       })),
     ]);
+  }
+
+  /**
+   * How many paragraphs already carry list formatting.
+   *
+   * A conversion that produced real bullets kept the original structure, and
+   * rebuilding it from plain text would throw that away — see
+   * convertedDocNeedsRepair.
+   */
+  static countBulletParagraphs(doc: docs_v1.Schema$Document): number {
+    let count = 0;
+    for (const el of doc.body?.content ?? []) {
+      if (el.paragraph?.bullet) count += 1;
+    }
+    return count;
   }
 
   /** Insert plain text at the start of a new/empty document. */

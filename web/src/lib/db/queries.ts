@@ -63,6 +63,9 @@ function mapMasterResume(row: Record<string, unknown>): MasterResume {
     doc_id: (row.doc_id as string | null) ?? null,
     doc_layout: parseJson(row.doc_layout as string | null, null),
     doc_synced_at: (row.doc_synced_at as string | null) ?? null,
+    source: (row.source as MasterResume["source"] | null) ?? null,
+    source_label: (row.source_label as string | null) ?? null,
+    source_ref: (row.source_ref as string | null) ?? null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -303,6 +306,10 @@ export async function upsertMasterResumeRow(input: {
   doc_id?: string | null;
   doc_layout?: Record<string, unknown> | null;
   doc_synced_at?: string | null;
+  /** Omit to keep whatever source is already recorded. */
+  source?: MasterResume["source"];
+  source_label?: string | null;
+  source_ref?: string | null;
   userId?: string;
 }) {
   const uid = await currentUserId(input.userId);
@@ -314,20 +321,37 @@ export async function upsertMasterResumeRow(input: {
     input.doc_synced_at !== undefined
       ? input.doc_synced_at
       : existing?.doc_synced_at ?? null;
+  // The three source columns move together: a caller that names a new source
+  // replaces the label and ref too, so a stale label can never outlive it.
+  const source = input.source !== undefined ? input.source : existing?.source ?? null;
+  const source_label =
+    input.source !== undefined
+      ? input.source_label ?? null
+      : existing?.source_label ?? null;
+  const source_ref =
+    input.source !== undefined
+      ? input.source_ref ?? null
+      : existing?.source_ref ?? null;
 
-  await dbRun(`INSERT INTO master_resume (user_id, content, rules, doc_id, doc_layout, doc_synced_at)
-       VALUES (?, ?, ?, ?, ?, ?)
+  await dbRun(`INSERT INTO master_resume (user_id, content, rules, doc_id, doc_layout, doc_synced_at, source, source_label, source_ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (user_id) DO UPDATE SET
          content = excluded.content,
          rules = excluded.rules,
          doc_id = excluded.doc_id,
          doc_layout = excluded.doc_layout,
-         doc_synced_at = excluded.doc_synced_at`, uid,
+         doc_synced_at = excluded.doc_synced_at,
+         source = excluded.source,
+         source_label = excluded.source_label,
+         source_ref = excluded.source_ref`, uid,
       toJsonText(input.content) ?? "{}",
       toJsonText(input.rules ?? { never_fabricate: true }) ?? "{}",
       doc_id,
       toJsonText(doc_layout),
-      doc_synced_at,);
+      doc_synced_at,
+      source,
+      source_label,
+      source_ref,);
 }
 
 export async function getActivePromptTemplate(kind: string): Promise<PromptTemplate | null> {

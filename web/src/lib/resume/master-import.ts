@@ -10,12 +10,16 @@
  * it: device upload, Drive file pick, and the resume builder.
  */
 import { DocsClient, extractParagraphText } from "@/lib/google/docs";
+import type { MasterResumeSource } from "@/lib/db/types";
 import { DriveClient } from "@/lib/google/drive";
 import { explainGoogleDocFetchError } from "@/lib/google/docs-url";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { upsertMasterResumeRow } from "@/lib/db/queries";
 import { syncMasterResumeFromDoc } from "@/lib/resume/master-sync";
-import { normalizeConvertedPdfParagraphs } from "@/lib/resume/pdf-doc-normalize";
+import {
+  convertedDocNeedsRepair,
+  normalizeConvertedPdfParagraphs,
+} from "@/lib/resume/pdf-doc-normalize";
 import { writeAuditLog } from "@/lib/audit";
 
 export const PDF_MIME = "application/pdf";
@@ -81,6 +85,15 @@ export type MasterImportResult =
     })
   | MasterSyncFailure;
 
+/** Which of the four import routes produced the master currently in use. */
+export interface MasterSourceInfo {
+  source: MasterResumeSource;
+  /** Shown to the user: file name, Doc title, or the built CV's field. */
+  label?: string | null;
+  /** Builder version id / Drive file id / Doc id, for exact matching. */
+  ref?: string | null;
+}
+
 /**
  * Shared tail of every entry point: read the Doc, snapshot it as the app-owned
  * template, persist, audit. `sourceDocId` must be a readable Google Doc.
@@ -90,6 +103,7 @@ export async function syncFromReadableDoc(
   drive: DriveClient,
   sourceDocId: string,
   auditExtra: Record<string, unknown> = {},
+  sourceInfo?: MasterSourceInfo,
 ): Promise<MasterSyncSuccess> {
   const synced = await syncMasterResumeFromDoc(docs, sourceDocId);
   const templateDocId = await drive.ensureMasterTemplateCopy(sourceDocId);
@@ -101,6 +115,15 @@ export async function syncFromReadableDoc(
     doc_id: templateDocId,
     doc_layout: layout as unknown as Record<string, unknown>,
     doc_synced_at: syncedAt,
+    // Only overwrite the recorded source when this caller knows one — a
+    // re-sync of the same Doc must not blank out "built in the app".
+    ...(sourceInfo
+      ? {
+          source: sourceInfo.source,
+          source_label: sourceInfo.label ?? null,
+          source_ref: sourceInfo.ref ?? null,
+        }
+      : {}),
   });
 
   await writeAuditLog("master_resume.doc_synced", "master_resume", "1", {
@@ -108,6 +131,7 @@ export async function syncFromReadableDoc(
     template_doc_id: templateDocId,
     slot_count: layout.slots.length,
     sync_mode: sync_mode ?? "heuristic",
+    master_source: sourceInfo?.source ?? null,
     ...auditExtra,
   });
 
@@ -146,6 +170,7 @@ export async function importBytesAndSync(
   sourceMime: ImportableMime,
   displayName: string,
   auditExtra: Record<string, unknown>,
+  sourceInfo?: MasterSourceInfo,
 ): Promise<MasterImportResult> {
   const auth = await getGoogleAuthClient();
   const docs = new DocsClient(auth);
@@ -164,21 +189,34 @@ export async function importBytesAndSync(
       sourceMime,
     );
 
-    // Only PDFs need repair. Drive's PDF import glues each role header and all
+    // Only PDFs need repair. Drive's PDF import can glue a role header and all
     // its bullets into one paragraph with no list formatting, so a three-role
     // resume would parse as one. Word imports keep real paragraphs and bullets
     // already — rebuilding those would throw away good structure.
+    //
+    // Even for PDFs the rebuild is now conditional: it replaces the body with
+    // plain text, so running it on a conversion that already came out clean
+    // destroyed formatting for no gain. convertedDocNeedsRepair looks for the
+    // actual damage first, and the rebuild carries heading / sub-heading /
+    // bullet levels through so the hierarchy survives when it does run.
     if (sourceMime === PDF_MIME) {
       const converted = await docs.getDocument(convertedDocId);
-      const normalized = normalizeConvertedPdfParagraphs(
-        extractParagraphText(converted),
+      const rawParagraphs = extractParagraphText(converted);
+      const normalized = normalizeConvertedPdfParagraphs(rawParagraphs);
+      const needsRepair = convertedDocNeedsRepair(
+        rawParagraphs,
+        normalized,
+        DocsClient.countBulletParagraphs(converted),
       );
-      if (normalized.length > 0) {
+      if (normalized.length > 0 && needsRepair) {
         await docs.rewriteBody(
           convertedDocId,
           normalized.map((line) => ({
             text: line.text,
             bullet: line.kind === "bullet",
+            heading: line.kind === "heading",
+            subheading: line.kind === "subheading",
+            title: line.kind === "title",
           })),
         );
       }
@@ -189,12 +227,18 @@ export async function importBytesAndSync(
   }
 
   try {
-    const result = await syncFromReadableDoc(docs, drive, convertedDocId, {
-      ...auditExtra,
-      source_mime: sourceMime,
-      source_bytes: buffer.length,
-      source_name: displayName || null,
-    });
+    const result = await syncFromReadableDoc(
+      docs,
+      drive,
+      convertedDocId,
+      {
+        ...auditExtra,
+        source_mime: sourceMime,
+        source_bytes: buffer.length,
+        source_name: displayName || null,
+      },
+      sourceInfo,
+    );
     return {
       ...result,
       converted_doc_id: convertedDocId,
