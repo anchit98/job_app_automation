@@ -4,17 +4,11 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import {
   getFollowUpDraftStatus,
-  manualSendFollowUp,
   runFollowUpNow,
 } from "@/app/actions/follow-ups";
 import { armExtensionForPromptRun } from "@/app/actions/extension";
 
-type Phase =
-  | "idle"
-  | "preparing"
-  | "waiting_chatgpt"
-  | "creating_draft"
-  | "done";
+type Phase = "idle" | "preparing" | "waiting_chatgpt" | "done";
 
 type BridgeApi = {
   wake?: (s: Record<string, unknown>) => Promise<{
@@ -121,27 +115,27 @@ export function ApplicationFollowUpButton({
   const due = Boolean(dueFollowUp);
   const busy = phase !== "idle" && phase !== "done";
 
-  async function finishWithGmailDrafts(followUpId: string) {
-    setPhase("creating_draft");
-    const sent = await manualSendFollowUp(followUpId);
-    if (!sent.ok) {
-      setError(sent.error);
-      setPhase("idle");
-      runningRef.current = false;
-      return;
-    }
-    if (sent.gmail_url) {
-      window.open(sent.gmail_url, "_blank", "noopener,noreferrer");
-    }
-    const n = sent.draft_count ?? 1;
-    setSuccess(n > 1 ? `${n} Gmail drafts ready` : "Gmail draft ready");
+  /**
+   * The follow-up is written and waiting — it is not sent.
+   *
+   * This used to create a Gmail draft and mark the follow-up sent in the same
+   * breath, which was only ever true because the API had put the draft in the
+   * user's mailbox. The user now sends it themselves from the Outreach tab,
+   * and marking it sent is their call, so this stops at "ready".
+   */
+  function finishWithDrafts(count: number) {
+    setSuccess(
+      count > 1
+        ? `${count} follow-ups ready — send them from Outreach`
+        : "Follow-up ready — send it from Outreach",
+    );
     setPhase("done");
     router.refresh();
     runningRef.current = false;
     setTimeout(() => {
       setPhase("idle");
       setSuccess(null);
-    }, 4000);
+    }, 6000);
   }
 
   /** Poll only - never wake AI again. One AI reply fans out to all contacts. */
@@ -161,28 +155,10 @@ export function ApplicationFollowUpButton({
         setContactCount(status.contact_count);
       }
 
-      if (status.all_gmail_ready) {
-        setSuccess(
-          status.contact_count > 1
-            ? `${status.contact_count} Gmail drafts ready`
-            : "Gmail draft ready",
-        );
-        setPhase("done");
-        router.refresh();
-        runningRef.current = false;
-        setTimeout(() => {
-          setPhase("idle");
-          setSuccess(null);
-        }, 4000);
+      // Fan-out drafts exist (same body, per-contact greetings).
+      if (status.all_drafts_ready) {
+        finishWithDrafts(status.contact_count);
         return;
-      }
-
-      if (status.all_drafts_ready || status.drafts_ready > 0) {
-        // Fan-out drafts exist (same body, per-contact greetings) → Gmail once.
-        if (status.all_drafts_ready) {
-          await finishWithGmailDrafts(followUpId);
-          return;
-        }
       }
 
       if (status.prompt_status === "abandoned") {
@@ -239,7 +215,7 @@ export function ApplicationFollowUpButton({
 
       const existing = await getFollowUpDraftStatus(dueFollowUp.id);
       if (existing.ok && existing.all_drafts_ready) {
-        await finishWithGmailDrafts(dueFollowUp.id);
+        finishWithDrafts(existing.contact_count);
         return;
       }
 
@@ -284,17 +260,13 @@ export function ApplicationFollowUpButton({
         ? contactCount > 1
           ? `AI → ${contactCount} drafts…`
           : "Waiting for AI…"
-        : phase === "creating_draft"
-          ? contactCount > 1
-            ? `Saving ${contactCount} drafts…`
-            : "Creating draft…"
-          : phase === "done"
-            ? "Done"
-            : dueFollowUp?.contact_name
-              ? `Follow up (#${dueFollowUp.sequence})`
-              : due
-                ? `Follow up (#${dueFollowUp?.sequence ?? 1})`
-                : "Follow up";
+        : phase === "done"
+          ? "Ready"
+          : dueFollowUp?.contact_name
+            ? `Follow up (#${dueFollowUp.sequence})`
+            : due
+              ? `Follow up (#${dueFollowUp?.sequence ?? 1})`
+              : "Follow up";
 
   const title = due
     ? "One AI run; same body for all contacts (greeting only changes)"

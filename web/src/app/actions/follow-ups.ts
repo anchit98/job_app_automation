@@ -46,8 +46,7 @@ import {
   parsePromptRunMarker,
 } from "@/lib/prompt/json-extract";
 import { zodErrorsToList } from "@/lib/prompt/repair";
-import { createGmailDrafts } from "@/app/actions/emails";
-import { gmailDraftWebUrl } from "@/lib/emails/gmail-url";
+import { markEmailSent } from "@/lib/db/queries";
 
 function revalidateFollowUpPaths(applicationId: string) {
   revalidatePath(`/applications/${applicationId}`);
@@ -387,6 +386,14 @@ export async function submitFollowUpResponse(
   };
 }
 
+/**
+ * Record that a whole follow-up sequence has been sent.
+ *
+ * Used to create the Gmail drafts and mark the rows in one go. There is no
+ * draft to create any more — the user sends from a compose link — so this only
+ * records the outcome, and the per-email "Mark as sent" button does the same
+ * thing for a single contact.
+ */
 export async function manualSendFollowUp(followUpId: string) {
   const followUp = await getFollowUpById(followUpId);
   if (!followUp) {
@@ -416,30 +423,13 @@ export async function manualSendFollowUp(followUpId: string) {
     };
   }
 
-  const draftEmailIds = targets
-    .map((f) => f.draft_email_id)
-    .filter((id): id is string => Boolean(id));
-
-  const draftResult = await createGmailDrafts(draftEmailIds);
-  if (!draftResult.ok) {
-    return { ok: false as const, error: draftResult.error };
-  }
-  const failed = draftResult.results?.find((r) => !r.ok);
-  if (failed) {
-    return {
-      ok: false as const,
-      error: failed.error ?? "Failed to create Gmail draft.",
-    };
-  }
-
   const profile = await getProfileRow();
   const timezone = profile?.timezone?.trim() || APP_TIMEZONE;
   const sentAt = new Date().toISOString();
-  let firstGmailUrl: string | null = null;
 
   for (const target of targets) {
     if (!target.draft_email_id) continue;
-    const refreshed = await getEmailById(target.draft_email_id);
+    await markEmailSent(target.draft_email_id);
     await updateFollowUpStatus(target.id, "sent", { sent_at: sentAt });
     if (target.sequence === 1) {
       await activateSecondFollowUp(target.email_id, timezone);
@@ -447,16 +437,12 @@ export async function manualSendFollowUp(followUpId: string) {
     await writeAuditLog("follow_up.sent", "follow_ups", target.id, {
       draft_email_id: target.draft_email_id,
     });
-    if (!firstGmailUrl && refreshed?.gmail_draft_id) {
-      firstGmailUrl = gmailDraftWebUrl(refreshed.gmail_draft_id);
-    }
   }
 
   revalidateFollowUpPaths(followUp.application_id);
 
   return {
     ok: true as const,
-    gmail_url: firstGmailUrl,
     draft_count: targets.length,
   };
 }

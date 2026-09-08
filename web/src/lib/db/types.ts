@@ -224,7 +224,9 @@ export type DraftStatus =
   | "creating"
   | "created"
   | "failed"
-  | "deleted_externally";
+  | "deleted_externally"
+  /** User sent it themselves from a compose link — terminal. */
+  | "sent";
 
 export type FollowUpStatus =
   | "waiting"

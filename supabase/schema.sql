@@ -354,7 +354,9 @@ CREATE TABLE IF NOT EXISTS emails (
   gmail_draft_id TEXT,
   gmail_message_id TEXT,
   draft_status TEXT NOT NULL DEFAULT 'pending' CHECK (
-    draft_status IN ('pending', 'creating', 'created', 'failed', 'deleted_externally')
+    draft_status IN (
+      'pending', 'creating', 'created', 'failed', 'deleted_externally', 'sent'
+    )
   ),
   draft_error TEXT,
   sent_at TEXT,

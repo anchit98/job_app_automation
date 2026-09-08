@@ -1247,6 +1247,43 @@ export async function markEmailDraftDeletedExternally(id: string): Promise<boole
   return result.changes > 0;
 }
 
+/**
+ * Record that the user sent this email themselves.
+ *
+ * Nothing observes a send made from a compose link, so this is the only signal
+ * the app gets: it drives the pipeline stage, the timeline entry and the
+ * follow-up schedule. A Gmail draft that was created first keeps its draft id
+ * — the user still sent that draft.
+ */
+export async function markEmailSent(id: string): Promise<boolean> {
+  const row = await dbGet<{ id: string }>(
+    `UPDATE emails
+       SET draft_status = 'sent',
+           sent_at = COALESCE(sent_at, (NOW() AT TIME ZONE 'utc')::text),
+           draft_error = NULL
+       WHERE id = ?
+       RETURNING id`,
+    id,
+  );
+  return Boolean(row?.id);
+}
+
+/** Undo a mis-click on "Mark as sent". */
+export async function markEmailNotSent(id: string): Promise<boolean> {
+  const row = await dbGet<{ id: string }>(
+    `UPDATE emails
+       SET draft_status = CASE
+             WHEN gmail_draft_id IS NOT NULL THEN 'created'
+             ELSE 'pending'
+           END,
+           sent_at = NULL
+       WHERE id = ? AND draft_status = 'sent'
+       RETURNING id`,
+    id,
+  );
+  return Boolean(row?.id);
+}
+
 export async function updateEmailContent(
   id: string,
   input: { subject?: string; body_md?: string; body_html?: string },

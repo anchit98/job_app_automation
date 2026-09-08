@@ -5,7 +5,10 @@ import {
   getCoverLetterVersionsForApplication,
   getMasterCoverLetter,
 } from "@/app/actions/cover-letter";
-import { getEmailsForApplication } from "@/app/actions/emails";
+import {
+  getEmailSendPacks,
+  getEmailsForApplication,
+} from "@/app/actions/emails";
 import { getFollowUpsForApplication } from "@/app/actions/follow-ups";
 import { getResumeVersionsForApplication } from "@/app/actions/resume";
 import { getMasterResume } from "@/app/actions/master-resume";
@@ -29,6 +32,7 @@ export default async function ApplicationDetailPage({
     masterCoverLetter,
     contacts,
     emails,
+    sendPacks,
     followUps,
     googleConnected,
     timelineEvents,
@@ -41,6 +45,7 @@ export default async function ApplicationDetailPage({
     getMasterCoverLetter().catch(() => null),
     getContactsForApplication(id).catch(() => []),
     getEmailsForApplication(id).catch(() => []),
+    getEmailSendPacks(id).catch(() => []),
     getFollowUpsForApplication(id).catch(() => []),
     getGoogleConnectedState().then((s) => s !== false),
     getApplicationTimeline(id).catch(() => []),
@@ -67,6 +72,7 @@ export default async function ApplicationDetailPage({
       )}
       contacts={contacts}
       emails={emails}
+      sendPacks={sendPacks}
       followUps={followUps}
       googleConnected={googleConnected}
       timelineEvents={timelineEvents}

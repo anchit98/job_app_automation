@@ -12,7 +12,9 @@ import {
   ContactArtifacts,
   CoverLetterArtifacts,
   EmailArtifacts,
+  FollowUpEmailArtifacts,
   ResumeArtifacts,
+  type EmailAttachment,
 } from "@/components/applications/application-artifacts";
 import { ApplicationPipelineActions } from "@/components/applications/application-pipeline-actions";
 import type {
@@ -23,6 +25,7 @@ import type {
   FollowUp,
   ResumeVersion,
 } from "@/lib/db/types";
+import type { EmailSendPack } from "@/lib/emails/manual-send";
 import type { ResumeContent } from "@/lib/resume/fabrication";
 import { formatAppDateTime } from "@/lib/datetime/india";
 import type { TimelineEvent } from "@/lib/tracker/timeline";
@@ -35,6 +38,8 @@ interface ApplicationWorkspaceProps {
   coverLetterTemplateReady: boolean;
   contacts: Contact[];
   emails: EmailRecord[];
+  /** Subject + plain-text body per email, for the manual send controls. */
+  sendPacks: EmailSendPack[];
   followUps?: FollowUp[];
   googleConnected: boolean;
   timelineEvents: TimelineEvent[];
@@ -55,6 +60,7 @@ export function ApplicationWorkspace({
   coverLetterTemplateReady: _coverLetterTemplateReady,
   contacts,
   emails,
+  sendPacks,
   followUps,
   googleConnected: _googleConnected,
   timelineEvents,
@@ -65,6 +71,30 @@ export function ApplicationWorkspace({
   const [activeTab, setActiveTab] = useState<
     "overview" | "documents" | "outreach" | "details"
   >("overview");
+
+  /**
+   * What the user must attach by hand. Only the newest ready version of each:
+   * offering every past version invites attaching the wrong one.
+   */
+  const emailAttachments: EmailAttachment[] = [];
+  const latestResume = resumeVersions
+    .filter((v) => v.status === "ready")
+    .sort((a, b) => b.version - a.version)[0];
+  if (latestResume) {
+    emailAttachments.push({
+      label: `Resume v${latestResume.version} (PDF)`,
+      href: `/api/applications/${application.id}/resume/${latestResume.version}/pdf`,
+    });
+  }
+  const latestCoverLetter = coverLetterVersions
+    .filter((v) => v.status === "ready")
+    .sort((a, b) => b.version - a.version)[0];
+  if (latestCoverLetter) {
+    emailAttachments.push({
+      label: `Cover letter v${latestCoverLetter.version} (PDF)`,
+      href: `/api/applications/${application.id}/cover-letter/${latestCoverLetter.version}/pdf`,
+    });
+  }
 
   const title =
     application.company && application.role
@@ -351,7 +381,20 @@ export function ApplicationWorkspace({
               <div className="lg:col-span-8 space-y-3">
                 <div className="li-card p-4 space-y-3">
                   <h2 className="li-section-title">Cold emails</h2>
-                  <EmailArtifacts emails={emails} />
+                  <EmailArtifacts
+                    emails={emails}
+                    contacts={contacts}
+                    sendPacks={sendPacks}
+                    attachments={emailAttachments}
+                  />
+                </div>
+                <div className="li-card p-4 space-y-3">
+                  <h2 className="li-section-title">Follow-ups</h2>
+                  <FollowUpEmailArtifacts
+                    emails={emails}
+                    contacts={contacts}
+                    sendPacks={sendPacks}
+                  />
                 </div>
               </div>
             </div>

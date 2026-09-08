@@ -160,17 +160,24 @@ export async function maybeAdvanceApplicationStatus(
 }
 
 /** Advance to applied → email_sent when cold Gmail drafts exist. */
-export async function syncApplicationStatusAfterColdDrafts(
+/**
+ * Advance the application once outreach exists for it.
+ *
+ * Named for drafts until a cold email could also be sent by hand, from a
+ * compose link the app never sees. A draft the API created and an email the
+ * user marked as sent are the same milestone here, so both count.
+ */
+export async function syncApplicationStatusAfterOutreach(
   applicationId: string,
 ): Promise<StatusAdvanceOutcome> {
   const emails = await listEmails(applicationId);
-  const hasColdDraft = emails.some(
+  const hasOutreach = emails.some(
     (e) =>
       e.kind === "cold" &&
-      e.draft_status === "created" &&
-      Boolean(e.gmail_draft_id),
+      (e.draft_status === "sent" ||
+        (e.draft_status === "created" && Boolean(e.gmail_draft_id))),
   );
-  if (!hasColdDraft) {
+  if (!hasOutreach) {
     return { outcome: "skipped" };
   }
   return maybeAdvanceApplicationStatus(applicationId, "gmail_draft_created");
