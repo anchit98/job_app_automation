@@ -1581,34 +1581,31 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
     return { ok: true as const, pipeline: done, done: true };
   }
 
+  // Creating the Gmail draft is a convenience now, not the delivery mechanism:
+  // the emails are already written and saved, and the Outreach tab opens each
+  // one in a compose window without any Google permission. So a Gmail failure
+  // here must not fail a run whose resume, cover letter, contacts and emails
+  // all succeeded — it is recorded as a skipped stage and the run completes.
   const result = await createGmailDrafts(emails.map((e) => e.id));
-  if (!result.ok) {
-    const stages = patchStage(stagesCreating, "gmail_drafts", {
-      status: "failed",
-      error: result.error,
-    });
-    const failed = await finishPipelineAndPromote(
-      pipelineId,
-      {
-        status: result.reconnect_required ? "needs_manual" : "failed",
-        stages,
-        error: result.error,
-        current_stage: "gmail_drafts",
-      },
-      current,
-    );
-    return { ok: false as const, error: result.error, pipeline: failed };
-  }
+  const drafted = result.ok
+    ? (result.results?.filter((r) => r.ok).length ?? emails.length)
+    : 0;
 
   const stages = patchStage(stagesCreating, "gmail_drafts", {
-    status: "completed",
-    detail: `Created ${result.results?.filter((r) => r.ok).length ?? emails.length} draft(s)`,
+    status: result.ok ? "completed" : "skipped",
+    detail: result.ok
+      ? `Created ${drafted} draft(s)`
+      : `${emails.length} email(s) ready to send from the Outreach tab (Gmail drafts unavailable)`,
+    error: result.ok ? null : result.error,
   });
   const done = await finishPipelineAndPromote(
     pipelineId,
     { status: "completed", current_stage: null, stages, error: null },
     current,
   );
+  if (!result.ok) {
+    console.warn("[pipeline] gmail drafts skipped:", result.error);
+  }
   return { ok: true as const, pipeline: done, done: true };
 }
 
