@@ -14,17 +14,7 @@
  * prints labelled links. Anything shown here must be derived, never restated.
  */
 import { useEffect, useLayoutEffect, useState } from "react";
-import {
-  FileText,
-  Globe,
-  Link as LinkIcon,
-  Mail,
-  MapPin,
-  Maximize,
-  Minus,
-  Phone,
-  Plus,
-} from "lucide-react";
+import { FileText, Maximize, Minus, Plus } from "lucide-react";
 import {
   SECTION_LABELS,
   resolveSectionOrder,
@@ -33,7 +23,6 @@ import {
 import type { BuilderProfile } from "@/lib/builder/types";
 import "./live-preview.css";
 
-const ICON = 11;
 /** A4 at 96dpi — 210mm x 297mm. */
 const PAGE_W = 794;
 const PAGE_H = 1122;
@@ -44,18 +33,9 @@ function filled(values: string[] | undefined): string[] {
 }
 
 /** Same rule as the LaTeX header: a link prints as its label, not its URL. */
-function ContactLink({
-  href,
-  label,
-  icon,
-}: {
-  href: string;
-  label: string;
-  icon: "link" | "globe";
-}) {
+function ContactLink({ href, label }: { href: string; label: string }) {
   return (
     <span className="lp-contact-item">
-      {icon === "globe" ? <Globe size={ICON} /> : <LinkIcon size={ICON} />}
       <a href={href} target="_blank" rel="noreferrer">
         {label}
       </a>
@@ -377,37 +357,35 @@ export function LivePreview({ data }: { data: BuilderProfile }) {
           >
             <div className="lp-header">
               <h1 className="lp-name">{data.name}</h1>
-              {/* Same items, same order, same labels as headerSection(). */}
+              {/* Same items, same order, same labels and the same "|"
+                  separators as headerSection(). The icons that used to sit in
+                  front of each item are gone from both: in the PDF they were
+                  an icon font that no text extractor could read, so a resume
+                  arrived at the ATS with "Æ" where its phone number should be. */}
               <div className="lp-contact">
                 {contact.phone && (
-                  <span className="lp-contact-item">
-                    <Phone size={ICON} /> {contact.phone}
-                  </span>
+                  <span className="lp-contact-item">{contact.phone}</span>
                 )}
                 {contact.email && (
-                  <span className="lp-contact-item">
-                    <Mail size={ICON} /> {contact.email}
-                  </span>
+                  <span className="lp-contact-item">{contact.email}</span>
                 )}
                 {contact.linkedin && (
-                  <ContactLink href={contact.linkedin} label="LinkedIn" icon="link" />
+                  <ContactLink href={contact.linkedin} label="LinkedIn" />
                 )}
                 {contact.github && (
-                  <ContactLink href={contact.github} label="GitHub" icon="link" />
+                  <ContactLink href={contact.github} label="GitHub" />
                 )}
                 {contact.portfolio && (
-                  <ContactLink href={contact.portfolio} label="Portfolio" icon="globe" />
+                  <ContactLink href={contact.portfolio} label="Portfolio" />
                 )}
                 {contact.website && (
-                  <ContactLink href={contact.website} label="Website" icon="globe" />
+                  <ContactLink href={contact.website} label="Website" />
                 )}
                 {contact.twitter && (
-                  <ContactLink href={contact.twitter} label="Twitter" icon="link" />
+                  <ContactLink href={contact.twitter} label="Twitter" />
                 )}
                 {contact.location && (
-                  <span className="lp-contact-item">
-                    <MapPin size={ICON} /> {contact.location}
-                  </span>
+                  <span className="lp-contact-item">{contact.location}</span>
                 )}
               </div>
             </div>

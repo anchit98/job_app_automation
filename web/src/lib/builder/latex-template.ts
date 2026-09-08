@@ -25,7 +25,13 @@ export const BASE_TEMPLATE = String.raw`\documentclass[letterpaper,11pt]{article
 \usepackage{tabularx}
 \usepackage{array}
 \usepackage{hyphenat}
-\usepackage{fontawesome}
+% No icon font. FontAwesome draws the contact row's phone / envelope / brand
+% marks from a Type1 font with a private encoding and no usable ToUnicode map,
+% so every text extractor — Drive's PDF import, pdftotext, and the ATS the
+% resume is actually being sent to — reads them as whatever byte the encoding
+% used: "\AE{} 9910980793 | [ name@example.com | \textdegree{} LinkedIn".
+% The header prints the labels themselves instead, which extract as what they
+% say and stay clickable.
 \input{glyphtounicode}
 
 \pagestyle{fancy}

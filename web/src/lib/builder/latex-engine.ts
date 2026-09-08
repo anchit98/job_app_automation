@@ -110,6 +110,21 @@ export function escapeLatex(value: unknown): string {
 }
 
 /**
+ * Give a link a scheme so it actually opens.
+ *
+ * People type "linkedin.com/in/me" into the LinkedIn field, and a link written
+ * without a scheme is relative — clicking it in a PDF or a Doc goes nowhere.
+ * Shared with the Doc writer so both renderings of the CV link to the same
+ * place.
+ */
+export function normalizeLinkUrl(value: string): string {
+  const url = value.trim();
+  if (!url) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) return url;
+  return `https://${url}`;
+}
+
+/**
  * Escape a URL for the first argument of \href.
  *
  * Only the characters TeX consumes before hyperref can see them are escaped —
@@ -121,8 +136,7 @@ export function escapeLatex(value: unknown): string {
  */
 export function escapeLatexUrl(value: string | undefined): string {
   if (!value) return "";
-  return value
-    .trim()
+  return normalizeLinkUrl(value)
     // A backslash is never valid in a URL and is the one character hyperref
     // cannot recover from — drop it rather than trying to escape it.
     .replace(/\\/g, "")
@@ -138,6 +152,14 @@ function nonEmpty(values: readonly (string | undefined)[]): string[] {
   return values.filter((v): v is string => Boolean(v && v.trim()));
 }
 
+/**
+ * The name and contact row.
+ *
+ * Every item is either its own value or the name of the thing it links to —
+ * no icons. See the note in the base template: an icon glyph is invisible to
+ * the ATS parsing this PDF, and turns into a stray "Æ" in front of the phone
+ * number the moment anything extracts the text.
+ */
 function headerSection(profile: BuilderProfile): string {
   const name = escapeLatex(profile.name ?? "");
   const contact = profile.contact ?? {};
@@ -145,39 +167,29 @@ function headerSection(profile: BuilderProfile): string {
 
   if (contact.phone) {
     const phone = escapeLatex(contact.phone);
-    items.push(String.raw`\faMobile \hspace{.5pt} \href{tel:${phone}}{${phone}}`);
+    items.push(String.raw`\href{tel:${phone}}{${phone}}`);
   }
   if (contact.email) {
     const email = escapeLatex(contact.email);
-    items.push(String.raw`\faAt \hspace{.5pt} \href{mailto:${email}}{${email}}`);
+    items.push(String.raw`\href{mailto:${email}}{${email}}`);
   }
   if (contact.linkedin) {
-    items.push(
-      String.raw`\faLinkedinSquare \hspace{.5pt} \href{${escapeLatexUrl(contact.linkedin)}}{LinkedIn}`,
-    );
+    items.push(String.raw`\href{${escapeLatexUrl(contact.linkedin)}}{LinkedIn}`);
   }
   if (contact.github) {
-    items.push(
-      String.raw`\faGithub \hspace{.5pt} \href{${escapeLatexUrl(contact.github)}}{GitHub}`,
-    );
+    items.push(String.raw`\href{${escapeLatexUrl(contact.github)}}{GitHub}`);
   }
   if (contact.portfolio) {
-    items.push(
-      String.raw`\faGlobe \hspace{.5pt} \href{${escapeLatexUrl(contact.portfolio)}}{Portfolio}`,
-    );
+    items.push(String.raw`\href{${escapeLatexUrl(contact.portfolio)}}{Portfolio}`);
   }
   if (contact.website) {
-    items.push(
-      String.raw`\faGlobe \hspace{.5pt} \href{${escapeLatexUrl(contact.website)}}{Website}`,
-    );
+    items.push(String.raw`\href{${escapeLatexUrl(contact.website)}}{Website}`);
   }
   if (contact.twitter) {
-    items.push(
-      String.raw`\faTwitter \hspace{.5pt} \href{${escapeLatexUrl(contact.twitter)}}{Twitter}`,
-    );
+    items.push(String.raw`\href{${escapeLatexUrl(contact.twitter)}}{Twitter}`);
   }
   if (contact.location) {
-    items.push(String.raw`\faMapMarker \hspace{.2pt} ${escapeLatex(contact.location)}`);
+    items.push(escapeLatex(contact.location));
   }
 
   return [

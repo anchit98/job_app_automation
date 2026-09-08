@@ -120,6 +120,13 @@
   gap: 4px;
 }
 
+/* The "$|$" the LaTeX header puts between contact items. */
+.lp-contact-item + .lp-contact-item::before {
+  content: "|";
+  margin-right: 12px;
+  color: #999;
+}
+
 .lp-contact a {
   color: #333;
   text-decoration: none;

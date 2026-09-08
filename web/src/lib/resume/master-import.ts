@@ -15,7 +15,10 @@ import { DriveClient } from "@/lib/google/drive";
 import { explainGoogleDocFetchError } from "@/lib/google/docs-url";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { upsertMasterResumeRow } from "@/lib/db/queries";
-import { syncMasterResumeFromDoc } from "@/lib/resume/master-sync";
+import {
+  syncMasterResumeFromDoc,
+  type SyncedMasterResume,
+} from "@/lib/resume/master-sync";
 import {
   convertedDocNeedsRepair,
   normalizeConvertedPdfParagraphs,
@@ -97,6 +100,11 @@ export interface MasterSourceInfo {
 /**
  * Shared tail of every entry point: read the Doc, snapshot it as the app-owned
  * template, persist, audit. `sourceDocId` must be a readable Google Doc.
+ *
+ * `presynced` short-circuits the parse. A Doc the app wrote itself (from the CV
+ * builder) needs no heuristics — we already know where every bullet is, and
+ * re-deriving that from the page would only introduce a chance of getting it
+ * wrong.
  */
 export async function syncFromReadableDoc(
   docs: DocsClient,
@@ -104,8 +112,9 @@ export async function syncFromReadableDoc(
   sourceDocId: string,
   auditExtra: Record<string, unknown> = {},
   sourceInfo?: MasterSourceInfo,
+  presynced?: SyncedMasterResume,
 ): Promise<MasterSyncSuccess> {
-  const synced = await syncMasterResumeFromDoc(docs, sourceDocId);
+  const synced = presynced ?? (await syncMasterResumeFromDoc(docs, sourceDocId));
   const templateDocId = await drive.ensureMasterTemplateCopy(sourceDocId);
   const { content, layout, sync_mode } = synced;
 
@@ -200,7 +209,19 @@ export async function importBytesAndSync(
     // actual damage first, and the rebuild carries heading / sub-heading /
     // bullet levels through so the hierarchy survives when it does run.
     if (sourceMime === PDF_MIME) {
-      const converted = await docs.getDocument(convertedDocId);
+      const imported = await docs.getDocument(convertedDocId);
+
+      // Whatever the PDF still had as a real hyperlink, before the rebuild
+      // below replaces the body with plain text and loses it.
+      const links = DocsClient.harvestLinks(imported);
+
+      // Icon debris first, so neither the repair pass nor the slot text ever
+      // sees the "Æ" a FontAwesome phone glyph extracts as.
+      const stripped = await docs.removeIconGlyphs(convertedDocId, imported);
+      const converted = stripped
+        ? await docs.getDocument(convertedDocId)
+        : imported;
+
       const rawParagraphs = extractParagraphText(converted);
       const normalized = normalizeConvertedPdfParagraphs(rawParagraphs);
       const needsRepair = convertedDocNeedsRepair(
@@ -220,6 +241,12 @@ export async function importBytesAndSync(
           })),
         );
       }
+
+      // Put the harvested links back on their labels, and turn the addresses
+      // the resume spells out into links of their own. Drive's PDF import
+      // leaves both as dead text, which is why a converted "LinkedIn" did
+      // nothing when clicked.
+      await docs.applyKnownLinks(convertedDocId, links);
     }
   } catch (error) {
     console.error("[master-import] file conversion failed:", error);

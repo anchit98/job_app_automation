@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { refundCredit, spendCredit } from "@/lib/billing/entitlements";
 import { compileLatexToPdf } from "@/lib/builder/compile-pdf";
 import { generateLatexContent } from "@/lib/builder/latex-engine";
+import { buildMasterDoc, builtMasterToSynced } from "@/lib/builder/master-doc";
 import {
   getBuilderCvVersion,
   getBuilderProfile,
@@ -23,9 +24,16 @@ import {
 } from "@/lib/builder/types";
 import { getMasterResumeRow } from "@/lib/db/queries";
 import type { MasterResumeSource } from "@/lib/db/types";
+import { DocsClient } from "@/lib/google/docs";
 import { DriveClient } from "@/lib/google/drive";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
-import { PDF_MIME, importBytesAndSync } from "@/lib/resume/master-import";
+import { assertResumeSyncAtsReady } from "@/lib/resume/ats-sync";
+import {
+  PDF_MIME,
+  type MasterImportResult,
+  importBytesAndSync,
+  syncFromReadableDoc,
+} from "@/lib/resume/master-import";
 
 type Failure = { ok: false; error: string };
 
@@ -39,9 +47,13 @@ function safeFileName(value: string): string {
  * carries who it is for, which field it targets and when it was made.
  */
 function builtCvFileName(profile: BuilderProfile): string {
+  return `${builtCvBaseName(profile)}.pdf`;
+}
+
+function builtCvBaseName(profile: BuilderProfile): string {
   const who = safeFileName(profile.name?.trim() || "CV");
   const date = new Date().toISOString().slice(0, 10);
-  return `${who}_CV_${profile.professional_field}_${date}.pdf`;
+  return `${who}_CV_${profile.professional_field}_${date}`;
 }
 
 export type LoadBuilderResult = {
@@ -250,8 +262,15 @@ export type UseAsMasterResult =
 /**
  * Push a generated CV into the master resume.
  *
- * Reuses the PDF import path, so a builder CV becomes an editable Google Doc
- * and Apply keeps working exactly as it does for an uploaded resume.
+ * The Doc is written from the profile the CV was compiled from, not from the
+ * PDF. Apply needs an editable Doc either way, and the PDF route to one went
+ * through Drive's importer, which reads a page rather than a document: the
+ * two-column role rows came out as a single run of words, the contact icons
+ * as "Æ" and "½", the links as dead text, and the rebuilt body inherited the
+ * name's 25pt size for the entire resume.
+ *
+ * A version saved before the builder stored profile snapshots has nothing to
+ * write from, so those still take the old PDF path.
  */
 export async function setCvAsMasterResume(
   versionId: string,
@@ -261,34 +280,21 @@ export async function setCvAsMasterResume(
     const version = await getBuilderCvVersion(versionId);
     if (!version) return { ok: false, error: "That CV version was not found." };
 
-    let pdf: Buffer;
-    if (version.drive_file_id) {
-      const auth = await getGoogleAuthClient();
-      const drive = new DriveClient(auth);
-      pdf = await drive.getFile(version.drive_file_id);
-    } else if (version.latex_content) {
-      // No Drive copy (upload failed at generation time) — rebuild from LaTeX.
-      pdf = await compileLatexToPdf(version.latex_content);
-    } else {
-      return { ok: false, error: "That version has no PDF to sync." };
-    }
-
     const fieldLabel = isProfessionalField(version.professional_field ?? "")
       ? FIELD_LABELS[version.professional_field as ProfessionalField]
       : "General";
-    const result = await importBytesAndSync(
-      pdf,
-      PDF_MIME,
-      "builder-cv.pdf",
-      { source: "builder_cv", builder_version_id: versionId },
-      // Recorded on master_resume so the profile can say which resume is live
-      // — and so an older built CV stops claiming "In use" once it is replaced.
-      {
-        source: "builder",
-        label: `${fieldLabel} CV`,
-        ref: versionId,
-      },
-    );
+    // Recorded on master_resume so the profile can say which resume is live
+    // — and so an older built CV stops claiming "In use" once it is replaced.
+    const sourceInfo = {
+      source: "builder" as const,
+      label: `${fieldLabel} CV`,
+      ref: versionId,
+    };
+
+    const profile = version.profile_snapshot;
+    const result = profile?.name
+      ? await masterFromProfile(profile, versionId, sourceInfo)
+      : await masterFromCompiledPdf(version, versionId, sourceInfo);
     if (!result.ok) return result;
 
     await markVersionSyncedToMaster(versionId);
@@ -310,4 +316,78 @@ export async function setCvAsMasterResume(
           : "Could not set that CV as your master resume.",
     };
   }
+}
+
+/**
+ * Write the CV into a Google Doc of our own and sync that.
+ *
+ * The slot map comes from the same builder data as the text, so Apply knows
+ * exactly which paragraph is which bullet without parsing anything back out.
+ */
+async function masterFromProfile(
+  profile: BuilderProfile,
+  versionId: string,
+  sourceInfo: { source: "builder"; label: string; ref: string },
+): Promise<MasterImportResult> {
+  const built = buildMasterDoc(profile);
+  // Same gate an imported resume passes: without role bullets there is nothing
+  // for Apply to tailor, and finding that out after the Doc is written only
+  // leaves the user a stray file in Drive.
+  assertResumeSyncAtsReady(
+    builtMasterToSynced(built, "pending"),
+    built.lines.length,
+  );
+
+  const auth = await getGoogleAuthClient();
+  const docs = new DocsClient(auth);
+  const drive = new DriveClient(auth);
+
+  const folderId = await drive.ensureBuiltCvFolder();
+  const docId = await drive.createGoogleDoc(
+    `${builtCvBaseName(profile)} (editable)`,
+    folderId,
+  );
+  await docs.writeStructuredBody(docId, built.lines, { tightMargins: true });
+
+  const synced = await syncFromReadableDoc(
+    docs,
+    drive,
+    docId,
+    { source: "builder_cv", builder_version_id: versionId, written_as_doc: true },
+    sourceInfo,
+    builtMasterToSynced(built, docId),
+  );
+
+  return {
+    ...synced,
+    converted_doc_id: docId,
+    converted_doc_url: `https://docs.google.com/document/d/${docId}/edit`,
+  };
+}
+
+/** Fallback for versions stored before profile snapshots were kept. */
+async function masterFromCompiledPdf(
+  version: NonNullable<Awaited<ReturnType<typeof getBuilderCvVersion>>>,
+  versionId: string,
+  sourceInfo: { source: "builder"; label: string; ref: string },
+): Promise<MasterImportResult> {
+  let pdf: Buffer;
+  if (version.drive_file_id) {
+    const auth = await getGoogleAuthClient();
+    const drive = new DriveClient(auth);
+    pdf = await drive.getFile(version.drive_file_id);
+  } else if (version.latex_content) {
+    // No Drive copy (upload failed at generation time) — rebuild from LaTeX.
+    pdf = await compileLatexToPdf(version.latex_content);
+  } else {
+    return { ok: false, error: "That version has no PDF to sync." };
+  }
+
+  return importBytesAndSync(
+    pdf,
+    PDF_MIME,
+    "builder-cv.pdf",
+    { source: "builder_cv", builder_version_id: versionId },
+    sourceInfo,
+  );
 }
