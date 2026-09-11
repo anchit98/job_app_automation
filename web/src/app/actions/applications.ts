@@ -24,6 +24,7 @@ import {
 } from "@/lib/applications/auto-status";
 import { sanitizeJd, wrapJdForPrompt } from "@/lib/jd/sanitize";
 import { scheduleFollowUpsForApplication } from "@/lib/follow-ups/enqueue";
+import { enrichJdKeywords } from "@/lib/resume/jd-keyword-mining";
 import { truncateJdIfNeeded } from "@/lib/tracker/jd";
 import { findSimilarApplications } from "@/lib/tracker/queries";
 import {
@@ -284,7 +285,17 @@ export async function applyJdParseResult(
     application.role ||
     undefined;
 
-  await updateApplicationJdParsed(applicationId, parsed as import("@/lib/db/types").JdParsed, {
+  // One LLM pass reliably under-reports: it returns a handful of must-haves
+  // for a JD that lists fifteen and skips acronyms almost entirely. Everything
+  // downstream (the tailoring prompt, the coverage floor, the keyword chips)
+  // reads this list, so a second deterministic pass over the same text adds
+  // back the named tools and acronyms the model dropped.
+  const enriched = enrichJdKeywords(
+    parsed as import("@/lib/db/types").JdParsed,
+    application.jd_raw,
+  );
+
+  await updateApplicationJdParsed(applicationId, enriched, {
     company,
     role,
   });

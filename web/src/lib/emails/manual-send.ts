@@ -39,8 +39,15 @@ import {
  */
 export const MAILTO_URL_LIMIT = 1900;
 export const GMAIL_URL_LIMIT = 6000;
+export const OUTLOOK_URL_LIMIT = 6000;
 
 const GMAIL_COMPOSE_BASE = "https://mail.google.com/mail/?view=cm&fs=1";
+/** Microsoft 365 / work-or-school mailboxes. */
+const OUTLOOK_WORK_COMPOSE_BASE =
+  "https://outlook.office.com/mail/deeplink/compose";
+/** outlook.com / hotmail.com / live.com — a different host, same parameters. */
+const OUTLOOK_PERSONAL_COMPOSE_BASE =
+  "https://outlook.live.com/mail/0/deeplink/compose";
 
 /** Everything needed to open one email in a mail client. */
 export interface EmailSendPack {
@@ -60,10 +67,36 @@ export interface ComposeTarget {
   body_included: boolean;
 }
 
-export interface ComposeLinks {
-  gmail: ComposeTarget;
-  mailto: ComposeTarget;
+/**
+ * Where the compose window opens.
+ *
+ * Four rather than two because "Outlook" is two different products on two
+ * different hosts: a work mailbox lives on outlook.office.com and a personal
+ * one on outlook.live.com, and the wrong host lands the user on a sign-in page
+ * for an account they do not have. Nothing in an email address tells us which,
+ * so the choice is the user's.
+ */
+export const COMPOSE_PLATFORMS = [
+  "gmail",
+  "outlook",
+  "outlook_personal",
+  "mailto",
+] as const;
+
+export type ComposePlatform = (typeof COMPOSE_PLATFORMS)[number];
+
+export const COMPOSE_PLATFORM_LABELS: Record<ComposePlatform, string> = {
+  gmail: "Gmail",
+  outlook: "Outlook (work)",
+  outlook_personal: "Outlook.com",
+  mailto: "Default mail app",
+};
+
+export function isComposePlatform(value: string): value is ComposePlatform {
+  return (COMPOSE_PLATFORMS as readonly string[]).includes(value);
 }
+
+export type ComposeLinks = Record<ComposePlatform, ComposeTarget>;
 
 /**
  * An email address needs no escaping in practice, and some mail handlers
@@ -145,6 +178,28 @@ function gmailUrl(pack: EmailSendPack, withBody: boolean): string {
   return parts.join("&");
 }
 
+/**
+ * Outlook web compose link.
+ *
+ * Same query shape on both hosts: `to`, `subject`, `body`. Unlike Gmail this
+ * one spells the subject out, so the two builders cannot be merged.
+ */
+function outlookUrl(
+  pack: EmailSendPack,
+  withBody: boolean,
+  personal: boolean,
+): string {
+  const base = personal
+    ? OUTLOOK_PERSONAL_COMPOSE_BASE
+    : OUTLOOK_WORK_COMPOSE_BASE;
+  const parts = [
+    `to=${encodeAddress(pack.to)}`,
+    `subject=${encodeURIComponent(pack.subject)}`,
+  ];
+  if (withBody) parts.push(`body=${encodeURIComponent(pack.body_text)}`);
+  return `${base}?${parts.join("&")}`;
+}
+
 /** Works with whatever client the machine is set up for, Gmail or not. */
 function mailtoUrl(pack: EmailSendPack, withBody: boolean): string {
   const params = [`subject=${encodeURIComponent(pack.subject)}`];
@@ -157,17 +212,35 @@ function mailtoUrl(pack: EmailSendPack, withBody: boolean): string {
   return `mailto:${encodeAddress(pack.to)}?${params.join("&")}`;
 }
 
-/** Both links, each dropping the body only if it would not survive the trip. */
+/** Pick the long form unless it would be silently truncated in transit. */
+function target(
+  long: string,
+  short: () => string,
+  limit: number,
+): ComposeTarget {
+  return long.length <= limit
+    ? { url: long, body_included: true }
+    : { url: short(), body_included: false };
+}
+
+/** Every link, each dropping the body only if it would not survive the trip. */
 export function buildComposeLinks(pack: EmailSendPack): ComposeLinks {
-  const withBody = { gmail: gmailUrl(pack, true), mailto: mailtoUrl(pack, true) };
   return {
-    gmail:
-      withBody.gmail.length <= GMAIL_URL_LIMIT
-        ? { url: withBody.gmail, body_included: true }
-        : { url: gmailUrl(pack, false), body_included: false },
-    mailto:
-      withBody.mailto.length <= MAILTO_URL_LIMIT
-        ? { url: withBody.mailto, body_included: true }
-        : { url: mailtoUrl(pack, false), body_included: false },
+    gmail: target(gmailUrl(pack, true), () => gmailUrl(pack, false), GMAIL_URL_LIMIT),
+    outlook: target(
+      outlookUrl(pack, true, false),
+      () => outlookUrl(pack, false, false),
+      OUTLOOK_URL_LIMIT,
+    ),
+    outlook_personal: target(
+      outlookUrl(pack, true, true),
+      () => outlookUrl(pack, false, true),
+      OUTLOOK_URL_LIMIT,
+    ),
+    mailto: target(
+      mailtoUrl(pack, true),
+      () => mailtoUrl(pack, false),
+      MAILTO_URL_LIMIT,
+    ),
   };
 }

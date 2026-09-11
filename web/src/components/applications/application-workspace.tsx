@@ -12,10 +12,13 @@ import {
   ContactArtifacts,
   CoverLetterArtifacts,
   EmailArtifacts,
-  FollowUpEmailArtifacts,
   ResumeArtifacts,
   type EmailAttachment,
 } from "@/components/applications/application-artifacts";
+import {
+  FollowUpPanel,
+  type DueFollowUp,
+} from "@/components/follow-ups/follow-up-panel";
 import { ApplicationPipelineActions } from "@/components/applications/application-pipeline-actions";
 import type {
   Application,
@@ -35,12 +38,13 @@ interface ApplicationWorkspaceProps {
   masterResume: ResumeContent | null;
   resumeVersions: ResumeVersion[];
   coverLetterVersions: CoverLetterVersion[];
-  coverLetterTemplateReady: boolean;
   contacts: Contact[];
   emails: EmailRecord[];
   /** Subject + plain-text body per email, for the manual send controls. */
   sendPacks: EmailSendPack[];
   followUps?: FollowUp[];
+  /** Set when a reminder has come due, so Outreach can offer Generate. */
+  dueFollowUp?: DueFollowUp | null;
   googleConnected: boolean;
   timelineEvents: TimelineEvent[];
   pipeline?: {
@@ -57,20 +61,22 @@ export function ApplicationWorkspace({
   masterResume: _masterResume,
   resumeVersions,
   coverLetterVersions,
-  coverLetterTemplateReady: _coverLetterTemplateReady,
   contacts,
   emails,
   sendPacks,
-  followUps,
+  followUps = [],
+  dueFollowUp = null,
   googleConnected: _googleConnected,
   timelineEvents,
   pipeline,
 }: ApplicationWorkspaceProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // Lands on JD & Activity: it is the first tab, and the first question about
+  // an application you just opened is what the job was and what has happened.
   const [activeTab, setActiveTab] = useState<
     "overview" | "documents" | "outreach" | "details"
-  >("overview");
+  >("details");
 
   /**
    * What the user must attach by hand. Only the newest ready version of each:
@@ -162,10 +168,10 @@ export function ApplicationWorkspace({
       {/* Workspace Tabs - fewer tabs, panels side by side inside each */}
       <div className="px-margin-mobile md:px-margin-desktop border-b border-border-hairline bg-surface shrink-0 flex gap-1 overflow-x-auto">
         {([
-          { id: "overview", label: "Overview" },
           { id: "details", label: "JD & Activity" },
-          { id: "documents", label: "Documents" },
+          { id: "overview", label: "Overview" },
           { id: "outreach", label: "Outreach" },
+          { id: "documents", label: "Documents" },
         ] as const).map((tab) => (
           <button
             key={tab.id}
@@ -390,7 +396,10 @@ export function ApplicationWorkspace({
                 </div>
                 <div className="li-card p-4 space-y-3">
                   <h2 className="li-section-title">Follow-ups</h2>
-                  <FollowUpEmailArtifacts
+                  <FollowUpPanel
+                    applicationId={application.id}
+                    followUps={followUps}
+                    dueFollowUp={dueFollowUp}
                     emails={emails}
                     contacts={contacts}
                     sendPacks={sendPacks}

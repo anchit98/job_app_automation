@@ -1,15 +1,13 @@
 import { notFound } from "next/navigation";
 import { getApplication } from "@/app/actions/applications";
 import { getContactsForApplication } from "@/app/actions/contacts";
-import {
-  getCoverLetterVersionsForApplication,
-  getMasterCoverLetter,
-} from "@/app/actions/cover-letter";
+import { getCoverLetterVersionsForApplication } from "@/app/actions/cover-letter";
 import {
   getEmailSendPacks,
   getEmailsForApplication,
 } from "@/app/actions/emails";
 import { getFollowUpsForApplication } from "@/app/actions/follow-ups";
+import { getDueFollowUpsByApplicationIds } from "@/lib/follow-ups/queries";
 import { getResumeVersionsForApplication } from "@/app/actions/resume";
 import { getMasterResume } from "@/app/actions/master-resume";
 import { getApplicationTimeline } from "@/app/actions/tracker";
@@ -29,7 +27,6 @@ export default async function ApplicationDetailPage({
     masterResumeRow,
     resumeVersions,
     coverLetterVersions,
-    masterCoverLetter,
     contacts,
     emails,
     sendPacks,
@@ -37,12 +34,12 @@ export default async function ApplicationDetailPage({
     googleConnected,
     timelineEvents,
     pipelineSummaries,
+    dueFollowUps,
   ] = await Promise.all([
     getApplication(id),
     getMasterResume().catch(() => null),
     getResumeVersionsForApplication(id).catch(() => []),
     getCoverLetterVersionsForApplication(id).catch(() => []),
-    getMasterCoverLetter().catch(() => null),
     getContactsForApplication(id).catch(() => []),
     getEmailsForApplication(id).catch(() => []),
     getEmailSendPacks(id).catch(() => []),
@@ -52,6 +49,10 @@ export default async function ApplicationDetailPage({
     getApplicationPipelineSummaries([id]).catch(
       () =>
         ({}) as Awaited<ReturnType<typeof getApplicationPipelineSummaries>>,
+    ),
+    getDueFollowUpsByApplicationIds([id]).catch(
+      () =>
+        ({}) as Awaited<ReturnType<typeof getDueFollowUpsByApplicationIds>>,
     ),
   ]);
   if (!application) notFound();
@@ -67,13 +68,11 @@ export default async function ApplicationDetailPage({
       masterResume={masterResume}
       resumeVersions={resumeVersions}
       coverLetterVersions={coverLetterVersions}
-      coverLetterTemplateReady={Boolean(
-        masterCoverLetter?.doc_id && masterCoverLetter?.doc_layout,
-      )}
       contacts={contacts}
       emails={emails}
       sendPacks={sendPacks}
       followUps={followUps}
+      dueFollowUp={dueFollowUps[id] ?? null}
       googleConnected={googleConnected}
       timelineEvents={timelineEvents}
       pipeline={pipelineSummaries[id] ?? null}

@@ -768,6 +768,7 @@ function mapResumeVersion(row: Record<string, unknown>): ResumeVersion {
     drive_pdf_id: (row.drive_pdf_id as string | null) ?? null,
     drive_docx_id: (row.drive_docx_id as string | null) ?? null,
     drive_doc_id: (row.drive_doc_id as string | null) ?? null,
+    latex_content: (row.latex_content as string | null) ?? null,
     prompt_run_id: (row.prompt_run_id as string | null) ?? null,
     user_rating: (row.user_rating as number | null) ?? null,
     status: row.status as ResumeVersionStatus,
@@ -808,8 +809,61 @@ export async function updateResumeVersionDriveIds(
        WHERE id = ?`, drivePdfId, driveDocxId, driveDocId ?? null, id);
 }
 
-export async function markResumeVersionUploadFailed(id: string): Promise<void> {
-  await dbRun(`UPDATE resume_versions SET status = 'upload_failed' WHERE id = ?`, id);
+/**
+ * The Doc is written — the resume is downloadable from here on.
+ *
+ * The PDF export and its upload to Drive add another twenty seconds or so
+ * after this point, and nothing needs them: the download route exports the
+ * PDF straight from this Doc when no drive_pdf_id has landed yet. Holding the
+ * version at `uploading` until the upload finished meant the "Download resume
+ * PDF" button simply was not there while the user sat looking at a finished
+ * run, next to a cover letter that already offered one.
+ */
+export async function markResumeVersionDocReady(
+  id: string,
+  driveDocId: string,
+): Promise<void> {
+  await dbRun(
+    `UPDATE resume_versions
+        SET drive_doc_id = ?, status = 'ready'
+      WHERE id = ? AND status <> 'ready'`,
+    driveDocId,
+    id,
+  );
+}
+
+/** Typeset source + Drive ids, marking the resume downloadable. */
+export async function markResumeVersionBuilt(
+  id: string,
+  latexContent: string,
+  drivePdfId: string | null,
+  driveDocId: string | null,
+): Promise<void> {
+  await dbRun(
+    `UPDATE resume_versions
+        SET latex_content = ?, drive_pdf_id = ?, drive_doc_id = COALESCE(?, drive_doc_id),
+            status = 'ready'
+      WHERE id = ?`,
+    latexContent,
+    drivePdfId,
+    driveDocId,
+    id,
+  );
+}
+
+export async function markResumeVersionUploadFailed(
+  id: string,
+  latexContent?: string,
+): Promise<void> {
+  // Keep the source even on failure: the download route rebuilds the PDF from
+  // it, so a Drive outage does not have to mean no resume.
+  await dbRun(
+    `UPDATE resume_versions
+        SET status = 'upload_failed', latex_content = COALESCE(?, latex_content)
+      WHERE id = ?`,
+    latexContent ?? null,
+    id,
+  );
 }
 
 export async function updateResumeVersionContentForRetry(
@@ -859,6 +913,7 @@ function mapCoverLetterVersion(row: Record<string, unknown>): CoverLetterVersion
     prompt_run_id: (row.prompt_run_id as string | null) ?? null,
     edited_from_version_id:
       (row.edited_from_version_id as string | null) ?? null,
+    latex_content: (row.latex_content as string | null) ?? null,
     status: row.status as CoverLetterVersionStatus,
     created_at: row.created_at as string,
   };
@@ -901,6 +956,40 @@ export async function updateCoverLetterVersionDriveIds(
   await dbRun(`UPDATE cover_letter_versions
        SET drive_pdf_id = ?, drive_docx_id = ?, drive_doc_id = ?, status = 'ready'
        WHERE id = ?`, drivePdfId, driveDocxId, driveDocId ?? null, id);
+}
+
+/**
+ * Store the compiled source and mark the letter usable.
+ *
+ * Ready without a Drive id is a real state now: the PDF is built from this
+ * LaTeX, so a user who never connected Google still has a downloadable cover
+ * letter. Drive ids arrive later, if at all.
+ */
+export async function markCoverLetterVersionBuilt(
+  id: string,
+  latexContent: string,
+  drivePdfId: string | null,
+): Promise<void> {
+  await dbRun(
+    `UPDATE cover_letter_versions
+       SET latex_content = ?, drive_pdf_id = ?, status = 'ready'
+     WHERE id = ?`,
+    latexContent,
+    drivePdfId,
+    id,
+  );
+}
+
+/** Attach the Drive copy once the background upload lands. */
+export async function updateCoverLetterVersionDrivePdf(
+  id: string,
+  drivePdfId: string,
+): Promise<void> {
+  await dbRun(
+    `UPDATE cover_letter_versions SET drive_pdf_id = ? WHERE id = ?`,
+    drivePdfId,
+    id,
+  );
 }
 
 export async function markCoverLetterVersionUploadFailed(id: string): Promise<void> {

@@ -165,6 +165,8 @@ export interface CoverLetterVersion {
   drive_doc_id: string | null;
   prompt_run_id: string | null;
   edited_from_version_id: string | null;
+  /** LaTeX source, so the PDF can be rebuilt without Drive. */
+  latex_content: string | null;
   status: CoverLetterVersionStatus;
   created_at: string;
 }
@@ -181,6 +183,8 @@ export interface ResumeVersion {
   drive_doc_id: string | null;
   prompt_run_id: string | null;
   user_rating: number | null;
+  /** LaTeX source, so the PDF can be rebuilt without Drive. */
+  latex_content: string | null;
   status: ResumeVersionStatus;
   created_at: string;
 }

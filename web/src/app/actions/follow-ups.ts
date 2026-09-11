@@ -18,6 +18,7 @@ import {
   listFollowUpsForApplication,
   listRunnableFollowUpsForApplication,
   markFollowUpEnqueued,
+  stopFollowUpsForApplication,
   updateFollowUpStatus,
 } from "@/lib/follow-ups/queries";
 import {
@@ -26,10 +27,14 @@ import {
   scheduleFollowUpsForApplication,
 } from "@/lib/follow-ups/enqueue";
 import {
-  addBusinessDays,
+  FOLLOW_UP_INTERVAL_DAYS,
+  addDays,
   toUtcIso,
 } from "@/lib/follow-ups/business-days";
-import { APP_TIMEZONE } from "@/lib/datetime/india";
+import {
+  friendlyOpenAiApiError,
+  generateWithOpenAI,
+} from "@/lib/llm/openai";
 import { applyFollowUpGreeting } from "@/lib/follow-ups/greeting";
 import {
   buildFollowUpRepairPrompt,
@@ -156,15 +161,22 @@ export async function getFollowUpDraftStatus(followUpId: string) {
   };
 }
 
-export async function snoozeFollowUp(followUpId: string, businessDays: number) {
+/**
+ * "Ignore" this reminder — it comes back after another interval.
+ *
+ * Calendar days, matching the schedule itself: a nudge you dismissed on Monday
+ * is worth seeing again on Thursday, not the following week.
+ */
+export async function snoozeFollowUp(
+  followUpId: string,
+  days: number = FOLLOW_UP_INTERVAL_DAYS,
+) {
   const followUp = await getFollowUpById(followUpId);
   if (!followUp) {
     return { ok: false as const, error: "Follow-up not found." };
   }
 
-  const profile = await getProfileRow();
-  const timezone = profile?.timezone?.trim() || APP_TIMEZONE;
-  const until = toUtcIso(addBusinessDays(new Date(), businessDays, timezone));
+  const until = toUtcIso(addDays(new Date(), days));
 
   const ok = await updateFollowUpStatus(followUpId, "snoozed", {
     snoozed_until: until,
@@ -175,12 +187,27 @@ export async function snoozeFollowUp(followUpId: string, businessDays: number) {
   }
 
   await writeAuditLog("follow_up.snoozed", "follow_ups", followUpId, {
-    business_days: businessDays,
+    days,
     until,
   });
 
   revalidateFollowUpPaths(followUp.application_id);
   return { ok: true as const, until };
+}
+
+/**
+ * Stop reminding about this application for good.
+ *
+ * Per-follow-up "skip" only closes one row and lets the next in the sequence
+ * take over, which is not what someone pressing Stop means.
+ */
+export async function stopFollowUpsForThisApplication(applicationId: string) {
+  const stopped = await stopFollowUpsForApplication(applicationId);
+  await writeAuditLog("follow_ups.stopped", "applications", applicationId, {
+    stopped,
+  });
+  revalidateFollowUpPaths(applicationId);
+  return { ok: true as const, stopped };
 }
 
 export async function skipFollowUp(followUpId: string) {
@@ -193,8 +220,7 @@ export async function skipFollowUp(followUpId: string) {
   await writeAuditLog("follow_up.skipped", "follow_ups", followUpId);
 
   if (followUp.sequence === 1) {
-    const profile = await getProfileRow();
-    await activateSecondFollowUp(followUp.email_id, profile?.timezone?.trim() || APP_TIMEZONE);
+    await activateSecondFollowUp(followUp.email_id);
   }
 
   revalidateFollowUpPaths(followUp.application_id);
@@ -423,8 +449,6 @@ export async function manualSendFollowUp(followUpId: string) {
     };
   }
 
-  const profile = await getProfileRow();
-  const timezone = profile?.timezone?.trim() || APP_TIMEZONE;
   const sentAt = new Date().toISOString();
 
   for (const target of targets) {
@@ -432,7 +456,7 @@ export async function manualSendFollowUp(followUpId: string) {
     await markEmailSent(target.draft_email_id);
     await updateFollowUpStatus(target.id, "sent", { sent_at: sentAt });
     if (target.sequence === 1) {
-      await activateSecondFollowUp(target.email_id, timezone);
+      await activateSecondFollowUp(target.email_id);
     }
     await writeAuditLog("follow_up.sent", "follow_ups", target.id, {
       draft_email_id: target.draft_email_id,
@@ -451,4 +475,59 @@ export async function ensureFollowUpsScheduled(applicationId: string) {
   const count = await scheduleFollowUpsForApplication(applicationId);
   revalidateFollowUpPaths(applicationId);
   return { ok: true as const, scheduled: count };
+}
+
+/**
+ * Write the follow-up here on the server and save it as a draft email.
+ *
+ * runFollowUpNow only queues a prompt for the browser extension to paste into
+ * ChatGPT — the legacy path. Apply has run on the OpenAI API for a while, and
+ * a Generate button that silently depends on an unpacked Chrome extension is a
+ * button that does nothing for most users. Same prompt, same validation, no
+ * browser in the loop.
+ */
+export async function generateFollowUpNow(
+  followUpId: string,
+  options?: { force?: boolean },
+) {
+  const enqueued = await runFollowUpNow(followUpId, options);
+  if (!enqueued.ok) return enqueued;
+
+  // runFollowUpNow claims every contact in the sequence, not just this row, so
+  // a failure has to release all of them — otherwise the others sit in
+  // 'enqueued' forever and the reminder never comes back.
+  const claimedIds = enqueued.follow_up_ids ?? [followUpId];
+  const release = async () => {
+    for (const id of claimedIds) {
+      await updateFollowUpStatus(id, "pending").catch(() => null);
+    }
+  };
+
+  let generated: { content: string };
+  try {
+    generated = await generateWithOpenAI({
+      prompt: enqueued.prompt_text,
+      kind: "follow_up",
+      maxTokens: 2048,
+    });
+  } catch (e) {
+    await release();
+    const raw = e instanceof Error ? e.message : String(e);
+    return { ok: false as const, error: friendlyOpenAiApiError(raw) };
+  }
+
+  const submitted = await submitFollowUpResponse(
+    enqueued.prompt_run_id,
+    generated.content,
+    followUpId,
+  );
+  if (!submitted.ok) {
+    await release();
+    return submitted;
+  }
+
+  return {
+    ...submitted,
+    contact_count: enqueued.contact_count,
+  };
 }

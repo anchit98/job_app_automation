@@ -96,6 +96,19 @@ export async function getPipelineRunById(
   return row ? mapPipelineRow(row) : null;
 }
 
+/**
+ * Patch a run and hand back the new row, in one round trip.
+ *
+ * This used to read the row, merge the patch in JavaScript, write it, then
+ * read it back — three round trips. Against the Supabase pooler that is ~200ms
+ * each, and a single Apply calls this around 25 times, so two thirds of a
+ * second was being spent per stage transition on nothing but network. The
+ * merge is expressed in SQL instead.
+ *
+ * `current_stage` and `error` are deliberately set to NULL by callers, so
+ * COALESCE cannot express "leave it alone" for them — each gets an explicit
+ * "was this field provided" flag.
+ */
 export async function updatePipelineRun(
   id: string,
   patch: {
@@ -105,28 +118,25 @@ export async function updatePipelineRun(
     error?: string | null;
   },
 ): Promise<PipelineRunRecord | null> {
-  const existing = await getPipelineRunById(id);
-  if (!existing) return null;
+  const row = (await dbGet(
+    `UPDATE pipeline_runs
+        SET status        = COALESCE(?, status),
+            current_stage = CASE WHEN ?::boolean THEN ?::text ELSE current_stage END,
+            stages_json   = COALESCE(?, stages_json),
+            error         = CASE WHEN ?::boolean THEN ?::text ELSE error END,
+            updated_at    = (NOW() AT TIME ZONE 'utc')::text
+      WHERE id = ?
+      RETURNING *`,
+    patch.status ?? null,
+    patch.current_stage !== undefined,
+    patch.current_stage ?? null,
+    patch.stages ? JSON.stringify(patch.stages) : null,
+    patch.error !== undefined,
+    patch.error ?? null,
+    id,
+  )) as Record<string, unknown> | undefined;
 
-  const status = patch.status ?? existing.status;
-  const current_stage =
-    patch.current_stage !== undefined
-      ? patch.current_stage
-      : existing.current_stage;
-  const stages = patch.stages ?? existing.stages;
-  const error =
-    patch.error !== undefined ? patch.error : existing.error;
-
-  await dbRun(`UPDATE pipeline_runs
-       SET status = ?, current_stage = ?, stages_json = ?, error = ?,
-           updated_at = (NOW() AT TIME ZONE 'utc')::text
-       WHERE id = ?`, status,
-      current_stage,
-      JSON.stringify(stages),
-      error,
-      id,);
-
-  return await getPipelineRunById(id);
+  return row ? mapPipelineRow(row) : null;
 }
 
 /**

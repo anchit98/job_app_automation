@@ -24,6 +24,8 @@ import {
 import { writeAuditLog } from "@/lib/audit";
 import { refundCredit, spendCredit } from "@/lib/billing/entitlements";
 import { runAsUser } from "@/lib/auth/request-user";
+import { DriveClient } from "@/lib/google/drive";
+import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { sanitizeJd } from "@/lib/jd/sanitize";
 import { truncateJdIfNeeded } from "@/lib/tracker/jd";
 import {
@@ -1080,6 +1082,30 @@ async function startJdParseStage(pipelineId: string, run: PipelineRunRecord) {
   return markAwaitingChatGpt(pipelineId, claimed, "jd_parse", exported);
 }
 
+/**
+ * Resolve the Drive folders now, while the model writes.
+ *
+ * "Uploading resume PDF to Drive" was the slowest visible step, and most of it
+ * was not the upload: before the Doc copy could start, Drive had to be asked
+ * for the root folder and then for this application's folder, one round trip
+ * after another, on the critical path. The answers are the same every time and
+ * the model is about to spend half a minute writing, so they are fetched now
+ * and served from the folder cache when the export runs.
+ *
+ * Deliberately fire-and-forget: a failure here costs nothing, because the
+ * export path resolves the folders itself if the cache is cold.
+ */
+function prewarmDriveFolders(applicationId: string, userId: string): void {
+  void runAsUser(userId, async () => {
+    const application = await getApplicationById(applicationId);
+    if (!application) return;
+    const auth = await getGoogleAuthClient(userId);
+    await new DriveClient(auth).ensureApplicationFolder(application);
+  }).catch((err) => {
+    console.warn("[pipeline] Drive folder prewarm skipped:", err);
+  });
+}
+
 async function startResumeStage(pipelineId: string, run: PipelineRunRecord) {
   const claimed = await claimPipelineStageStart(pipelineId, "resume");
   if (!claimed) {
@@ -1088,6 +1114,7 @@ async function startResumeStage(pipelineId: string, run: PipelineRunRecord) {
     }
     return awaitExistingChatGptStage(pipelineId, "resume", run);
   }
+  prewarmDriveFolders(claimed.application_id, claimed.user_id);
   const exported = await exportResumePrompt(claimed.application_id);
   if (getPipelineLlmEngine(claimed) === "openai") {
     return runAiStageWithOpenAI(pipelineId, claimed, "resume", {
@@ -1379,25 +1406,28 @@ async function checkDrivePdfsForDrafts(
       return {
         status: "failed",
         error:
-          "Cover letter PDF upload to Drive is taking too long. Reconnect Google and retry.",
+          "Cover letter PDF build is taking too long. Retry from the application.",
       };
     }
     return {
       status: "waiting",
-      detail: "Uploading cover letter PDF to Drive…",
+      detail: "Building cover letter PDF…",
     };
   }
   if (latestCover.status === "upload_failed") {
     return {
       status: "failed",
-      error:
-        "Cover letter PDF failed to upload to Drive. Reconnect Google and retry.",
+      error: "Cover letter PDF failed to build. Retry from the application.",
     };
   }
-  if (latestCover.status !== "ready" || !latestCover.drive_pdf_id) {
+  // Unlike the resume, a ready cover letter needs no Drive id: the PDF is
+  // compiled from LaTeX stored on the row, and the Drive copy lands in the
+  // background. Requiring drive_pdf_id here would block on a file the
+  // download route does not need.
+  if (latestCover.status !== "ready") {
     return {
       status: "failed",
-      error: "Cover letter PDF is not available on Drive yet. Please retry.",
+      error: "Cover letter PDF is not ready yet. Please retry.",
     };
   }
 
@@ -1405,103 +1435,62 @@ async function checkDrivePdfsForDrafts(
 }
 
 /**
- * Poll until Drive PDFs are ready, or fail. Yields after ~45s so serverless
- * ticks can resume without dropping the wait.
+ * Wait for the Drive PDFs without touching pipeline state.
+ *
+ * waitForDrivePdfsBeforeDrafts writes progress onto the run and can fail it
+ * outright, which is right on the critical path and wrong off it — this one
+ * runs after the user has already been told the run is done, so it must not be
+ * able to reopen or fail anything. It just answers "are the files there yet".
  */
-async function waitForDrivePdfsBeforeDrafts(
-  pipelineId: string,
-  run: PipelineRunRecord,
-  stagesRunning: PipelineStage[],
-): Promise<
-  | { ok: true; ready: true; stages: PipelineStage[]; run: PipelineRunRecord }
-  | { ok: true; ready: false; pipeline: PipelineRunRecord }
-  | { ok: false; error: string; pipeline: PipelineRunRecord }
-> {
-  const expectCover = expectCoverLetterPdf(run);
-  const budgetMs = 45_000;
+async function waitForDrivePdfsQuietly(
+  applicationId: string,
+  expectCover: boolean,
+  budgetMs = 120_000,
+): Promise<boolean> {
   const started = Date.now();
-  let stages = stagesRunning;
-  let current = run;
-
+  let pollMs = 500;
   while (Date.now() - started < budgetMs) {
-    const gate = await checkDrivePdfsForDrafts(run.application_id, expectCover);
-    if (gate.status === "ready") {
-      return { ok: true, ready: true, stages, run: current };
-    }
-    if (gate.status === "failed") {
-      stages = patchStage(stages, "gmail_drafts", {
-        status: "failed",
-        error: gate.error,
-        detail: "Failed",
-      });
-      const failed = await finishPipelineAndPromote(
-        pipelineId,
-        {
-          status: "needs_manual",
-          current_stage: "gmail_drafts",
-          stages,
-          error: gate.error,
-        },
-        current,
-      );
-      return { ok: false, error: gate.error, pipeline: failed };
-    }
-
-    stages = patchStage(stages, "gmail_drafts", {
-      status: "running",
-      detail: gate.detail,
-      error: null,
-    });
-    current =
-      (await updatePipelineRun(pipelineId, {
-        status: "running",
-        current_stage: "gmail_drafts",
-        stages,
-        error: null,
-      })) ?? current;
-
-    await new Promise((r) => setTimeout(r, 2000));
+    const gate = await checkDrivePdfsForDrafts(applicationId, expectCover);
+    if (gate.status === "ready") return true;
+    if (gate.status === "failed") return false;
+    await new Promise((r) => setTimeout(r, pollMs));
+    pollMs = Math.min(pollMs + 300, 3000);
   }
-
-  // Still uploading — leave stage running so the next advance tick continues.
-  const gate = await checkDrivePdfsForDrafts(run.application_id, expectCover);
-  if (gate.status === "ready") {
-    return { ok: true, ready: true, stages, run: current };
-  }
-  if (gate.status === "failed") {
-    stages = patchStage(stages, "gmail_drafts", {
-      status: "failed",
-      error: gate.error,
-      detail: "Failed",
-    });
-    const failed = await finishPipelineAndPromote(
-      pipelineId,
-      {
-        status: "needs_manual",
-        current_stage: "gmail_drafts",
-        stages,
-        error: gate.error,
-      },
-      current,
-    );
-    return { ok: false, error: gate.error, pipeline: failed };
-  }
-
-  stages = patchStage(stages, "gmail_drafts", {
-    status: "running",
-    detail: gate.detail,
-    error: null,
-  });
-  current =
-    (await updatePipelineRun(pipelineId, {
-      status: "running",
-      current_stage: "gmail_drafts",
-      stages,
-      error: null,
-    })) ?? current;
-  return { ok: true, ready: false, pipeline: current };
+  return false;
 }
 
+/** Record how the background draft attempt went, without reopening the run. */
+async function noteGmailDraftOutcome(
+  pipelineId: string,
+  detail: string,
+  error: string | null,
+): Promise<void> {
+  const run = await getPipelineRunById(pipelineId);
+  if (!run) return;
+  await updatePipelineRun(pipelineId, {
+    stages: patchStage(run.stages, "gmail_drafts", {
+      status: error ? "skipped" : "completed",
+      detail,
+      error,
+    }),
+  });
+}
+
+/**
+ * Finish the run, and put the Gmail drafts behind it.
+ *
+ * This stage used to hold the whole pipeline open for about 22 seconds while
+ * it waited on Drive, pulled two PDFs back down and pushed them into Gmail —
+ * and it was the single longest stage in a run whose four AI calls together
+ * take thirty. It is also no longer the delivery mechanism: the pipeline now
+ * ends on the Cold email panel, which opens a compose window through a plain
+ * link and offers the PDFs as downloads. Nothing the user does next needs a
+ * Gmail draft to exist.
+ *
+ * So the run completes as soon as the emails are written, and the draft is
+ * created afterwards. A Gmail failure was already non-fatal; now it is also
+ * invisible to the clock.
+ */
 async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
   const existing = findStage(run, "gmail_drafts");
   if (existing?.status === "completed") {
@@ -1516,96 +1505,74 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
     return { ok: true as const, pipeline: done, done: true };
   }
 
-  const stagesRunning = patchStage(run.stages, "gmail_drafts", {
-    status: "running",
-    detail: existing?.detail?.includes("Drive")
-      ? existing.detail
-      : "Waiting for Drive PDFs…",
-    error: null,
-  });
-  let current =
-    (await updatePipelineRun(pipelineId, {
-      status: "running",
-      current_stage: "gmail_drafts",
-      stages: stagesRunning,
-      error: null,
-    })) ?? run;
-
-  const waited = await waitForDrivePdfsBeforeDrafts(
-    pipelineId,
-    current,
-    stagesRunning,
-  );
-  if (!waited.ok) {
-    return {
-      ok: false as const,
-      error: waited.error,
-      pipeline: waited.pipeline,
-    };
-  }
-  if (!waited.ready) {
-    // PDFs still uploading — next pipeline tick will resume this stage.
-    return { ok: true as const, pipeline: waited.pipeline };
-  }
-
-  current = waited.run;
-  const stagesAfterWait = waited.stages;
-  const stagesCreating = patchStage(stagesAfterWait, "gmail_drafts", {
-    status: "running",
-    detail: "Creating Gmail drafts…",
-  });
-  current =
-    (await updatePipelineRun(pipelineId, {
-      status: "running",
-      current_stage: "gmail_drafts",
-      stages: stagesCreating,
-    })) ?? current;
-
-  const emails = (await listEmails(current.application_id)).filter(
+  const emails = (await listEmails(run.application_id)).filter(
     (e) =>
       e.kind === "cold" &&
       !e.gmail_draft_id &&
       e.draft_status !== "creating" &&
       e.draft_status !== "created",
   );
+
   if (emails.length === 0) {
-    const stages = patchStage(stagesCreating, "gmail_drafts", {
+    const stages = patchStage(run.stages, "gmail_drafts", {
       status: "completed",
       detail: "No new drafts to create",
+      error: null,
     });
     const done = await finishPipelineAndPromote(
       pipelineId,
-      { status: "completed", current_stage: null, stages },
-      current,
+      { status: "completed", current_stage: null, stages, error: null },
+      run,
     );
     return { ok: true as const, pipeline: done, done: true };
   }
 
-  // Creating the Gmail draft is a convenience now, not the delivery mechanism:
-  // the emails are already written and saved, and the Outreach tab opens each
-  // one in a compose window without any Google permission. So a Gmail failure
-  // here must not fail a run whose resume, cover letter, contacts and emails
-  // all succeeded — it is recorded as a skipped stage and the run completes.
-  const result = await createGmailDrafts(emails.map((e) => e.id));
-  const drafted = result.ok
-    ? (result.results?.filter((r) => r.ok).length ?? emails.length)
-    : 0;
-
-  const stages = patchStage(stagesCreating, "gmail_drafts", {
-    status: result.ok ? "completed" : "skipped",
-    detail: result.ok
-      ? `Created ${drafted} draft(s)`
-      : `${emails.length} email(s) ready to send from the Outreach tab (Gmail drafts unavailable)`,
-    error: result.ok ? null : result.error,
+  const stages = patchStage(run.stages, "gmail_drafts", {
+    // Kept under the length the progress list will print verbatim — a longer
+    // line falls through friendlyMessage's cases and renders as "Something
+    // went wrong", which is the opposite of what this stage means.
+    status: "completed",
+    detail: "Emails ready to send",
+    error: null,
   });
   const done = await finishPipelineAndPromote(
     pipelineId,
     { status: "completed", current_stage: null, stages, error: null },
-    current,
+    run,
   );
-  if (!result.ok) {
-    console.warn("[pipeline] gmail drafts skipped:", result.error);
-  }
+
+  const userId = run.user_id;
+  const applicationId = run.application_id;
+  const expectCover = expectCoverLetterPdf(run);
+  const emailIds = emails.map((e) => e.id);
+
+  after(() => {
+    void runAsUser(userId, async () => {
+      const ready = await waitForDrivePdfsQuietly(applicationId, expectCover);
+      if (!ready) {
+        await noteGmailDraftOutcome(
+          pipelineId,
+          `${emailIds.length} email(s) ready to send from the Outreach tab`,
+          "Drive PDFs were not ready, so the Gmail drafts have no attachments.",
+        );
+        return;
+      }
+      const result = await createGmailDrafts(emailIds);
+      const drafted = result.ok
+        ? (result.results?.filter((r) => r.ok).length ?? emailIds.length)
+        : 0;
+      await noteGmailDraftOutcome(
+        pipelineId,
+        result.ok
+          ? `Created ${drafted} draft(s)`
+          : `${emailIds.length} email(s) ready to send from the Outreach tab (Gmail drafts unavailable)`,
+        result.ok ? null : result.error,
+      );
+    }).catch((err) => {
+      console.error("[pipeline] background Gmail drafts failed", err);
+    });
+  });
+
   return { ok: true as const, pipeline: done, done: true };
 }
 
@@ -1614,7 +1581,7 @@ async function onChatGptStageCompleted(
   stageId: PipelineStageId,
   options: AdvanceOptions = {},
 ): Promise<AdvanceResult> {
-  let run = await getPipelineRunById(pipelineId);
+  const run = await getPipelineRunById(pipelineId);
   if (!run) return { ok: false as const, error: "Pipeline not found." };
 
   const stage = findStage(run, stageId);
@@ -1979,7 +1946,40 @@ export async function tickGlobalPipelines() {
 
   const promoted = await promoteNextQueuedPipeline(user.id);
   const afterPromote = busy.length > 0 ? busy : await listBusyPipelineRuns();
-  const focus = afterPromote[0] ?? null;
+
+  /**
+   * Advance every live pipeline, not only the first.
+   *
+   * This used to pick afterPromote[0] and stop. Two applications running side
+   * by side meant the second one only moved once the first had finished
+   * entirely — "concurrent" in the queue and strictly serial in practice. They
+   * are independent runs against independent rows, and advancePipeline already
+   * de-duplicates per pipeline id, so they can move together.
+   *
+   * Capped so one tick cannot fan out to a dozen simultaneous OpenAI calls;
+   * the rest are picked up by the next tick, which is seconds away.
+   */
+  const MAX_PARALLEL_ADVANCES = 4;
+
+  const advanceable = afterPromote.filter((run) => {
+    if (getPipelineLlmEngine(run) !== "openai") return true;
+    // A server-LLM stage mid-generation must not be started twice — that races
+    // and can duplicate artifacts. A merely pending next stage is fine.
+    return !run.stages.some(
+      (s) =>
+        (s.status === "running" || s.status === "awaiting_chatgpt") &&
+        stageNeedsLlm(s.id),
+    );
+  });
+
+  const results = await Promise.allSettled(
+    advanceable
+      .slice(0, MAX_PARALLEL_ADVANCES)
+      .map((run) => advancePipeline(run.id)),
+  );
+
+  // The extension wake signal is single-tab by nature: one AI tab, one prompt
+  // at a time. Take the first pipeline that asked for one.
   let wake: {
     prompt_run_id: string;
     pipeline_run_id: string;
@@ -1988,29 +1988,14 @@ export async function tickGlobalPipelines() {
     chatgpt_url: string;
   } | null = null;
 
-  if (focus) {
-    // Server-LLM (Apply) pipelines: don't start a second advance while an AI
-    // stage is mid-generation (that races). But DO advance when the next stage
-    // is only pending — otherwise yield gaps leave pipelines stalled.
-    if (getPipelineLlmEngine(focus) === "openai") {
-      const liveAi = focus.stages.find(
-        (s) =>
-          (s.status === "running" || s.status === "awaiting_chatgpt") &&
-          stageNeedsLlm(s.id),
-      );
-      if (liveAi) {
-        return {
-          ok: true as const,
-          busy_count: afterPromote.length,
-          focus_pipeline_id: focus.id,
-          promoted_pipeline_id: promoted?.pipeline?.id ?? null,
-          wake: null,
-        };
-      }
+  for (const result of results) {
+    if (result.status !== "fulfilled") {
+      console.warn("[pipeline] tick advance failed", result.reason);
+      continue;
     }
-
-    const advanced = await advancePipeline(focus.id);
+    const advanced = result.value;
     if (
+      !wake &&
       advanced.ok &&
       advanced.awaiting_chatgpt &&
       advanced.prompt_run_id &&
@@ -2030,7 +2015,7 @@ export async function tickGlobalPipelines() {
   return {
     ok: true as const,
     busy_count: afterPromote.length,
-    focus_pipeline_id: focus?.id ?? null,
+    focus_pipeline_id: afterPromote[0]?.id ?? null,
     promoted_pipeline_id: promoted?.pipeline?.id ?? null,
     wake,
   };

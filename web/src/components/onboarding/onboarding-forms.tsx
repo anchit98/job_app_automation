@@ -9,11 +9,7 @@ import {
   syncMasterFromDriveFile,
   syncMasterFromPdfUpload,
 } from "@/app/actions/master-resume-sync";
-import {
-  syncCoverLetterFromDriveFile,
-  syncCoverLetterFromUpload,
-} from "@/app/actions/cover-letter-sync";
-import { setSetupGuideCollapsed, resetSetupAll, resetSetupCoverLetter, resetSetupMasterResume, resetSetupProfile } from "@/app/actions/setup";
+import { setSetupGuideCollapsed, resetSetupAll, resetSetupMasterResume, resetSetupProfile } from "@/app/actions/setup";
 import { ProfileAvatarUploader } from "@/components/profile/profile-avatar-uploader";
 import { GoogleAccountMenu } from "@/components/google/google-account-menu";
 import { Button } from "@/components/ui/button";
@@ -34,7 +30,6 @@ import {
   type ProfessionalField,
 } from "@/lib/builder/types";
 import type {
-  MasterCoverLetter,
   MasterResume,
   MasterResumeSource,
   Profile,
@@ -58,15 +53,9 @@ const PDF_IMPORT_STEPS: Array<[number, string]> = [
   [26000, "Almost there — saving your master resume…"],
 ];
 
-const RESUME_STRUCTURE_REF_URL =
-  "https://docs.google.com/document/d/1qZ9eluvDK-hu-QeBskgL-g7FJEeKpuLUlVouVWp3p88/edit?usp=sharing";
-const COVER_LETTER_STRUCTURE_REF_URL =
-  "https://docs.google.com/document/d/1I1Zo1xL93XYaL9vMT6fI7RHuUb-_YZL5aaW5nIne9Bo/edit?usp=sharing";
-
 interface OnboardingFormsProps {
   profile: Profile | null;
   masterResume: MasterResume | null;
-  masterCoverLetter: MasterCoverLetter | null;
   /** Newest builder CV, offered here so setup can finish in one place. */
   latestBuilderCv?: BuilderCvVersion | null;
   isAdmin?: boolean;
@@ -88,7 +77,6 @@ function hasMasterResumeContent(content: Record<string, unknown> | null | undefi
 export function OnboardingForms({
   profile,
   masterResume,
-  masterCoverLetter,
   latestBuilderCv = null,
   isAdmin = false,
   googleConnected,
@@ -115,14 +103,9 @@ export function OnboardingForms({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [syncing, startSync] = useTransition();
-  const [syncingCoverLetter, startCoverLetterSync] = useTransition();
   const resumePdfInputRef = useRef<HTMLInputElement | null>(null);
   /** Set after a PDF upload so the user can open and correct the conversion. */
   const [convertedDocUrl, setConvertedDocUrl] = useState<string | null>(null);
-  const coverLetterFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [coverConvertedDocUrl, setCoverConvertedDocUrl] = useState<
-    string | null
-  >(null);
   /**
    * In-progress text for slow Google round trips. Kept apart from `message`
    * so a running job never renders in the green success toast.
@@ -133,9 +116,6 @@ export function OnboardingForms({
   );
   const [resumeSyncedAt, setResumeSyncedAt] = useState<string | null>(
     masterResume?.doc_synced_at ?? null,
-  );
-  const [coverSyncedAt, setCoverSyncedAt] = useState<string | null>(
-    masterCoverLetter?.doc_synced_at ?? null,
   );
   /**
    * Which of the four routes produced the master resume Apply will use.
@@ -183,8 +163,8 @@ export function OnboardingForms({
     },
     {
       done: masterDone,
-      label: "3. Sync documents",
-      hint: "Resume required · cover optional",
+      label: "3. Master resume",
+      hint: "Built here or imported",
     },
     {
       done: contactDone,
@@ -219,10 +199,6 @@ export function OnboardingForms({
     setResumeJson(blankMasterResumeJson());
     setResumeSynced(false);
     setResumeSyncedAt(null);
-  }
-
-  function clearCoverLetterFieldsLocal() {
-    setCoverSyncedAt(null);
   }
 
   function applySignatureFields(fields: {
@@ -327,21 +303,8 @@ export function OnboardingForms({
     });
   }
 
-  /** Shared by the cover letter Drive picker and device upload. */
-  function applyCoverSyncSuccess(
-    res: { body_slots: number; synced_at: string },
-    isDoc: boolean,
-  ) {
-    if (res.synced_at) setCoverSyncedAt(res.synced_at);
-    setMessage(
-      `Cover letter template synced — ${res.body_slots} body slots mapped.${
-        isDoc ? "" : " Check the converted Doc before your first Apply."
-      }`,
-    );
-  }
-
   function runReset(
-    kind: "profile" | "resume" | "cover" | "all",
+    kind: "profile" | "resume" | "all",
     confirmMessage: string,
   ) {
     if (!window.confirm(confirmMessage)) return;
@@ -353,25 +316,19 @@ export function OnboardingForms({
           await resetSetupAll();
           clearProfileFieldsLocal();
           clearResumeFieldsLocal();
-          clearCoverLetterFieldsLocal();
         } else if (kind === "profile") {
           await resetSetupProfile();
           clearProfileFieldsLocal();
-        } else if (kind === "resume") {
+        } else {
           await resetSetupMasterResume();
           clearResumeFieldsLocal();
-        } else {
-          await resetSetupCoverLetter();
-          clearCoverLetterFieldsLocal();
         }
         setMessage(
           kind === "all"
-            ? "Profile, resume, and cover letter values were reset."
+            ? "Profile and resume values were reset."
             : kind === "profile"
               ? "Profile values were reset."
-              : kind === "resume"
-                ? "Master resume sync was reset."
-                : "Cover letter sync was reset.",
+              : "Master resume sync was reset.",
         );
         // Do not router.refresh() here — production Flight + layout auth used
         // to surface an opaque Server Components digest error after reset/sync.
@@ -500,11 +457,11 @@ export function OnboardingForms({
               onClick={() =>
                 runReset(
                   "all",
-                  "Reset all setup values (profile, resume Doc, and cover letter Doc)? This cannot be undone.",
+                  "Reset all setup values (profile and resume Doc)? This cannot be undone.",
                 )
               }
               className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border-hairline px-3 text-[13px] font-semibold text-on-surface-variant transition-colors hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
-              title="Reset profile, resume, and cover letter"
+              title="Reset profile and resume"
             >
               <span className="material-symbols-outlined text-[16px] leading-none">
                 restart_alt
@@ -813,17 +770,6 @@ export function OnboardingForms({
                 <h2 className="li-section-title">Master resume Doc</h2>
               </div>
             </div>
-            <a
-              href={RESUME_STRUCTURE_REF_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                open_in_new
-              </span>
-              Resume structure reference
-            </a>
             {!masterDone ? (
               <Link
                 href="/builder"
@@ -1106,177 +1052,6 @@ export function OnboardingForms({
             ) : null}
           </div>
 
-          <div className="li-card p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="material-symbols-outlined text-primary">mail</span>
-                <h2 className="li-section-title">Cover letter Doc</h2>
-              </div>
-              <button
-                type="button"
-                disabled={pending || syncingCoverLetter}
-                onClick={() =>
-                  runReset(
-                    "cover",
-                    "Clear the synced cover letter template?",
-                  )
-                }
-                className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-on-surface-variant hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
-                title="Reset cover letter"
-              >
-                <span className="material-symbols-outlined text-[16px]">
-                  restart_alt
-                </span>
-                Reset
-              </button>
-            </div>
-            <a
-              href={COVER_LETTER_STRUCTURE_REF_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                open_in_new
-              </span>
-              Cover letter structure reference
-            </a>
-            <div className="space-y-3">
-              <span className="li-meta uppercase tracking-wide block">
-                Import from
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <GoogleDocPickerButton
-                  label={syncingCoverLetter ? "Syncing…" : "Drive"}
-                  title="Choose cover letter (Doc, PDF or Word)"
-                  className="w-full justify-center"
-                  disabled={!googleConnected || syncingCoverLetter}
-                  onPicked={(doc) => {
-                    setError(null);
-                    setMessage(null);
-                    setCoverConvertedDocUrl(null);
-                    const isDoc = doc.mimeType === GOOGLE_DOC_MIME;
-                    setBusy(
-                      isDoc
-                        ? `Reading “${doc.name}”…`
-                        : `Converting “${doc.name}” to a Google Doc…`,
-                    );
-                    startCoverLetterSync(async () => {
-                      try {
-                        const res = await syncCoverLetterFromDriveFile(
-                          doc.id,
-                          doc.mimeType,
-                        );
-                        if (!res.ok) {
-                          setError(res.error);
-                          setMessage(null);
-                          return;
-                        }
-                        if (!isDoc) {
-                          setCoverConvertedDocUrl(res.converted_doc_url);
-                        }
-                        applyCoverSyncSuccess(res, isDoc);
-                      } catch (e) {
-                        setMessage(null);
-                        setError(
-                          e instanceof Error ? e.message : "Sync failed",
-                        );
-                      } finally {
-                        setBusy(null);
-                      }
-                    });
-                  }}
-                  onError={(msg) => setError(msg)}
-                />
-                <input
-                  ref={coverLetterFileInputRef}
-                  type="file"
-                  accept={DOCUMENT_UPLOAD_ACCEPT}
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    // Allow re-picking the same file after a failed attempt.
-                    e.target.value = "";
-                    if (!file) return;
-                    setError(null);
-                    setMessage(null);
-                    setCoverConvertedDocUrl(null);
-                    const allowed = checkDocumentUpload(file);
-                    if (!allowed.ok) {
-                      setError(allowed.error);
-                      return;
-                    }
-                    const sizeKb = Math.round(file.size / 1024);
-                    setBusy(
-                      `Uploading “${file.name}” (${sizeKb} KB) — converting to a Google Doc…`,
-                    );
-                    const form = new FormData();
-                    form.set("cover_letter_file", file);
-                    startCoverLetterSync(async () => {
-                      try {
-                        const res = await syncCoverLetterFromUpload(form);
-                        if (!res.ok) {
-                          setError(res.error);
-                          setMessage(null);
-                          return;
-                        }
-                        setCoverConvertedDocUrl(res.converted_doc_url);
-                        applyCoverSyncSuccess(res, false);
-                      } catch (e) {
-                        setMessage(null);
-                        setError(
-                          e instanceof Error ? e.message : "Upload failed",
-                        );
-                      } finally {
-                        setBusy(null);
-                      }
-                    });
-                  }}
-                />
-                <button
-                  type="button"
-                  disabled={!googleConnected || syncingCoverLetter}
-                  onClick={() => coverLetterFileInputRef.current?.click()}
-                  title="Pick a cover letter from this device — PDF or Word, converted to a Google Doc automatically"
-                  className="inline-flex w-full items-center justify-center gap-1.5 li-btn-secondary text-[13px] disabled:opacity-50"
-                >
-                  <span
-                    className={`material-symbols-outlined text-[16px] ${
-                      syncingCoverLetter ? "animate-spin" : ""
-                    }`}
-                    aria-hidden
-                  >
-                    {syncingCoverLetter ? "progress_activity" : "devices"}
-                  </span>
-                  {syncingCoverLetter ? "Working…" : "This device"}
-                </button>
-              </div>
-              {!googleConnected ? <ConnectGoogleHint /> : null}
-              <div className="flex items-baseline justify-between gap-2 border-t border-outline-variant pt-2">
-                <span className="li-meta uppercase tracking-wide">
-                  Last sync
-                </span>
-                <span className="text-[13px] font-semibold text-on-surface">
-                  {coverSyncedAt
-                    ? formatAppDateTime(coverSyncedAt)
-                    : "Never synced"}
-                </span>
-              </div>
-            </div>
-            {coverConvertedDocUrl ? (
-              <a
-                href={coverConvertedDocUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  open_in_new
-                </span>
-                Open the converted Doc
-              </a>
-            ) : null}
-          </div>
         </div>
 
         {/* Contact + links */}

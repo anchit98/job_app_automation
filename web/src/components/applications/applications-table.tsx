@@ -6,7 +6,13 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { APPLICATION_STATUS_LABELS } from "@/lib/applications/status";
 import { ApplicationPipelineActions } from "@/components/applications/application-pipeline-actions";
 import { deleteApplication } from "@/app/actions/tracker";
-import type { ApplicationSearchResult } from "@/lib/tracker/search";
+import {
+  APPLICATION_SORTS,
+  APPLICATION_SORT_LABELS,
+  DEFAULT_SORT,
+  isApplicationSort,
+  type ApplicationSearchResult,
+} from "@/lib/tracker/search";
 
 function formatRelativeTime(dateString: string) {
   const diff = Date.now() - new Date(dateString).getTime();
@@ -52,6 +58,8 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
 
   const activeStatus = searchParams.get("status") ?? "";
+  const sortParam = searchParams.get("sort") ?? "";
+  const activeSort = isApplicationSort(sortParam) ? sortParam : DEFAULT_SORT;
 
   const pushParams = useCallback(
     (updates: Record<string, string | null>) => {
@@ -118,17 +126,53 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
           ))}
         </div>
 
-        <div className="relative w-full">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">
-            search
-          </span>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search JD, notes, company, role…"
-            className="w-full min-h-11 bg-canvas border border-border-hairline text-on-surface pl-10 pr-4 py-2.5 text-[14px] rounded-lg focus:border-primary outline-none"
-          />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">
+              search
+            </span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search JD, notes, company, role…"
+              className="w-full min-h-11 bg-canvas border border-border-hairline text-on-surface pl-10 pr-4 py-2.5 text-[14px] rounded-lg focus:border-primary outline-none"
+            />
+          </div>
+
+          <div className="relative shrink-0">
+            <label htmlFor="applications-sort" className="sr-only">
+              Sort by
+            </label>
+            <span
+              className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]"
+              aria-hidden
+            >
+              swap_vert
+            </span>
+            <select
+              id="applications-sort"
+              value={activeSort}
+              onChange={(e) =>
+                pushParams({
+                  sort: e.target.value === DEFAULT_SORT ? null : e.target.value,
+                })
+              }
+              className="appearance-none cursor-pointer w-full sm:w-auto min-h-11 bg-canvas border border-border-hairline text-on-surface pl-10 pr-9 py-2.5 text-[14px] font-medium rounded-lg focus:border-primary outline-none"
+            >
+              {APPLICATION_SORTS.map((sort) => (
+                <option key={sort} value={sort}>
+                  {APPLICATION_SORT_LABELS[sort]}
+                </option>
+              ))}
+            </select>
+            <span
+              className="material-symbols-outlined pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]"
+              aria-hidden
+            >
+              expand_more
+            </span>
+          </div>
         </div>
 
         <p className="li-meta">

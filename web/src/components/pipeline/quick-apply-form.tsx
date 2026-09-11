@@ -145,11 +145,8 @@ function SectionHeading({
 
 export function QuickApplyForm({
   llmEngine = "openai",
-  coverLetterSynced = false,
 }: {
   llmEngine?: PipelineLlmEngine;
-  /** True when a cover letter Google Doc template has been synced in onboarding. */
-  coverLetterSynced?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -157,10 +154,9 @@ export function QuickApplyForm({
   const [jobUrl, setJobUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [emailInstructions, setEmailInstructions] = useState("");
-  const [includeCoverLetter, setIncludeCoverLetter] = useState(coverLetterSynced);
-  const [coverLetterGateHint, setCoverLetterGateHint] = useState<string | null>(
-    null,
-  );
+  // Defaults to yes: there is no template to sync any more, so the only
+  // reason to say no is speed.
+  const [includeCoverLetter, setIncludeCoverLetter] = useState(true);
   const [contacts, setContacts] = useState<ContactRow[]>([emptyContact()]);
   const [error, setError] = useState<string | null>(null);
   /** Set when the failure was a paywall, so the error can offer a way out. */
@@ -284,36 +280,15 @@ export function QuickApplyForm({
                 Cover letter needed?
               </div>
               <p className="text-[12px] text-on-surface-variant mt-0.5">
-                {!coverLetterSynced
-                  ? "Requires a synced cover letter template from Onboarding."
-                  : includeCoverLetter
-                    ? "A tailored cover letter PDF will be generated."
-                    : "Cover letter stage will be skipped — faster pipeline."}
+                {includeCoverLetter
+                  ? "A tailored cover letter PDF is written from this JD."
+                  : "Cover letter stage will be skipped — faster pipeline."}
               </p>
-              {coverLetterGateHint ? (
-                <p
-                  role="alert"
-                  className="mt-1.5 text-[12px] font-medium text-error"
-                >
-                  {coverLetterGateHint}
-                </p>
-              ) : null}
             </div>
             <div className="relative shrink-0">
               <select
                 value={includeCoverLetter ? "yes" : "no"}
-                onChange={(e) => {
-                  const wantYes = e.target.value === "yes";
-                  if (wantYes && !coverLetterSynced) {
-                    setIncludeCoverLetter(false);
-                    setCoverLetterGateHint(
-                      "Cannot enable cover letter — no cover letter template has been synced. Sync one from Onboarding first.",
-                    );
-                    return;
-                  }
-                  setCoverLetterGateHint(null);
-                  setIncludeCoverLetter(wantYes);
-                }}
+                onChange={(e) => setIncludeCoverLetter(e.target.value === "yes")}
                 aria-label="Cover letter needed"
                 className="appearance-none cursor-pointer rounded-lg border border-border-hairline bg-surface pl-3 pr-9 py-2 text-[13px] font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
               >

@@ -7,10 +7,12 @@ import {
   resumePipeline,
 } from "@/app/actions/pipeline";
 import { ensureExtensionToken, armExtensionForPromptRun } from "@/app/actions/extension";
+import { ColdEmailSendPanel } from "@/components/emails/email-send-list";
 import {
   APPLICATION_STATUS_LABELS,
   type ApplicationStatus,
 } from "@/lib/applications/status";
+import type { PipelineOutreach } from "@/lib/pipeline/outreach";
 import type { PipelineRunRecord, PipelineStage } from "@/lib/pipeline/types";
 import { getPipelineLlmEngine } from "@/lib/pipeline/types";
 
@@ -297,9 +299,12 @@ function clearSignaled(promptRunId: string) {
 export function PipelineProgress({
   initialPipeline,
   initialApplicationStatus = null,
+  initialOutreach = null,
 }: {
   initialPipeline: PipelineRunRecord;
   initialApplicationStatus?: ApplicationStatus | null;
+  /** Present when the run had already finished before this page loaded. */
+  initialOutreach?: PipelineOutreach | null;
 }) {
   const [pipeline, setPipeline] = useState(initialPipeline);
   const pipelineRef = useRef(pipeline);
@@ -317,6 +322,9 @@ export function PipelineProgress({
     resume_version: number | null;
     cover_letter_version: number | null;
   }>({ resume_version: null, cover_letter_version: null });
+  const [outreach, setOutreach] = useState<PipelineOutreach | null>(
+    initialOutreach,
+  );
 
   const activeStage = useMemo(
     () =>
@@ -418,6 +426,7 @@ export function PipelineProgress({
           resume_version: number | null;
           cover_letter_version: number | null;
         };
+        outreach?: PipelineOutreach | null;
       };
       if (!status.ok || !status.pipeline) return null;
       setPipeline(status.pipeline);
@@ -426,6 +435,12 @@ export function PipelineProgress({
       }
       if (status.downloads) {
         setDownloads(status.downloads);
+      }
+      // Only ever set, never cleared: the poll omits outreach until the run
+      // completes, and blanking the panel on the next tick would make the
+      // emails flicker away under the user.
+      if (status.outreach) {
+        setOutreach(status.outreach);
       }
       return status;
     } catch {
@@ -1025,8 +1040,7 @@ export function PipelineProgress({
         <div className="li-card p-4 space-y-3">
           <h3 className="li-section-title">Download PDFs</h3>
           <p className="li-meta">
-            Available once Drive export finishes — Gmail drafts wait for these
-            PDFs before attaching.
+            Attach these to the email below before you send it.
           </p>
           <div className="flex flex-wrap gap-2">
             {downloads.resume_version != null && (
@@ -1049,22 +1063,35 @@ export function PipelineProgress({
         </div>
       )}
 
+      {/* The run finishing is not the end of the job — sending the emails is.
+          So the last card is the same Cold email panel the Outreach tab shows,
+          rather than a "done" notice that sends the user somewhere else to
+          find it. */}
       {pipeline.status === "completed" && (
-        <div className="li-card-flat border-l-4 border-l-success bg-success-container p-4">
-          <h3 className="text-[16px] font-medium text-on-surface">All done</h3>
-          <p className="text-[13px] text-on-surface-variant mt-1">
-            Resume, cover letter, and Gmail drafts are ready. Review and send from the
-            application workspace.
-          </p>
-          <div className="mt-4">
+        <div className="li-card p-4 space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="li-section-title">Cold email</h3>
             <Link
               href={`/applications/${pipeline.application_id}`}
               prefetch={false}
-              className="li-btn-primary text-[13px] no-underline"
+              className="text-[13px] font-semibold text-primary hover:underline"
             >
               Open application
             </Link>
           </div>
+          {outreach ? (
+            <ColdEmailSendPanel
+              emails={outreach.emails}
+              contacts={outreach.contacts}
+              sendPacks={outreach.send_packs}
+              attachments={outreach.attachments}
+              emptyText="No cold emails for this run — no contacts were added on the Apply form."
+            />
+          ) : (
+            <p className="text-[13px] text-on-surface-variant">
+              Loading your drafted emails…
+            </p>
+          )}
         </div>
       )}
       </div>

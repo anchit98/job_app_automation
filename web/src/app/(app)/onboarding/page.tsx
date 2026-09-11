@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { getProfile, syncSignatureLinksFromResume } from "@/app/actions/profile";
 import { getMasterResume } from "@/app/actions/master-resume";
-import { getMasterCoverLetter } from "@/app/actions/cover-letter";
 import { getCurrentUser } from "@/lib/auth/user";
 import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { getSetupReadiness } from "@/lib/setup/readiness";
@@ -23,7 +22,6 @@ export default async function OnboardingPage({
   const [
     profile,
     masterResume,
-    masterCoverLetter,
     user,
     googleState,
     readiness,
@@ -31,7 +29,6 @@ export default async function OnboardingPage({
   ] = await Promise.all([
     getProfile().catch(() => null),
     getMasterResume().catch(() => null),
-    getMasterCoverLetter().catch(() => null),
     getCurrentUser().catch(() => null),
     getGoogleConnectedState(),
     getSetupReadiness().catch(() => null),
@@ -74,7 +71,6 @@ export default async function OnboardingPage({
       <OnboardingForms
         profile={resolvedProfile}
         masterResume={masterResume}
-        masterCoverLetter={masterCoverLetter}
         latestBuilderCv={builderCvs[0] ?? null}
         isAdmin={Boolean(user?.is_admin)}
         googleConnected={googleConnected || googleState !== false}
