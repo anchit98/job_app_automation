@@ -231,6 +231,11 @@ export async function requestPasswordReset(input: { email: string }) {
         fullName: user.full_name,
       });
     }
+    // Always the same answer. Reporting a delivery failure here would say
+    // "this address has an account" out loud, which is exactly what the
+    // neutral wording exists to avoid — and the person on the form cannot do
+    // anything about a provider outage anyway. Failures are logged and
+    // audited inside sendPasswordResetEmail instead.
     return {
       ok: true as const,
       message:

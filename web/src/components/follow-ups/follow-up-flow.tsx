@@ -102,9 +102,6 @@ export function FollowUpFlow({
         setError(result.error);
         return;
       }
-      if (result.gmail_url) {
-        window.open(result.gmail_url, "_blank", "noopener,noreferrer");
-      }
       router.refresh();
     });
   }

@@ -1,13 +1,10 @@
 import { createPasswordResetToken } from "@/lib/auth/password-reset";
-import {
-  AdminGmailConfigError,
-  requireGmailSenderAdmin,
-  sendAdminGmail,
-} from "@/lib/google/admin-gmail";
+import { sendTransactionalEmail } from "@/lib/emails/transactional";
 
 function resetEmailHtml(input: {
   resetUrl: string;
   fullName?: string | null;
+  /** Left unset now that the provider, not an admin account, signs the mail. */
   senderName?: string | null;
 }) {
   const greet = input.fullName?.trim() ? `Hi ${input.fullName.trim()},` : "Hi,";
@@ -31,50 +28,51 @@ function resetEmailHtml(input: {
   `.trim();
 }
 
-export class PasswordResetEmailConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PasswordResetEmailConfigError";
-  }
+export interface PasswordResetEmailResult {
+  token: Awaited<ReturnType<typeof createPasswordResetToken>>;
+  /** False when the provider is down or absent — the token is still valid. */
+  delivered: boolean;
+  delivery_error: string | null;
 }
 
+/**
+ * Issue a recovery token and try to email it.
+ *
+ * The token is created first and kept whatever the provider does. A reset link
+ * that exists but was not delivered is recoverable — an admin can hand it over
+ * — while refusing to create one leaves the user with nothing at all. Delivery
+ * is reported rather than thrown so the caller can decide what to show.
+ */
 export async function sendPasswordResetEmail(input: {
   userId: string;
   email: string;
   fullName?: string | null;
   preferredAdminId?: string;
   kind?: "forgot_password" | "admin_reset";
-}) {
-  let sender;
-  try {
-    sender = await requireGmailSenderAdmin(input.preferredAdminId);
-  } catch (error) {
-    if (error instanceof AdminGmailConfigError) {
-      throw new PasswordResetEmailConfigError(
-        error.message.includes("gmail.send")
-          ? error.message
-          : "Password recovery email is not available yet. Connect an admin Google account first.",
-      );
-    }
-    throw error;
-  }
-
+}): Promise<PasswordResetEmailResult> {
   const token = await createPasswordResetToken(
     input.userId,
     input.kind ?? "forgot_password",
-    sender.id,
+    input.preferredAdminId ?? null,
   );
 
-  await sendAdminGmail({
+  const sent = await sendTransactionalEmail({
     to: input.email,
     subject: "JobApp OS password reset",
     bodyHtml: resetEmailHtml({
       resetUrl: token.resetUrl,
       fullName: input.fullName,
-      senderName: sender.full_name || sender.email,
     }),
-    preferredAdminId: sender.id,
+    preferredAdminId: input.preferredAdminId,
   });
 
-  return token;
+  if (!sent.ok) {
+    console.error("[password-reset-email] not delivered:", sent.error);
+  }
+
+  return {
+    token,
+    delivered: sent.ok,
+    delivery_error: sent.ok ? null : sent.error,
+  };
 }

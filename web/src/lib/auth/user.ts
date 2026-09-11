@@ -308,6 +308,17 @@ export async function updatePasswordHash(
   );
 }
 
+/**
+ * Flip the paid flag and keep entitlements in step.
+ *
+ * The ₹299 offer is "lifetime + 60 applications", so paying has to move the
+ * user onto `legacy_lifetime` — otherwise someone who used up the free Apply
+ * runs first would pay and stay blocked, because their entitlements row was
+ * already created as `free`. Marking unpaid reverses it.
+ *
+ * Every payment path (webhook, reconcile, admin "Mark paid") funnels through
+ * here, so this is the one place that needs to know.
+ */
 export async function setUserPaid(
   userId: string,
   paid: boolean,
@@ -325,6 +336,29 @@ export async function setUserPaid(
     paid,
     userId,
   );
+
+  if (paid) {
+    await dbRun(
+      `INSERT INTO user_entitlements
+         (user_id, plan, apply_credits, cv_credits, tailor_credits)
+       VALUES (?, 'legacy_lifetime', 60, 9999, 9999)
+       ON CONFLICT (user_id) DO UPDATE
+         SET plan = 'legacy_lifetime',
+             apply_credits = GREATEST(user_entitlements.apply_credits, 60),
+             updated_at = (NOW() AT TIME ZONE 'utc')::text`,
+      userId,
+    );
+  } else {
+    // Refund / admin un-mark: back to the free tier, but never hand out a
+    // fresh batch of credits they have already spent.
+    await dbRun(
+      `UPDATE user_entitlements
+          SET plan = 'free',
+              updated_at = (NOW() AT TIME ZONE 'utc')::text
+        WHERE user_id = ? AND plan = 'legacy_lifetime'`,
+      userId,
+    );
+  }
 }
 
 export async function setUserAdmin(

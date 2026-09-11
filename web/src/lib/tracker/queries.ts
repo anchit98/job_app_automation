@@ -4,10 +4,12 @@ import { getRequestUserId } from "@/lib/auth/request-user";
 import { requireUser } from "@/lib/auth/user";
 import { isApplicationStatus } from "@/lib/applications/status";
 import {
-  buildFtsMatchQuery,
+  buildSearchTokens,
+  DEFAULT_SORT,
   type ApplicationListItem,
   type ApplicationSearchFilters,
   type ApplicationSearchResult,
+  type ApplicationSort,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
 } from "@/lib/tracker/search";
@@ -68,6 +70,57 @@ function mapPromptRun(row: Record<string, unknown>): PromptRun {
   };
 }
 
+/** Everything the free-text box searches, as one lowercase string. */
+const SEARCH_HAYSTACK = `LOWER(
+  COALESCE(a.company, '') || ' ' ||
+  COALESCE(a.role, '') || ' ' ||
+  COALESCE(a.jd_raw, '') || ' ' ||
+  COALESCE(a.notes, '')
+)`;
+
+/** Short fields only — a fuzzy scan of a whole job description is not worth it. */
+const SEARCH_TITLE = `LOWER(COALESCE(a.company, '') || ' ' || COALESCE(a.role, ''))`;
+
+/**
+ * How close a word has to be before a typo still counts as a hit.
+ *
+ * Measured against the real applications in this database rather than guessed:
+ * at 0.55 a two-character slip like "parbas" or "junor" scores 0.500 and finds
+ * nothing. Dropping to 0.45 catches both and — checked across every distinct
+ * company/role in the table — returns an identical result set for every other
+ * query, so it buys the typos for no extra noise. Anything looser starts
+ * matching on a single shared syllable.
+ */
+const TRIGRAM_MIN_SIMILARITY = 0.45;
+
+/**
+ * Whether pg_trgm is installed, probed once per process.
+ *
+ * Migration 050 enables it, but a database that never ran that migration must
+ * still be able to search — so the fuzzy clause is added only when the
+ * extension is actually there, and plain substring matching carries the rest.
+ */
+let trigramAvailable: Promise<boolean> | null = null;
+
+function hasTrigramSupport(): Promise<boolean> {
+  if (!trigramAvailable) {
+    trigramAvailable = dbGet(
+      `SELECT 1 AS ok FROM pg_extension WHERE extname = 'pg_trgm'`,
+    )
+      .then((row) => Boolean(row))
+      .catch(() => false);
+  }
+  return trigramAvailable;
+}
+
+const SORT_CLAUSES: Record<ApplicationSort, string> = {
+  // NULLS LAST so an application whose company was never parsed does not head
+  // an alphabetical list.
+  name: `LOWER(COALESCE(NULLIF(TRIM(a.company), ''), NULLIF(TRIM(a.role), ''))) ASC NULLS LAST, a.updated_at DESC`,
+  applied: `a.created_at DESC`,
+  recent: `a.updated_at DESC`,
+};
+
 export async function searchApplications(
   filters: ApplicationSearchFilters,
   userId?: string,
@@ -83,12 +136,25 @@ export async function searchApplications(
   const conditions: string[] = ["a.user_id = ?"];
   const params: unknown[] = [uid];
 
-  const ftsQuery = filters.q ? buildFtsMatchQuery(filters.q) : "";
-  if (ftsQuery) {
-    conditions.push(
-      `(to_tsvector('english', coalesce(a.company,'') || ' ' || coalesce(a.role,'') || ' ' || coalesce(a.jd_raw,'') || ' ' || coalesce(a.notes,'')) @@ plainto_tsquery('english', ?))`,
-    );
-    params.push(ftsQuery);
+  // Full-text search was the wrong tool here: plainto_tsquery matches whole
+  // stemmed lexemes, so "goog" found nothing and a misspelling found nothing.
+  // Every token must appear, but each may appear as a substring anywhere or as
+  // a near-enough word in the company/role — which is what "close matches"
+  // means when you half-remember a company name.
+  const tokens = filters.q ? buildSearchTokens(filters.q) : [];
+  if (tokens.length > 0) {
+    const fuzzy = await hasTrigramSupport();
+    for (const token of tokens) {
+      const clauses = [`${SEARCH_HAYSTACK} LIKE ?`];
+      // `_` survives tokenising (it is a word character) and is a single-char
+      // wildcard to LIKE, so "a_b" would quietly match "axb". Escape it.
+      params.push(`%${token.replace(/[\\_%]/g, "\\$&")}%`);
+      if (fuzzy) {
+        clauses.push(`word_similarity(?::text, ${SEARCH_TITLE}) >= ?::real`);
+        params.push(token, TRIGRAM_MIN_SIMILARITY);
+      }
+      conditions.push(`(${clauses.join(" OR ")})`);
+    }
   }
 
   if (filters.status === "interview_stage") {
@@ -146,7 +212,7 @@ export async function searchApplications(
           WHERE rv.application_id = a.id AND rv.status = 'ready') AS latest_resume_version
        FROM applications a
        WHERE ${where}
-       ORDER BY a.updated_at DESC
+       ORDER BY ${SORT_CLAUSES[filters.sort ?? DEFAULT_SORT] ?? SORT_CLAUSES[DEFAULT_SORT]}
        LIMIT ? OFFSET ?`, ...params, pageSize, offset) as Record<string, unknown>[];
 
   const items: ApplicationListItem[] = rows.map((row) => {

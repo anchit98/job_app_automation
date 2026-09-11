@@ -40,15 +40,53 @@ const DEFAULT_CURL_MAX_TIME_SEC = 120;
 const MAX_ATTEMPTS = 2;
 const BACKOFF_MS = [2_000, 4_000];
 
-let openaiGate: Promise<void> = Promise.resolve();
+/**
+ * How many OpenAI calls this isolate may have in flight at once.
+ *
+ * This used to be a strict one-at-a-time chain, which made two Apply runs on
+ * the same isolate strictly sequential: the second application's JD parse
+ * waited behind the first application's resume generation, and a "concurrent"
+ * apply took twice as long as one. A small limit keeps the original point —
+ * not hammering the API from one process, and staying inside the rate limit —
+ * without serialising unrelated applications behind each other.
+ */
+const DEFAULT_MAX_CONCURRENCY = 3;
 
-function withOpenAiGate<T>(fn: () => Promise<T>): Promise<T> {
-  const next = openaiGate.then(fn, fn);
-  openaiGate = next.then(
-    () => undefined,
-    () => undefined,
-  );
-  return next;
+function maxConcurrency(): number {
+  const raw = Number.parseInt(process.env.OPENAI_MAX_CONCURRENCY ?? "", 10);
+  if (Number.isFinite(raw) && raw >= 1) return Math.min(raw, 8);
+  return DEFAULT_MAX_CONCURRENCY;
+}
+
+let inFlight = 0;
+const waiting: Array<() => void> = [];
+
+function releaseSlot(): void {
+  const next = waiting.shift();
+  if (next) {
+    next();
+    return;
+  }
+  inFlight -= 1;
+}
+
+function acquireSlot(): Promise<void> {
+  if (inFlight < maxConcurrency()) {
+    inFlight += 1;
+    return Promise.resolve();
+  }
+  // The slot count stays as it is — the waiter inherits the slot of whoever
+  // wakes it, so a queued call can never push the total over the limit.
+  return new Promise<void>((resolve) => waiting.push(resolve));
+}
+
+async function withOpenAiGate<T>(fn: () => Promise<T>): Promise<T> {
+  await acquireSlot();
+  try {
+    return await fn();
+  } finally {
+    releaseSlot();
+  }
 }
 
 function openaiApiKey(): string {

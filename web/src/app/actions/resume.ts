@@ -2,7 +2,6 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { maybeAdvanceApplicationStatus } from "@/app/actions/applications";
 import { writeAuditLog } from "@/lib/audit";
 import {
@@ -15,6 +14,8 @@ import {
   getPromptRunById,
   insertResumeVersion,
   listResumeVersions,
+  markResumeVersionBuilt,
+  markResumeVersionDocReady,
   markResumeVersionUploadFailed,
   createOrReusePendingPromptRun,
   updatePromptRunText,
@@ -24,13 +25,18 @@ import {
   getResumeVersion,
   getResumeVersionById,
 } from "@/lib/db/queries";
+import { compileLatexToPdf } from "@/lib/builder/compile-pdf";
+import { generateTailoredResumeLatex } from "@/lib/builder/tailored-resume-latex";
 import { DriveClient } from "@/lib/google/drive";
 import { DocsClient, type DocLayoutMap } from "@/lib/google/docs";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { isGoogleReconnectError } from "@/lib/google/reconnect";
 import { getRequestUserId, runAsUser } from "@/lib/auth/request-user";
-import { requireUser } from "@/lib/auth/user";
-import { buildJdContent, condenseMasterResume } from "@/lib/resume/context";
+import { getUserById, requireUser } from "@/lib/auth/user";
+import {
+  buildJdContentWithInstructions,
+  condenseMasterResume,
+} from "@/lib/resume/context";
 import { fitResumeToMasterLayout, normalizeResumeSkills } from "@/lib/resume/auto-fit";
 import {
   buildJdKeywordBrief,
@@ -227,7 +233,7 @@ export async function exportResumePrompt(
     template,
     {
       master_resume_json: JSON.stringify(masterContent, null, 2),
-      jd_content: buildJdContent(application),
+      jd_content: buildJdContentWithInstructions(application),
       jd_keyword_brief: buildJdKeywordBrief(application),
       rules_json: JSON.stringify(masterRules, null, 2),
       section_budgets: buildResumeStructuralGuide(
@@ -294,64 +300,120 @@ async function persistResumeArtifacts(
     await updateResumeVersionContentForRetry(resumeVersionId, content);
   }
 
+  /**
+   * Two outputs, built at the same time because neither needs the other.
+   *
+   * The PDF is typeset from the tailored content with the CV builder's
+   * template, so it looks the same whether the master resume was built here or
+   * imported from somebody's old file. The Doc copy still carries the user's
+   * own layout for anyone who would rather edit that — it is what
+   * drive_doc_id, /open and /doc point at — but it is no longer exported to
+   * PDF, since nothing links to that file any more.
+   */
   const finishDrive = async (userId: string) => {
+    const latex = generateTailoredResumeLatex({
+      content,
+      profile: {
+        full_name: fullName,
+        email: await resolveResumeEmail(),
+        phone: profile?.phone ?? null,
+        location: profile?.location ?? null,
+        linkedin_url: profile?.linkedin_url ?? null,
+        github_url: profile?.github_url ?? null,
+        portfolio_url: profile?.portfolio_url ?? null,
+      },
+    });
+
     try {
       const auth = await getGoogleAuthClient(userId);
       const drive = new DriveClient(auth);
       const docs = new DocsClient(auth);
 
-      const result = await generateResumeFromDoc(drive, docs, {
-        masterDocId: masterRow!.doc_id!,
-        layout: masterRow!.doc_layout as unknown as DocLayoutMap,
-        tailored: content,
-        application,
-        version,
-        fullName,
-      });
+      const [docResult, pdf] = await Promise.all([
+        generateResumeFromDoc(
+          drive,
+          docs,
+          {
+            masterDocId: masterRow!.doc_id!,
+            layout: masterRow!.doc_layout as unknown as DocLayoutMap,
+            tailored: content,
+            application,
+            version,
+            fullName,
+          },
+          {
+            skipPdf: true,
+            onDocReady: async (driveDocId) => {
+              await markResumeVersionDocReady(resumeVersionId, driveDocId);
+            },
+          },
+        ),
+        compileLatexToPdf(latex),
+      ]);
 
-      await updateResumeVersionDriveIds(
+      const folderId = await drive.ensureApplicationFolder(application);
+      const drivePdfId = await drive.uploadFile(
+        pdf,
+        docResult.pdf_name,
+        "application/pdf",
+        folderId,
+      );
+
+      await markResumeVersionBuilt(
         resumeVersionId,
-        result.drive_pdf_id,
-        null,
-        result.drive_doc_id,
+        latex,
+        drivePdfId,
+        docResult.drive_doc_id,
       );
 
       await writeAuditLog("resume.generated", "resume_versions", resumeVersionId, {
         application_id: applicationId,
         version,
-        drive_doc_id: result.drive_doc_id,
-        drive_pdf_id: result.drive_pdf_id,
-        pdf_name: result.pdf_name,
+        drive_doc_id: docResult.drive_doc_id,
+        drive_pdf_id: drivePdfId,
+        pdf_name: docResult.pdf_name,
       });
 
       return {
         resume_version_id: resumeVersionId,
         version,
-        pdf_name: result.pdf_name,
+        pdf_name: docResult.pdf_name,
       };
     } catch (e) {
-      await markResumeVersionUploadFailed(resumeVersionId);
+      // The typeset PDF does not need Drive to be readable later, so keep the
+      // source even when the Google half failed — the download route rebuilds
+      // from it.
+      await markResumeVersionUploadFailed(resumeVersionId, latex);
       throw e;
     }
   };
 
-  if (options?.deferDrive) {
-    // Prefer ALS userId (pipeline wraps runAsUser) — cookies() are forbidden inside after().
-    const userId =
-      getRequestUserId() ?? (await requireUser()).id;
-    after(() => {
-      void runAsUser(userId, () => finishDrive(userId)).catch((err) => {
-        console.error("[resume] deferred Drive export failed", err);
-      });
-    });
-    return {
-      resume_version_id: resumeVersionId,
-      version,
-      pdf_name: null as string | null,
-      deferred: true as const,
-    };
+  /** Login address, looked up by id so this works outside a cookie scope. */
+  async function resolveResumeEmail(): Promise<string | null> {
+    try {
+      const userId = getRequestUserId();
+      if (userId) return (await getUserById(userId))?.email ?? null;
+      return (await requireUser()).email ?? null;
+    } catch {
+      return null;
+    }
   }
 
+  // `deferDrive` is accepted and ignored.
+  //
+  // It used to hand this to `after()`. Three separate callbacks were scheduled
+  // that way — this one, the cover letter build, and the Gmail drafts — and in
+  // a real run none of the three ever executed. The resume version sat at
+  // `uploading` with no Doc and no PDF forever, which is why the finished run
+  // offered a cover letter to attach and no CV: there was no CV file to offer.
+  // Nothing surfaced the failure either, because deferring is exactly the
+  // promise that nobody is waiting for the result.
+  //
+  // A resume PDF that never exists is not a trade worth making for the seconds
+  // it saves, so the export is awaited. The folder lookups it starts with are
+  // cached and prewarmed during generation, which is where most of the old
+  // cost was.
+  void options?.deferDrive;
   const userId = getRequestUserId() ?? (await requireUser()).id;
   return finishDrive(userId);
 }

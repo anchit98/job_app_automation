@@ -1,17 +1,74 @@
 import { Readable } from "stream";
 import { google } from "googleapis";
+import { getRequestUserId } from "@/lib/auth/request-user";
 import { getProfileRow, setDriveRootId, clearDriveRootId } from "@/lib/db/queries";
 import { DRIVE_ROOT_FOLDER_NAME } from "@/lib/db/types";
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const MASTER_FOLDER_NAME = "_Master";
+const BUILT_CV_FOLDER_NAME = "CV Builder";
+const IMPORTED_FOLDER_NAME = "Imported Resumes";
 const MASTER_TEMPLATE_NAME = "Master_Resume_Template";
 const COVER_LETTER_TEMPLATE_NAME = "Master_Cover_Letter_Template";
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PDF_MIME = "application/pdf";
 
 type GoogleAuthClient = InstanceType<typeof google.auth.OAuth2>;
+
+/**
+ * Folder ids, remembered across requests within one isolate.
+ *
+ * Resolving where a resume goes cost three or four sequential Drive round
+ * trips every time - profile read, a metadata check on the root folder, a
+ * files.list for "JobApp OS", another for "Company - Role" - before the copy
+ * that does the actual work could start. The per-instance cache below only
+ * ever helped inside a single generation, because a new DriveClient is built
+ * for each one.
+ *
+ * Folder ids are stable, so this is safe to hold; the TTL and the
+ * invalidation on access-denied cover the case where the user deletes or
+ * moves a folder in Drive between runs.
+ */
+const FOLDER_CACHE_TTL_MS = 10 * 60_000;
+
+const sharedFolderCache = new Map<string, { id: string; expiresAt: number }>();
+
+function sharedCacheGet(key: string | null): string | null {
+  if (!key) return null;
+  const hit = sharedFolderCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    sharedFolderCache.delete(key);
+    return null;
+  }
+  return hit.id;
+}
+
+function sharedCacheSet(key: string | null, id: string): void {
+  if (!key) return;
+  sharedFolderCache.set(key, { id, expiresAt: Date.now() + FOLDER_CACHE_TTL_MS });
+}
+
+/**
+ * Forget this user's folder ids.
+ *
+ * Called whenever Drive says a file is missing or forbidden: the most likely
+ * explanation is a cached id for a folder that has been deleted, moved to
+ * another account, or lost to a revoked grant.
+ */
+export function clearDriveFolderCache(userId?: string | null): void {
+  const uid = userId ?? getRequestUserId();
+  if (!uid) {
+    sharedFolderCache.clear();
+    return;
+  }
+  const prefix = `${uid}::`;
+  for (const key of sharedFolderCache.keys()) {
+    if (key.startsWith(prefix)) sharedFolderCache.delete(key);
+  }
+}
 
 function isDriveAccessDenied(error: unknown): boolean {
   const message =
@@ -65,10 +122,23 @@ export class DriveClient {
     return `${parentId ?? "root"}::${name}`;
   }
 
+  /** Null with no user in scope - then only the per-instance cache applies. */
+  private sharedKey(name: string, parentId?: string): string | null {
+    const uid = getRequestUserId();
+    return uid ? `${uid}::${parentId ?? "root"}::${name}` : null;
+  }
+
   async ensureFolder(name: string, parentId?: string): Promise<string> {
     const cacheKey = this.folderCacheKey(name, parentId);
     const cached = this.folderCache.get(cacheKey);
     if (cached) return cached;
+
+    const sharedKey = this.sharedKey(name, parentId);
+    const shared = sharedCacheGet(sharedKey);
+    if (shared) {
+      this.folderCache.set(cacheKey, shared);
+      return shared;
+    }
 
     const drive = this.drive();
     const q = [
@@ -90,6 +160,7 @@ export class DriveClient {
     const found = existing.data.files?.[0]?.id;
     if (found) {
       this.folderCache.set(cacheKey, found);
+      sharedCacheSet(sharedKey, found);
       return found;
     }
 
@@ -106,11 +177,19 @@ export class DriveClient {
       throw new Error(`Failed to create Drive folder: ${name}`);
     }
     this.folderCache.set(cacheKey, created.data.id);
+    sharedCacheSet(sharedKey, created.data.id);
     return created.data.id;
   }
 
   async ensureRootFolder(): Promise<string> {
     if (this.rootFolderId) return this.rootFolderId;
+
+    const sharedKey = this.sharedKey(DRIVE_ROOT_FOLDER_NAME);
+    const shared = sharedCacheGet(sharedKey);
+    if (shared) {
+      this.rootFolderId = shared;
+      return shared;
+    }
 
     const profile = await getProfileRow();
     if (profile?.drive_root_id) {
@@ -119,6 +198,7 @@ export class DriveClient {
         // invisible — verify before nesting _Master under it.
         await this.getFileMetadata(profile.drive_root_id);
         this.rootFolderId = profile.drive_root_id;
+        sharedCacheSet(sharedKey, this.rootFolderId);
         return this.rootFolderId;
       } catch (error) {
         if (!isDriveAccessDenied(error)) throw error;
@@ -133,6 +213,7 @@ export class DriveClient {
     const rootId = await this.ensureFolder(DRIVE_ROOT_FOLDER_NAME);
     await setDriveRootId(rootId);
     this.rootFolderId = rootId;
+    sharedCacheSet(sharedKey, rootId);
     return rootId;
   }
 
@@ -154,17 +235,25 @@ export class DriveClient {
     parentId: string,
   ): Promise<string> {
     const drive = this.drive();
-    const created = await drive.files.create({
-      requestBody: {
-        name,
-        parents: [parentId],
-      },
-      media: {
-        mimeType,
-        body: Readable.from(buffer),
-      },
-      fields: "id,webViewLink",
-    });
+    let created;
+    try {
+      created = await drive.files.create({
+        requestBody: {
+          name,
+          parents: [parentId],
+        },
+        media: {
+          mimeType,
+          body: Readable.from(buffer),
+        },
+        fields: "id,webViewLink",
+      });
+    } catch (error) {
+      // A parent folder Drive cannot see is the classic stale-cache symptom:
+      // drop the ids so the next attempt resolves them again.
+      if (isDriveAccessDenied(error)) clearDriveFolderCache();
+      throw error;
+    }
 
     if (!created.data.id) {
       throw new Error(`Failed to upload file: ${name}`);
@@ -260,6 +349,73 @@ export class DriveClient {
       pageSize: 100,
     });
     return res.data.files ?? [];
+  }
+
+  /**
+   * Import a resume file (PDF or Word) as a real Google Doc.
+   *
+   * Apply copies the master Doc and swaps text with replaceAllText, so the
+   * master must be an editable Doc — a PDF or .docx can never be the master
+   * itself. Drive converts on import when the target mimeType is a Google Doc,
+   * which also runs OCR for scanned PDF pages, so the file lands as a Doc the
+   * app owns under drive.file and the normal sync path applies unchanged.
+   */
+  async importFileAsGoogleDoc(
+    buffer: Buffer,
+    name: string,
+    parentId: string,
+    sourceMime: string = PDF_MIME,
+  ): Promise<string> {
+    const drive = this.drive();
+    const created = await drive.files.create({
+      requestBody: {
+        name,
+        mimeType: GOOGLE_DOC_MIME,
+        parents: [parentId],
+      },
+      media: {
+        mimeType: sourceMime,
+        body: Readable.from(buffer),
+      },
+      // ocrLanguage only applies when Drive falls back to OCR for image-only
+      // PDF pages; text-layer PDFs and .docx are extracted directly.
+      ...(sourceMime === PDF_MIME ? { ocrLanguage: "en" } : {}),
+      fields: "id",
+      supportsAllDrives: true,
+    });
+    if (!created.data.id) {
+      throw new Error(`Failed to convert that file into a Google Doc: ${name}`);
+    }
+    return created.data.id;
+  }
+
+  /**
+   * App-internal template folder.
+   *
+   * Only `Master_Resume_Template` / `Master_Cover_Letter_Template` belong here
+   * — `ensureMasterTemplateCopy` deletes and replaces files by those names, so
+   * anything else stored alongside them is at risk and clutters the folder.
+   * User-facing artifacts go in the two folders below.
+   */
+  async ensureMasterFolder(): Promise<string> {
+    const rootId = await this.ensureRootFolder();
+    return this.ensureFolder(MASTER_FOLDER_NAME, rootId);
+  }
+
+  /** PDFs produced by the CV builder. */
+  async ensureBuiltCvFolder(): Promise<string> {
+    const rootId = await this.ensureRootFolder();
+    return this.ensureFolder(BUILT_CV_FOLDER_NAME, rootId);
+  }
+
+  /**
+   * Docs converted from an uploaded PDF/Word resume. Kept because the user is
+   * told to open and correct them, so they must not be buried next to the
+   * app's own templates.
+   */
+  async ensureImportedResumeFolder(): Promise<string> {
+    const rootId = await this.ensureRootFolder();
+    return this.ensureFolder(IMPORTED_FOLDER_NAME, rootId);
   }
 
   /**

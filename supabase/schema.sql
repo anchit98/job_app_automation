@@ -146,6 +146,11 @@ CREATE TABLE IF NOT EXISTS master_resume (
   doc_id TEXT,
   doc_layout TEXT,
   doc_synced_at TEXT,
+  -- Which route produced the resume in use: builder | device_upload |
+  -- drive_file | google_doc | manual. NULL on rows synced before tracking.
+  source TEXT,
+  source_label TEXT,
+  source_ref TEXT,
   created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
   updated_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
 );
@@ -349,7 +354,9 @@ CREATE TABLE IF NOT EXISTS emails (
   gmail_draft_id TEXT,
   gmail_message_id TEXT,
   draft_status TEXT NOT NULL DEFAULT 'pending' CHECK (
-    draft_status IN ('pending', 'creating', 'created', 'failed', 'deleted_externally')
+    draft_status IN (
+      'pending', 'creating', 'created', 'failed', 'deleted_externally', 'sent'
+    )
   ),
   draft_error TEXT,
   sent_at TEXT,

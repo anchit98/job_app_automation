@@ -77,7 +77,7 @@ export default async function AppLayout({
   const isPaid = userHasPaidAccess(user);
   const setupReady = !isPaid || readiness.setupReady;
 
-  // Server-side redirect when pathname is available from middleware.
+  // Server-side redirect when pathname is available from proxy.
   if (!isPaid && pathname && !unpaidAllowed(pathname)) {
     redirect("/billing");
   }

@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { upsertProfile, upsertProfileBasics } from "@/app/actions/profile";
 import { upsertMasterResume } from "@/app/actions/master-resume";
-import { syncMasterFromGoogleDoc } from "@/app/actions/master-resume-sync";
-import { syncCoverLetterFromGoogleDoc } from "@/app/actions/cover-letter-sync";
-import { setSetupGuideCollapsed, resetSetupAll, resetSetupCoverLetter, resetSetupMasterResume, resetSetupProfile } from "@/app/actions/setup";
+import {
+  syncMasterFromGoogleDoc,
+  syncMasterFromDriveFile,
+  syncMasterFromPdfUpload,
+} from "@/app/actions/master-resume-sync";
+import { setSetupGuideCollapsed, resetSetupAll, resetSetupMasterResume, resetSetupProfile } from "@/app/actions/setup";
 import { ProfileAvatarUploader } from "@/components/profile/profile-avatar-uploader";
 import { GoogleAccountMenu } from "@/components/google/google-account-menu";
 import { Button } from "@/components/ui/button";
@@ -15,18 +18,46 @@ import { Label } from "@/components/ui/label";
 import { profileAvatarSrc } from "@/lib/profile-avatar";
 import { formatAppDateTime } from "@/lib/datetime/india";
 import { linkedinUrlError } from "@/lib/contacts/validate";
-import { GoogleDocPickerButton } from "@/components/google/google-doc-picker";
-import type { MasterCoverLetter, MasterResume, Profile } from "@/lib/db/types";
+import {
+  GOOGLE_DOC_MIME,
+  GoogleDocPickerButton,
+} from "@/components/google/google-doc-picker";
+import { setCvAsMasterResume } from "@/app/actions/builder";
+import type { BuilderCvVersion } from "@/lib/builder/queries";
+import {
+  FIELD_LABELS,
+  isProfessionalField,
+  type ProfessionalField,
+} from "@/lib/builder/types";
+import type {
+  MasterResume,
+  MasterResumeSource,
+  Profile,
+} from "@/lib/db/types";
+import {
+  MASTER_SOURCE_ICONS,
+  describeMasterSource,
+} from "@/lib/resume/master-source";
+import {
+  DOCUMENT_UPLOAD_ACCEPT,
+  checkDocumentUpload,
+} from "@/lib/resume/upload-formats";
 
-const RESUME_STRUCTURE_REF_URL =
-  "https://docs.google.com/document/d/1qZ9eluvDK-hu-QeBskgL-g7FJEeKpuLUlVouVWp3p88/edit?usp=sharing";
-const COVER_LETTER_STRUCTURE_REF_URL =
-  "https://docs.google.com/document/d/1I1Zo1xL93XYaL9vMT6fI7RHuUb-_YZL5aaW5nIne9Bo/edit?usp=sharing";
+/**
+ * One server round trip does convert → rebuild → sync, so this step text is
+ * time-based; it only sets expectations during the slow Google calls.
+ */
+const PDF_IMPORT_STEPS: Array<[number, string]> = [
+  [6000, "Rebuilding the Doc with proper bullets…"],
+  [14000, "Reading your resume structure…"],
+  [26000, "Almost there — saving your master resume…"],
+];
 
 interface OnboardingFormsProps {
   profile: Profile | null;
   masterResume: MasterResume | null;
-  masterCoverLetter: MasterCoverLetter | null;
+  /** Newest builder CV, offered here so setup can finish in one place. */
+  latestBuilderCv?: BuilderCvVersion | null;
   isAdmin?: boolean;
   googleConnected: boolean;
   setupReady: boolean;
@@ -46,7 +77,7 @@ function hasMasterResumeContent(content: Record<string, unknown> | null | undefi
 export function OnboardingForms({
   profile,
   masterResume,
-  masterCoverLetter,
+  latestBuilderCv = null,
   isAdmin = false,
   googleConnected,
   setupReady,
@@ -72,15 +103,33 @@ export function OnboardingForms({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [syncing, startSync] = useTransition();
-  const [syncingCoverLetter, startCoverLetterSync] = useTransition();
+  const resumePdfInputRef = useRef<HTMLInputElement | null>(null);
+  /** Set after a PDF upload so the user can open and correct the conversion. */
+  const [convertedDocUrl, setConvertedDocUrl] = useState<string | null>(null);
+  /**
+   * In-progress text for slow Google round trips. Kept apart from `message`
+   * so a running job never renders in the green success toast.
+   */
+  const [busy, setBusy] = useState<string | null>(null);
   const [resumeSynced, setResumeSynced] = useState(
     hasMasterResumeContent(masterResume?.content),
   );
   const [resumeSyncedAt, setResumeSyncedAt] = useState<string | null>(
     masterResume?.doc_synced_at ?? null,
   );
-  const [coverSyncedAt, setCoverSyncedAt] = useState<string | null>(
-    masterCoverLetter?.doc_synced_at ?? null,
+  /**
+   * Which of the four routes produced the master resume Apply will use.
+   * Tracked in state so the badges update the moment a sync finishes, rather
+   * than showing the server-rendered value until the next full reload.
+   */
+  const [masterSource, setMasterSource] = useState<MasterResumeSource | null>(
+    masterResume?.source ?? null,
+  );
+  const [masterSourceLabel, setMasterSourceLabel] = useState<string | null>(
+    masterResume?.source_label ?? null,
+  );
+  const [masterSourceRef, setMasterSourceRef] = useState<string | null>(
+    masterResume?.source_ref ?? null,
   );
   // Incomplete setup always starts expanded so post-payment onboarding is clear.
   // Collapsed preference only applies after setup is finished.
@@ -114,8 +163,8 @@ export function OnboardingForms({
     },
     {
       done: masterDone,
-      label: "3. Sync documents",
-      hint: "Resume required · cover optional",
+      label: "3. Master resume",
+      hint: "Built here or imported",
     },
     {
       done: contactDone,
@@ -152,10 +201,6 @@ export function OnboardingForms({
     setResumeSyncedAt(null);
   }
 
-  function clearCoverLetterFieldsLocal() {
-    setCoverSyncedAt(null);
-  }
-
   function applySignatureFields(fields: {
     phone: string | null;
     linkedin_url: string | null;
@@ -184,8 +229,82 @@ export function OnboardingForms({
     return filled;
   }
 
+  /** Shared by the Drive picker and the PDF upload — both end in a Doc sync. */
+  function applyResumeSyncSuccess(
+    res: Extract<
+      Awaited<ReturnType<typeof syncMasterFromGoogleDoc>>,
+      { ok: true }
+    >,
+    suffix = "",
+    /** Mirrors what the server just recorded on master_resume. */
+    source?: {
+      source: MasterResumeSource;
+      label?: string | null;
+      ref?: string | null;
+    },
+  ) {
+    if (res.content) {
+      setResumeJson(JSON.stringify(res.content, null, 2));
+      setResumeSynced(Object.keys(res.content).length > 0);
+    }
+    if (res.synced_at) setResumeSyncedAt(res.synced_at);
+    if (source) {
+      setMasterSource(source.source);
+      setMasterSourceLabel(source.label ?? null);
+      setMasterSourceRef(source.ref ?? null);
+    }
+    const linksFilled = applySignatureFields(res.signature_fields);
+    setMessage(
+      `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects, ${res.skills} skills)${
+        res.sync_mode === "smart_agent" ? " · adapted to your Doc layout" : ""
+      }${linksFilled ? " · contact links filled from resume" : ""}.${suffix}`,
+    );
+  }
+
+  /** Adopt a CV built in /builder as the master resume, without leaving setup. */
+  function adoptBuilderCv(versionId: string) {
+    setError(null);
+    setMessage(null);
+    setConvertedDocUrl(null);
+    setBusy("Turning that CV into your master resume Doc…");
+    const timers = PDF_IMPORT_STEPS.map(([ms, text]) =>
+      setTimeout(() => setBusy(text), ms),
+    );
+    startSync(async () => {
+      try {
+        const res = await setCvAsMasterResume(versionId);
+        if (!res.ok) {
+          setError(res.error);
+          setMessage(null);
+          return;
+        }
+        setConvertedDocUrl(res.converted_doc_url);
+        setResumeSynced(true);
+        setResumeSyncedAt(new Date().toISOString());
+        setMasterSource("builder");
+        // Same wording the server records, so the line does not change on the
+        // next page load.
+        setMasterSourceLabel(
+          isProfessionalField(latestBuilderCv?.professional_field ?? "")
+            ? `${FIELD_LABELS[latestBuilderCv!.professional_field as ProfessionalField]} CV`
+            : "General CV",
+        );
+        setMasterSourceRef(res.version_id);
+        setMessage(
+          `Master resume set from your built CV — ${res.slots} editable slots.`,
+        );
+      } catch (e) {
+        setMessage(null);
+        setError(e instanceof Error ? e.message : "Could not use that CV.");
+      } finally {
+        timers.forEach(clearTimeout);
+        setBusy(null);
+      }
+    });
+  }
+
   function runReset(
-    kind: "profile" | "resume" | "cover" | "all",
+    kind: "profile" | "resume" | "all",
     confirmMessage: string,
   ) {
     if (!window.confirm(confirmMessage)) return;
@@ -197,25 +316,19 @@ export function OnboardingForms({
           await resetSetupAll();
           clearProfileFieldsLocal();
           clearResumeFieldsLocal();
-          clearCoverLetterFieldsLocal();
         } else if (kind === "profile") {
           await resetSetupProfile();
           clearProfileFieldsLocal();
-        } else if (kind === "resume") {
+        } else {
           await resetSetupMasterResume();
           clearResumeFieldsLocal();
-        } else {
-          await resetSetupCoverLetter();
-          clearCoverLetterFieldsLocal();
         }
         setMessage(
           kind === "all"
-            ? "Profile, resume, and cover letter values were reset."
+            ? "Profile and resume values were reset."
             : kind === "profile"
               ? "Profile values were reset."
-              : kind === "resume"
-                ? "Master resume sync was reset."
-                : "Cover letter sync was reset.",
+              : "Master resume sync was reset.",
         );
         // Do not router.refresh() here — production Flight + layout auth used
         // to surface an opaque Server Components digest error after reset/sync.
@@ -344,11 +457,11 @@ export function OnboardingForms({
               onClick={() =>
                 runReset(
                   "all",
-                  "Reset all setup values (profile, resume Doc, and cover letter Doc)? This cannot be undone.",
+                  "Reset all setup values (profile and resume Doc)? This cannot be undone.",
                 )
               }
               className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border-hairline px-3 text-[13px] font-semibold text-on-surface-variant transition-colors hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
-              title="Reset profile, resume, and cover letter"
+              title="Reset profile and resume"
             >
               <span className="material-symbols-outlined text-[16px] leading-none">
                 restart_alt
@@ -657,69 +770,262 @@ export function OnboardingForms({
                 <h2 className="li-section-title">Master resume Doc</h2>
               </div>
             </div>
-            <a
-              href={RESUME_STRUCTURE_REF_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                open_in_new
+            {!masterDone ? (
+              <Link
+                href="/builder"
+                className="flex items-center gap-3 rounded-xl border border-outline-variant p-3 hover:bg-[var(--ghost-hover)]"
+              >
+                <span className="material-symbols-outlined text-primary" aria-hidden>
+                  draw
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold text-on-surface">
+                    No resume yet? Build one
+                  </span>
+                  <span className="block text-[12px] text-on-surface-variant">
+                    Fill a form, pick your industry, get a PDF
+                  </span>
+                </span>
+                <span
+                  className="material-symbols-outlined text-[18px] text-on-surface-variant ml-auto"
+                  aria-hidden
+                >
+                  chevron_right
+                </span>
+              </Link>
+            ) : null}
+
+            {latestBuilderCv ? (
+              <div className="space-y-2">
+                <span className="li-meta uppercase tracking-wide block">
+                  Your latest built CV
+                </span>
+                <div className="flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2">
+                  <span
+                    className="material-symbols-outlined text-[18px] text-primary shrink-0"
+                    aria-hidden
+                  >
+                    draw
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-semibold text-on-surface capitalize">
+                      {latestBuilderCv.professional_field ?? "general"}
+                    </span>
+                    <span className="block li-meta">
+                      {formatAppDateTime(latestBuilderCv.created_at)}
+                    </span>
+                  </span>
+                  {/* "In use" means THIS CV is the master right now — not
+                      merely that it was pushed there once. A later Drive pick
+                      or device upload takes the title with it. */}
+                  {masterSource === "builder" &&
+                  masterSourceRef === latestBuilderCv.id ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-success-container px-2 py-0.5 text-[11px] font-semibold text-on-success-container">
+                      <span
+                        className="material-symbols-outlined text-[13px]"
+                        aria-hidden
+                      >
+                        check
+                      </span>
+                      In use
+                    </span>
+                  ) : googleConnected ? (
+                    <button
+                      type="button"
+                      onClick={() => adoptBuilderCv(latestBuilderCv.id)}
+                      disabled={syncing}
+                      className="shrink-0 li-btn-secondary text-[12px] disabled:opacity-50"
+                    >
+                      {syncing
+                        ? "Working…"
+                        : latestBuilderCv.synced_to_master_at
+                          ? "Use again"
+                          : "Use this"}
+                    </button>
+                  ) : (
+                    // A dead disabled button just looks broken — send the user
+                    // to the one thing that unblocks it instead.
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.location.href = "/api/auth/google/start";
+                      }}
+                      className="shrink-0 li-btn-secondary text-[12px]"
+                    >
+                      Connect Google
+                    </button>
+                  )}
+                </div>
+                <Link
+                  href="/builder"
+                  className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline"
+                >
+                  Edit or make another
+                  <span
+                    className="material-symbols-outlined text-[14px]"
+                    aria-hidden
+                  >
+                    arrow_forward
+                  </span>
+                </Link>
+              </div>
+            ) : null}
+
+            <div className="space-y-3">
+              <span className="li-meta uppercase tracking-wide block">
+                {masterDone ? "Import from" : "Already have one? Import from"}
               </span>
-              Resume structure reference
-            </a>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <GoogleDocPickerButton
-                  label={syncing ? "Syncing…" : "Choose from Drive"}
-                  title="Choose master resume Google Doc"
+                  label={syncing ? "Syncing…" : "Drive"}
+                  title="Choose master resume (Doc, PDF or Word)"
+                  className="w-full justify-center"
                   disabled={!googleConnected || syncing}
                   onPicked={(doc) => {
                     setError(null);
-                    setMessage(`Selected “${doc.name}”. Syncing…`);
+                    setMessage(null);
+                    setConvertedDocUrl(null);
+                    const isDoc = doc.mimeType === GOOGLE_DOC_MIME;
+                    setBusy(
+                      isDoc
+                        ? `Reading “${doc.name}”…`
+                        : `Converting “${doc.name}” to a Google Doc…`,
+                    );
+                    const timers = isDoc
+                      ? []
+                      : PDF_IMPORT_STEPS.map(([ms, text]) =>
+                          setTimeout(() => setBusy(text), ms),
+                        );
                     startSync(async () => {
                       try {
-                        const res = await syncMasterFromGoogleDoc(doc.id);
+                        const res = await syncMasterFromDriveFile(
+                          doc.id,
+                          doc.mimeType,
+                          doc.name,
+                        );
                         if (!res.ok) {
                           setError(res.error);
+                          setMessage(null);
                           return;
                         }
-                        if (res.content) {
-                          setResumeJson(JSON.stringify(res.content, null, 2));
-                          setResumeSynced(Object.keys(res.content).length > 0);
-                        }
-                        if (res.synced_at) setResumeSyncedAt(res.synced_at);
-                        const linksFilled = applySignatureFields(
-                          res.signature_fields,
-                        );
-                        setMessage(
-                          `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects, ${res.skills} skills)${
-                            res.sync_mode === "smart_agent"
-                              ? " · adapted to your Doc layout"
-                              : ""
-                          }${
-                            linksFilled
-                              ? " · contact links filled from resume"
-                              : ""
-                          }.`,
+                        if (!isDoc) setConvertedDocUrl(res.converted_doc_url);
+                        applyResumeSyncSuccess(
+                          res,
+                          isDoc
+                            ? ""
+                            : " Check the converted Doc before your first Apply.",
+                          { source: "drive_file", label: doc.name, ref: doc.id },
                         );
                       } catch (e) {
+                        setMessage(null);
                         setError(
                           e instanceof Error ? e.message : "Sync failed",
                         );
+                      } finally {
+                        timers.forEach(clearTimeout);
+                        setBusy(null);
                       }
                     });
                   }}
                   onError={(msg) => setError(msg)}
                 />
-                {!googleConnected ? (
-                  <span className="text-[12px] text-on-surface-variant">
-                    Connect Google first
+                <input
+                  ref={resumePdfInputRef}
+                  type="file"
+                  accept={DOCUMENT_UPLOAD_ACCEPT}
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    // Allow re-picking the same file after a failed attempt.
+                    e.target.value = "";
+                    if (!file) return;
+                    setError(null);
+                    setMessage(null);
+                    setConvertedDocUrl(null);
+                    // `accept` only pre-filters the OS dialog — the user can
+                    // still switch it to "All files", so check what arrived.
+                    const allowed = checkDocumentUpload(file);
+                    if (!allowed.ok) {
+                      setError(allowed.error);
+                      return;
+                    }
+                    const sizeKb = Math.round(file.size / 1024);
+                    setBusy(
+                      `Uploading “${file.name}” (${sizeKb} KB) — converting to a Google Doc…`,
+                    );
+                    const timers = PDF_IMPORT_STEPS.map(([ms, text]) =>
+                      setTimeout(() => setBusy(text), ms),
+                    );
+                    const form = new FormData();
+                    form.set("resume_pdf", file);
+                    startSync(async () => {
+                      try {
+                        const res = await syncMasterFromPdfUpload(form);
+                        if (!res.ok) {
+                          setError(res.error);
+                          setMessage(null);
+                          return;
+                        }
+                        setConvertedDocUrl(res.converted_doc_url);
+                        applyResumeSyncSuccess(
+                          res,
+                          " Check the converted Doc before your first Apply.",
+                          { source: "device_upload", label: file.name },
+                        );
+                      } catch (e) {
+                        setMessage(null);
+                        setError(
+                          e instanceof Error ? e.message : "PDF upload failed",
+                        );
+                      } finally {
+                        timers.forEach(clearTimeout);
+                        setBusy(null);
+                      }
+                    });
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={!googleConnected || syncing}
+                  onClick={() => resumePdfInputRef.current?.click()}
+                  title="Pick a resume from this device — PDF (.pdf) or Word (.docx), converted to a Google Doc automatically"
+                  className="inline-flex w-full items-center justify-center gap-1.5 li-btn-secondary text-[13px] disabled:opacity-50"
+                >
+                  <span
+                    className={`material-symbols-outlined text-[16px] ${
+                      syncing ? "animate-spin" : ""
+                    }`}
+                    aria-hidden
+                  >
+                    {syncing ? "progress_activity" : "devices"}
                   </span>
-                ) : null}
+                  {syncing ? "Working…" : "This device"}
+                </button>
               </div>
-              <div className="text-right">
-                <span className="li-meta uppercase tracking-wide block">
+              {!googleConnected ? <ConnectGoogleHint /> : null}
+              {/* Which resume Apply will actually copy. Four routes can
+                  produce it, and until this line existed there was no way to
+                  tell which one had won. */}
+              <div className="flex items-baseline justify-between gap-2 border-t border-outline-variant pt-2">
+                <span className="li-meta uppercase tracking-wide">In use</span>
+                <span className="flex min-w-0 items-center gap-1 text-[13px] font-semibold text-on-surface">
+                  {masterDone && masterSource ? (
+                    <span
+                      className="material-symbols-outlined text-[16px] text-primary shrink-0"
+                      aria-hidden
+                    >
+                      {MASTER_SOURCE_ICONS[masterSource]}
+                    </span>
+                  ) : null}
+                  <span className="truncate">
+                    {masterDone
+                      ? describeMasterSource(masterSource, masterSourceLabel)
+                      : "No master resume yet"}
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="li-meta uppercase tracking-wide">
                   Last sync
                 </span>
                 <span className="text-[13px] font-semibold text-on-surface">
@@ -731,87 +1037,21 @@ export function OnboardingForms({
                 </span>
               </div>
             </div>
+            {convertedDocUrl ? (
+              <a
+                href={convertedDocUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  open_in_new
+                </span>
+                Open the converted Doc
+              </a>
+            ) : null}
           </div>
 
-          <div className="li-card p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="material-symbols-outlined text-primary">mail</span>
-                <h2 className="li-section-title">Cover letter Doc</h2>
-              </div>
-              <button
-                type="button"
-                disabled={pending || syncingCoverLetter}
-                onClick={() =>
-                  runReset(
-                    "cover",
-                    "Clear the synced cover letter template?",
-                  )
-                }
-                className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-on-surface-variant hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-50"
-                title="Reset cover letter"
-              >
-                <span className="material-symbols-outlined text-[16px]">
-                  restart_alt
-                </span>
-                Reset
-              </button>
-            </div>
-            <a
-              href={COVER_LETTER_STRUCTURE_REF_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                open_in_new
-              </span>
-              Cover letter structure reference
-            </a>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <GoogleDocPickerButton
-                  label={
-                    syncingCoverLetter ? "Syncing…" : "Choose from Drive"
-                  }
-                  title="Choose cover letter Google Doc"
-                  disabled={!googleConnected || syncingCoverLetter}
-                  onPicked={(doc) => {
-                    setError(null);
-                    setMessage(`Selected “${doc.name}”. Syncing…`);
-                    startCoverLetterSync(async () => {
-                      try {
-                        const res = await syncCoverLetterFromGoogleDoc(doc.id);
-                        if (!res.ok) {
-                          setError(res.error);
-                          return;
-                        }
-                        if (res.synced_at) setCoverSyncedAt(res.synced_at);
-                        setMessage(
-                          `Cover letter template synced - ${res.body_slots} body slots mapped.`,
-                        );
-                      } catch (e) {
-                        setError(
-                          e instanceof Error ? e.message : "Sync failed",
-                        );
-                      }
-                    });
-                  }}
-                  onError={(msg) => setError(msg)}
-                />
-              </div>
-              <div className="text-right">
-                <span className="li-meta uppercase tracking-wide block">
-                  Last sync
-                </span>
-                <span className="text-[13px] font-semibold text-on-surface">
-                  {coverSyncedAt
-                    ? formatAppDateTime(coverSyncedAt)
-                    : "Never synced"}
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Contact + links */}
@@ -914,8 +1154,28 @@ export function OnboardingForms({
         </div>
       ) : null}
 
-      {message && (
-        <div className="fixed bottom-4 right-4 z-50 bg-success-container text-on-success-container border border-success/20 px-4 py-3 rounded-lg shadow-[var(--shadow-card)] text-sm">
+      {busy && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-50 max-w-sm flex items-start gap-2 bg-surface-container-high text-on-surface border border-outline-variant px-4 py-3 rounded-lg shadow-[var(--shadow-card)] text-sm"
+        >
+          <span
+            className="material-symbols-outlined animate-spin text-[18px] text-primary shrink-0"
+            aria-hidden
+          >
+            progress_activity
+          </span>
+          <span>
+            {busy}
+            <span className="block text-[12px] text-on-surface-variant mt-0.5">
+              This can take up to a minute — keep this tab open.
+            </span>
+          </span>
+        </div>
+      )}
+      {!busy && message && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm bg-success-container text-on-success-container border border-success/20 px-4 py-3 rounded-lg shadow-[var(--shadow-card)] text-sm">
           {message}
         </div>
       )}
@@ -924,6 +1184,40 @@ export function OnboardingForms({
           {error}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Both import buttons need Google: Drive obviously, and a device upload
+ * because the file is converted into a Google Doc before syncing. Say so, and
+ * offer the fix inline — a disabled button with only prose next to it leaves
+ * people clicking a dead control.
+ */
+function ConnectGoogleHint() {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-outline-variant bg-surface-container-high px-3 py-2">
+      <span
+        className="material-symbols-outlined text-[16px] text-on-surface-variant mt-px"
+        aria-hidden
+      >
+        lock
+      </span>
+      <div className="min-w-0 space-y-1.5">
+        <p className="text-[12px] text-on-surface-variant">
+          Connect Google to enable these — your file is stored as a Doc in your
+          own Drive.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/api/auth/google/start";
+          }}
+          className="li-btn-secondary text-[12px]"
+        >
+          Connect Google
+        </button>
+      </div>
     </div>
   );
 }

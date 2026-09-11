@@ -63,6 +63,9 @@ function mapMasterResume(row: Record<string, unknown>): MasterResume {
     doc_id: (row.doc_id as string | null) ?? null,
     doc_layout: parseJson(row.doc_layout as string | null, null),
     doc_synced_at: (row.doc_synced_at as string | null) ?? null,
+    source: (row.source as MasterResume["source"] | null) ?? null,
+    source_label: (row.source_label as string | null) ?? null,
+    source_ref: (row.source_ref as string | null) ?? null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -303,6 +306,10 @@ export async function upsertMasterResumeRow(input: {
   doc_id?: string | null;
   doc_layout?: Record<string, unknown> | null;
   doc_synced_at?: string | null;
+  /** Omit to keep whatever source is already recorded. */
+  source?: MasterResume["source"];
+  source_label?: string | null;
+  source_ref?: string | null;
   userId?: string;
 }) {
   const uid = await currentUserId(input.userId);
@@ -314,20 +321,37 @@ export async function upsertMasterResumeRow(input: {
     input.doc_synced_at !== undefined
       ? input.doc_synced_at
       : existing?.doc_synced_at ?? null;
+  // The three source columns move together: a caller that names a new source
+  // replaces the label and ref too, so a stale label can never outlive it.
+  const source = input.source !== undefined ? input.source : existing?.source ?? null;
+  const source_label =
+    input.source !== undefined
+      ? input.source_label ?? null
+      : existing?.source_label ?? null;
+  const source_ref =
+    input.source !== undefined
+      ? input.source_ref ?? null
+      : existing?.source_ref ?? null;
 
-  await dbRun(`INSERT INTO master_resume (user_id, content, rules, doc_id, doc_layout, doc_synced_at)
-       VALUES (?, ?, ?, ?, ?, ?)
+  await dbRun(`INSERT INTO master_resume (user_id, content, rules, doc_id, doc_layout, doc_synced_at, source, source_label, source_ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (user_id) DO UPDATE SET
          content = excluded.content,
          rules = excluded.rules,
          doc_id = excluded.doc_id,
          doc_layout = excluded.doc_layout,
-         doc_synced_at = excluded.doc_synced_at`, uid,
+         doc_synced_at = excluded.doc_synced_at,
+         source = excluded.source,
+         source_label = excluded.source_label,
+         source_ref = excluded.source_ref`, uid,
       toJsonText(input.content) ?? "{}",
       toJsonText(input.rules ?? { never_fabricate: true }) ?? "{}",
       doc_id,
       toJsonText(doc_layout),
-      doc_synced_at,);
+      doc_synced_at,
+      source,
+      source_label,
+      source_ref,);
 }
 
 export async function getActivePromptTemplate(kind: string): Promise<PromptTemplate | null> {
@@ -744,6 +768,7 @@ function mapResumeVersion(row: Record<string, unknown>): ResumeVersion {
     drive_pdf_id: (row.drive_pdf_id as string | null) ?? null,
     drive_docx_id: (row.drive_docx_id as string | null) ?? null,
     drive_doc_id: (row.drive_doc_id as string | null) ?? null,
+    latex_content: (row.latex_content as string | null) ?? null,
     prompt_run_id: (row.prompt_run_id as string | null) ?? null,
     user_rating: (row.user_rating as number | null) ?? null,
     status: row.status as ResumeVersionStatus,
@@ -784,8 +809,61 @@ export async function updateResumeVersionDriveIds(
        WHERE id = ?`, drivePdfId, driveDocxId, driveDocId ?? null, id);
 }
 
-export async function markResumeVersionUploadFailed(id: string): Promise<void> {
-  await dbRun(`UPDATE resume_versions SET status = 'upload_failed' WHERE id = ?`, id);
+/**
+ * The Doc is written — the resume is downloadable from here on.
+ *
+ * The PDF export and its upload to Drive add another twenty seconds or so
+ * after this point, and nothing needs them: the download route exports the
+ * PDF straight from this Doc when no drive_pdf_id has landed yet. Holding the
+ * version at `uploading` until the upload finished meant the "Download resume
+ * PDF" button simply was not there while the user sat looking at a finished
+ * run, next to a cover letter that already offered one.
+ */
+export async function markResumeVersionDocReady(
+  id: string,
+  driveDocId: string,
+): Promise<void> {
+  await dbRun(
+    `UPDATE resume_versions
+        SET drive_doc_id = ?, status = 'ready'
+      WHERE id = ? AND status <> 'ready'`,
+    driveDocId,
+    id,
+  );
+}
+
+/** Typeset source + Drive ids, marking the resume downloadable. */
+export async function markResumeVersionBuilt(
+  id: string,
+  latexContent: string,
+  drivePdfId: string | null,
+  driveDocId: string | null,
+): Promise<void> {
+  await dbRun(
+    `UPDATE resume_versions
+        SET latex_content = ?, drive_pdf_id = ?, drive_doc_id = COALESCE(?, drive_doc_id),
+            status = 'ready'
+      WHERE id = ?`,
+    latexContent,
+    drivePdfId,
+    driveDocId,
+    id,
+  );
+}
+
+export async function markResumeVersionUploadFailed(
+  id: string,
+  latexContent?: string,
+): Promise<void> {
+  // Keep the source even on failure: the download route rebuilds the PDF from
+  // it, so a Drive outage does not have to mean no resume.
+  await dbRun(
+    `UPDATE resume_versions
+        SET status = 'upload_failed', latex_content = COALESCE(?, latex_content)
+      WHERE id = ?`,
+    latexContent ?? null,
+    id,
+  );
 }
 
 export async function updateResumeVersionContentForRetry(
@@ -835,6 +913,7 @@ function mapCoverLetterVersion(row: Record<string, unknown>): CoverLetterVersion
     prompt_run_id: (row.prompt_run_id as string | null) ?? null,
     edited_from_version_id:
       (row.edited_from_version_id as string | null) ?? null,
+    latex_content: (row.latex_content as string | null) ?? null,
     status: row.status as CoverLetterVersionStatus,
     created_at: row.created_at as string,
   };
@@ -877,6 +956,40 @@ export async function updateCoverLetterVersionDriveIds(
   await dbRun(`UPDATE cover_letter_versions
        SET drive_pdf_id = ?, drive_docx_id = ?, drive_doc_id = ?, status = 'ready'
        WHERE id = ?`, drivePdfId, driveDocxId, driveDocId ?? null, id);
+}
+
+/**
+ * Store the compiled source and mark the letter usable.
+ *
+ * Ready without a Drive id is a real state now: the PDF is built from this
+ * LaTeX, so a user who never connected Google still has a downloadable cover
+ * letter. Drive ids arrive later, if at all.
+ */
+export async function markCoverLetterVersionBuilt(
+  id: string,
+  latexContent: string,
+  drivePdfId: string | null,
+): Promise<void> {
+  await dbRun(
+    `UPDATE cover_letter_versions
+       SET latex_content = ?, drive_pdf_id = ?, status = 'ready'
+     WHERE id = ?`,
+    latexContent,
+    drivePdfId,
+    id,
+  );
+}
+
+/** Attach the Drive copy once the background upload lands. */
+export async function updateCoverLetterVersionDrivePdf(
+  id: string,
+  drivePdfId: string,
+): Promise<void> {
+  await dbRun(
+    `UPDATE cover_letter_versions SET drive_pdf_id = ? WHERE id = ?`,
+    drivePdfId,
+    id,
+  );
 }
 
 export async function markCoverLetterVersionUploadFailed(id: string): Promise<void> {
@@ -1221,6 +1334,43 @@ export async function markEmailDraftDeletedExternally(id: string): Promise<boole
            gmail_message_id = NULL
        WHERE id = ?`, id);
   return result.changes > 0;
+}
+
+/**
+ * Record that the user sent this email themselves.
+ *
+ * Nothing observes a send made from a compose link, so this is the only signal
+ * the app gets: it drives the pipeline stage, the timeline entry and the
+ * follow-up schedule. A Gmail draft that was created first keeps its draft id
+ * — the user still sent that draft.
+ */
+export async function markEmailSent(id: string): Promise<boolean> {
+  const row = await dbGet<{ id: string }>(
+    `UPDATE emails
+       SET draft_status = 'sent',
+           sent_at = COALESCE(sent_at, (NOW() AT TIME ZONE 'utc')::text),
+           draft_error = NULL
+       WHERE id = ?
+       RETURNING id`,
+    id,
+  );
+  return Boolean(row?.id);
+}
+
+/** Undo a mis-click on "Mark as sent". */
+export async function markEmailNotSent(id: string): Promise<boolean> {
+  const row = await dbGet<{ id: string }>(
+    `UPDATE emails
+       SET draft_status = CASE
+             WHEN gmail_draft_id IS NOT NULL THEN 'created'
+             ELSE 'pending'
+           END,
+           sent_at = NULL
+       WHERE id = ? AND draft_status = 'sent'
+       RETURNING id`,
+    id,
+  );
+  return Boolean(row?.id);
 }
 
 export async function updateEmailContent(

@@ -24,7 +24,12 @@ export function getSql() {
       prepare: false,
       max: poolMax(),
       idle_timeout: 20,
-      connect_timeout: 10,
+      // Opening a pooler connection can take tens of seconds when Supabase is
+      // cold or the region is slow, while queries on an established connection
+      // still return in well under a second. A 10s budget failed every cold
+      // start and rendered pages with empty data; the per-query timeout below
+      // is what actually guards against slow SQL.
+      connect_timeout: 45,
       max_lifetime: 60 * 5,
       keep_alive: 30,
       // Cancel slow queries server-side without destroying the pool. Kept just

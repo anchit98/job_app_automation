@@ -37,6 +37,7 @@ const DRAFT_STATUS_LABEL: Record<EmailRecord["draft_status"], string> = {
   created: "In Gmail",
   failed: "Failed",
   deleted_externally: "Deleted in Gmail",
+  sent: "Sent",
 };
 
 export function ColdEmailFlow({

@@ -1,13 +1,7 @@
 import Link from "next/link";
 import { QuickApplyForm } from "@/components/pipeline/quick-apply-form";
-import { getMasterCoverLetter } from "@/app/actions/cover-letter";
 
 export default async function QuickApplyPage() {
-  const masterCoverLetter = await getMasterCoverLetter().catch(() => null);
-  const coverLetterSynced = Boolean(
-    masterCoverLetter?.doc_id && masterCoverLetter?.doc_layout,
-  );
-
   return (
     <div className="qa-ambient space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -21,10 +15,7 @@ export default async function QuickApplyPage() {
           </Link>
         </div>
       </div>
-      <QuickApplyForm
-        llmEngine="openai"
-        coverLetterSynced={coverLetterSynced}
-      />
+      <QuickApplyForm llmEngine="openai" />
     </div>
   );
 }

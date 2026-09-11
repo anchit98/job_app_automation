@@ -3,6 +3,29 @@ import type { ApplicationStatus } from "@/lib/applications/status";
 export const MAX_PAGE_SIZE = 200;
 export const DEFAULT_PAGE_SIZE = 25;
 
+/**
+ * Sort orders offered on the Jobs page.
+ *
+ * `recent` is the default because a tracker is mostly used to answer "what
+ * moved?", and `updated_at` changes on every pipeline step, status change and
+ * email — which is exactly what "recent activity" means to the user.
+ */
+export const APPLICATION_SORTS = ["recent", "applied", "name"] as const;
+
+export type ApplicationSort = (typeof APPLICATION_SORTS)[number];
+
+export const APPLICATION_SORT_LABELS: Record<ApplicationSort, string> = {
+  recent: "Recent activity",
+  applied: "Date of application",
+  name: "Name (A–Z)",
+};
+
+export const DEFAULT_SORT: ApplicationSort = "recent";
+
+export function isApplicationSort(value: string): value is ApplicationSort {
+  return (APPLICATION_SORTS as readonly string[]).includes(value);
+}
+
 export interface ApplicationSearchFilters {
   q?: string;
   status?: ApplicationStatus | "interview_stage";
@@ -11,6 +34,7 @@ export interface ApplicationSearchFilters {
   contact?: string;
   dateFrom?: string;
   dateTo?: string;
+  sort?: ApplicationSort;
   page?: number;
   pageSize?: number;
 }
@@ -52,15 +76,35 @@ export interface ApplicationSearchResult {
   totalPages: number;
 }
 
-/** Clean plain text for Postgres plainto_tsquery (no FTS5 quote syntax). */
+/** More than this and the query is a paste, not a search. */
+const MAX_SEARCH_TOKENS = 8;
+
+/**
+ * Split a search box into the terms that must each be found.
+ *
+ * Punctuation is dropped rather than escaped: nobody searching a job tracker
+ * means `%` or `_` literally, and leaving them in turns a typo into a LIKE
+ * wildcard that silently matches everything. Single characters go too — one
+ * letter matches every row and tells the user nothing.
+ */
+export function buildSearchTokens(q: string): string[] {
+  return [
+    ...new Set(
+      q
+        .toLowerCase()
+        .replace(/[^\w\s@.+#-]/g, " ")
+        .split(/\s+/)
+        // Trim only the punctuation people type as punctuation. `+` and `#`
+        // stay: they are the whole difference between "c", "C++" and "C#".
+        .map((t) => t.replace(/^[.\-]+|[.\-]+$/g, ""))
+        .filter((t) => t.length >= 2),
+    ),
+  ].slice(0, MAX_SEARCH_TOKENS);
+}
+
+/** @deprecated Kept for callers still passing text to plainto_tsquery. */
 export function buildFtsMatchQuery(q: string): string {
-  const terms = q
-    .trim()
-    .replace(/[^\w\s@.-]/g, " ")
-    .split(/\s+/)
-    .filter((t) => t.length >= 2);
-  if (!terms.length) return "";
-  return terms.join(" ");
+  return buildSearchTokens(q).join(" ");
 }
 
 export function parseApplicationSearchParams(
@@ -77,6 +121,8 @@ export function parseApplicationSearchParams(
     10,
   );
 
+  const sort = pick("sort");
+
   return {
     q: pick("q"),
     status: pick("status") as ApplicationSearchFilters["status"],
@@ -85,6 +131,7 @@ export function parseApplicationSearchParams(
     contact: pick("contact"),
     dateFrom: pick("dateFrom"),
     dateTo: pick("dateTo"),
+    sort: sort && isApplicationSort(sort) ? sort : DEFAULT_SORT,
     page: Number.isFinite(page) && page > 0 ? page : 1,
     pageSize: Number.isFinite(pageSize)
       ? Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE)

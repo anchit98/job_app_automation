@@ -25,12 +25,25 @@ function extractPhone(contactLine: string | undefined): string | null {
   return loose?.[1]?.replace(/\s+/g, "") ?? null;
 }
 
+/** A label value is only a link when it carries a real domain. */
+const DOMAIN_RE =
+  /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:[/?#][^\s|]*)?$/i;
+
 function parseLabeledValue(line: string, label: string): string | null {
   const pattern = new RegExp(`${label}\\s*:?\\s*([^,]+)`, "i");
   const match = line.match(pattern);
   if (!match?.[1]) return null;
-  const value = normalizeUrl(match[1]);
-  return value || null;
+  // Resumes (especially PDF-converted ones) often render the contact row as
+  // bare labels — "LinkedIn | GitHub | Portfolio | Noida" — with the real URLs
+  // living only in hyperlinks the converter drops. Stop at the next separator
+  // and demand an actual domain, otherwise the label run itself gets stored as
+  // "https://| GitHub | Portfolio | Noida" and overwrites a good profile link.
+  const candidate = match[1]
+    .split("|")[0]
+    .trim()
+    .replace(/[.,;)\]]+$/, "");
+  if (!candidate || !DOMAIN_RE.test(candidate)) return null;
+  return normalizeUrl(candidate) || null;
 }
 
 function classifyUrl(url: string): "linkedin" | "github" | "portfolio" | null {
@@ -61,7 +74,10 @@ export function extractSignatureFieldsFromResume(
     parseLabeledValue(linksLine, "Website") ??
     parseLabeledValue(linksLine, "Online Portfolio");
 
-  const urlMatches = linksLine.match(
+  // Drop email addresses first — otherwise "name@gmail.com" scans as the
+  // domain gmail.com and lands in portfolio_url.
+  const scannable = linksLine.replace(/[\w.+-]+@[\w.-]+\.\w+/g, " ");
+  const urlMatches = scannable.match(
     /(?:https?:\/\/)?[\w.-]+\.(?:com|app|dev|io|net|vercel\.app)[^\s,)]*/gi,
   );
   if (urlMatches) {

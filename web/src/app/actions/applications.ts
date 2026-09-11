@@ -24,6 +24,7 @@ import {
 } from "@/lib/applications/auto-status";
 import { sanitizeJd, wrapJdForPrompt } from "@/lib/jd/sanitize";
 import { scheduleFollowUpsForApplication } from "@/lib/follow-ups/enqueue";
+import { enrichJdKeywords } from "@/lib/resume/jd-keyword-mining";
 import { truncateJdIfNeeded } from "@/lib/tracker/jd";
 import { findSimilarApplications } from "@/lib/tracker/queries";
 import {
@@ -160,17 +161,24 @@ export async function maybeAdvanceApplicationStatus(
 }
 
 /** Advance to applied → email_sent when cold Gmail drafts exist. */
-export async function syncApplicationStatusAfterColdDrafts(
+/**
+ * Advance the application once outreach exists for it.
+ *
+ * Named for drafts until a cold email could also be sent by hand, from a
+ * compose link the app never sees. A draft the API created and an email the
+ * user marked as sent are the same milestone here, so both count.
+ */
+export async function syncApplicationStatusAfterOutreach(
   applicationId: string,
 ): Promise<StatusAdvanceOutcome> {
   const emails = await listEmails(applicationId);
-  const hasColdDraft = emails.some(
+  const hasOutreach = emails.some(
     (e) =>
       e.kind === "cold" &&
-      e.draft_status === "created" &&
-      Boolean(e.gmail_draft_id),
+      (e.draft_status === "sent" ||
+        (e.draft_status === "created" && Boolean(e.gmail_draft_id))),
   );
-  if (!hasColdDraft) {
+  if (!hasOutreach) {
     return { outcome: "skipped" };
   }
   return maybeAdvanceApplicationStatus(applicationId, "gmail_draft_created");
@@ -277,7 +285,17 @@ export async function applyJdParseResult(
     application.role ||
     undefined;
 
-  await updateApplicationJdParsed(applicationId, parsed as import("@/lib/db/types").JdParsed, {
+  // One LLM pass reliably under-reports: it returns a handful of must-haves
+  // for a JD that lists fifteen and skips acronyms almost entirely. Everything
+  // downstream (the tailoring prompt, the coverage floor, the keyword chips)
+  // reads this list, so a second deterministic pass over the same text adds
+  // back the named tools and acronyms the model dropped.
+  const enriched = enrichJdKeywords(
+    parsed as import("@/lib/db/types").JdParsed,
+    application.jd_raw,
+  );
+
+  await updateApplicationJdParsed(applicationId, enriched, {
     company,
     role,
   });
