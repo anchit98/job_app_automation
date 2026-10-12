@@ -1,0 +1,30 @@
+{
+ "jd_parse": {
+  "n": 6,
+  "input_tokens_mean": 343.3333333333333,
+  "output_tokens_mean": 357.8333333333333,
+  "input_max": 363,
+  "output_max": 429
+ },
+ "resume": {
+  "n": 6,
+  "input_tokens_mean": 1901.1666666666667,
+  "output_tokens_mean": 1168.3333333333333,
+  "input_max": 1939,
+  "output_max": 1184
+ },
+ "cover_letter": {
+  "n": 6,
+  "input_tokens_mean": 1940.8333333333333,
+  "output_tokens_mean": 507.1666666666667,
+  "input_max": 1972,
+  "output_max": 704
+ },
+ "cold_email_3_contacts": {
+  "n": 6,
+  "input_tokens_mean": 1885.5,
+  "output_tokens_mean": 576.1666666666666,
+  "input_max": 1915,
+  "output_max": 614
+ }
+}
