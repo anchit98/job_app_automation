@@ -40,6 +40,8 @@ import {
 } from "@/lib/resume/master-source";
 import {
   DOCUMENT_UPLOAD_ACCEPT,
+  UPLOAD_FORMAT_DISCLAIMER,
+  UPLOAD_FORMAT_NOTE,
   checkDocumentUpload,
 } from "@/lib/resume/upload-formats";
 
@@ -154,7 +156,7 @@ export function OnboardingForms({
     {
       done: googleConnected,
       label: "1. Connect Google",
-      hint: "Drive, Docs & Gmail drafts",
+      hint: "Drive & Docs — no mail access",
     },
     {
       done: basicsDone,
@@ -254,10 +256,17 @@ export function OnboardingForms({
       setMasterSourceRef(source.ref ?? null);
     }
     const linksFilled = applySignatureFields(res.signature_fields);
+    // Imported masters get the format note again here: the callout above was
+    // read (if at all) before picking a file, and this is the moment the
+    // tailored output becomes a real thing that is about to happen.
+    const imported =
+      source?.source === "device_upload" || source?.source === "drive_file";
     setMessage(
       `Synced ${res.slots} editable slots (${res.experience_roles} roles, ${res.projects} projects, ${res.skills} skills)${
         res.sync_mode === "smart_agent" ? " · adapted to your Doc layout" : ""
-      }${linksFilled ? " · contact links filled from resume" : ""}.${suffix}`,
+      }${linksFilled ? " · contact links filled from resume" : ""}.${suffix}${
+        imported ? ` ${UPLOAD_FORMAT_NOTE}` : ""
+      }`,
     );
   }
 
@@ -875,6 +884,10 @@ export function OnboardingForms({
               <span className="li-meta uppercase tracking-wide block">
                 {masterDone ? "Import from" : "Already have one? Import from"}
               </span>
+              {/* Said before the upload, not after the first Apply. Importing
+                  keeps the words and replaces the layout, and nothing else on
+                  this screen admits that. */}
+              <UploadFormatDisclaimer />
               <div className="grid grid-cols-2 gap-2">
                 <GoogleDocPickerButton
                   label={syncing ? "Syncing…" : "Drive"}
@@ -1194,6 +1207,42 @@ export function OnboardingForms({
  * offer the fix inline — a disabled button with only prose next to it leaves
  * people clicking a dead control.
  */
+/**
+ * What importing a resume keeps, and what it replaces.
+ *
+ * Sits above the import buttons rather than behind a "learn more": the whole
+ * problem was that people found this out from their first tailored PDF.
+ */
+function UploadFormatDisclaimer() {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-outline-variant bg-surface-container-high px-3 py-2">
+      <span
+        className="material-symbols-outlined mt-px text-[16px] text-on-surface-variant"
+        aria-hidden
+      >
+        info
+      </span>
+      <div className="min-w-0 space-y-1">
+        <p className="text-[12px] font-semibold text-on-surface">
+          {UPLOAD_FORMAT_DISCLAIMER.heading}
+        </p>
+        {UPLOAD_FORMAT_DISCLAIMER.paragraphs.map((text) => (
+          <p key={text} className="text-[12px] text-on-surface-variant">
+            {text}
+          </p>
+        ))}
+        <p className="text-[12px] text-on-surface-variant">
+          {UPLOAD_FORMAT_DISCLAIMER.remedyBefore}
+          <Link href="/builder" className="font-semibold text-primary hover:underline">
+            {UPLOAD_FORMAT_DISCLAIMER.remedyLinkLabel}
+          </Link>
+          {UPLOAD_FORMAT_DISCLAIMER.remedyAfter}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ConnectGoogleHint() {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-outline-variant bg-surface-container-high px-3 py-2">

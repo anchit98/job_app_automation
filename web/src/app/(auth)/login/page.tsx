@@ -2,13 +2,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AuthForm } from "@/components/auth/auth-form";
 import { SESSION_COOKIE } from "@/lib/auth/session";
-import { getCurrentUser, userHasPaidAccess } from "@/lib/auth/user";
+import { getCurrentUser } from "@/lib/auth/user";
 import { getSetupReadiness } from "@/lib/setup/readiness";
 
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; cleared?: string }>;
+  searchParams: Promise<{ next?: string; cleared?: string; oauth_error?: string }>;
 }) {
   return <LoginPageInner searchParams={searchParams} />;
 }
@@ -16,16 +16,13 @@ export default function LoginPage({
 async function LoginPageInner({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; cleared?: string }>;
+  searchParams: Promise<{ next?: string; cleared?: string; oauth_error?: string }>;
 }) {
   const params = await searchParams;
   const user = await getCurrentUser();
   if (user) {
     if (user.must_reset_password) {
       redirect("/reset-password-required");
-    }
-    if (!userHasPaidAccess(user)) {
-      redirect("/billing");
     }
     const next = params.next;
     if (next?.startsWith("/") && !next.startsWith("//")) {
@@ -50,6 +47,10 @@ async function LoginPageInner({
   }
 
   return (
-    <AuthForm mode="login" nextPath={params.next || "/dashboard"} />
+    <AuthForm
+      mode="login"
+      nextPath={params.next || "/dashboard"}
+      oauthError={params.oauth_error}
+    />
   );
 }

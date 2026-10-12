@@ -313,6 +313,11 @@ async function persistResumeArtifacts(
   const finishDrive = async (userId: string) => {
     const latex = generateTailoredResumeLatex({
       content,
+      // The master's own sequence — arranged in the CV builder, or read off
+      // the resume that was imported. Absent on masters synced before section
+      // order was tracked, which fall back to the default.
+      sectionOrder: (masterRow?.doc_layout as unknown as DocLayoutMap | null)
+        ?.section_order,
       profile: {
         full_name: fullName,
         email: await resolveResumeEmail(),

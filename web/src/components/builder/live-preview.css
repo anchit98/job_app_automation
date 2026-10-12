@@ -79,6 +79,11 @@
 }
 
 .live-preview-page {
+  /* The sheet's own look is deliberately untouched — this is the preview the
+     builder has always had. `position: relative` is the one addition, and it
+     paints nothing: it is what the page-break overlay below positions
+     against. */
+  position: relative;
   width: 794px;
   min-height: 1122px;
   transform-origin: top left;
@@ -90,6 +95,51 @@
   color: #000;
   line-height: 1.4;
   font-size: 15px;
+}
+
+/* Where the printed page ends.
+   Drawn as an overlay rather than inserted into the flow: a break lands
+   wherever it lands, usually mid-bullet, and nothing on the sheet may move to
+   accommodate it. With one page there is no marker at all, so the preview
+   looks exactly as it always did. */
+.lp-page-break {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed #c0392b;
+  pointer-events: none;
+}
+
+.lp-page-break-label {
+  position: absolute;
+  right: 8px;
+  top: 4px;
+  font-family: var(--font-sans, system-ui), sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c0392b;
+  background: #ffffff;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+/* Page count, in the zoom controls — off the sheet entirely. */
+.live-preview-pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--on-surface-variant);
+}
+
+.live-preview-pages[data-overflow="true"] {
+  color: var(--error);
 }
 
 .lp-header {

@@ -1,5 +1,12 @@
 import { DocsClient, DocLayoutMap, DocSlot } from "@/lib/google/docs";
 import { countWords } from "@/lib/resume/bullet-layout";
+import {
+  type DocTextLink,
+  attachProjectWebsites,
+  collectResumeLinks,
+  firstWebLink,
+  paragraphLinks,
+} from "@/lib/resume/doc-links";
 import type { ResumeWordBudget } from "@/lib/resume/word-budget";
 import {
   heuristicSyncLooksWeak,
@@ -71,6 +78,8 @@ interface ParagraphInfo {
   index: number;
   text: string;
   isBullet: boolean;
+  /** Hyperlinks this line carries — see lib/resume/doc-links. */
+  links: DocTextLink[];
   paragraph: docs_v1.Schema$Paragraph;
 }
 
@@ -91,6 +100,7 @@ function extractParagraphs(doc: docs_v1.Schema$Document): ParagraphInfo[] {
       index: i++,
       text: text.replace(/\n$/, "").trim(),
       isBullet: paragraphIsBullet(el.paragraph),
+      links: paragraphLinks(el.paragraph),
       paragraph: el.paragraph,
     });
   }
@@ -118,6 +128,14 @@ export interface SyncedMasterResume {
     }>;
     skills: string[];
     education: Array<{ institution_line: string; dates: string }>;
+    /**
+     * Every hyperlink the source document carried, label and all.
+     *
+     * Stored rather than re-read because the addresses are the half of a
+     * resume's links that no amount of text parsing can recover — and because
+     * they must keep resolving after Drive access is gone.
+     */
+    links?: DocTextLink[];
   };
   layout: DocLayoutMap;
   sync_mode?: "heuristic" | "smart_agent";
@@ -215,18 +233,51 @@ function parseProjectTitleLine(line: string): {
   };
 }
 
-function extractProjectWebsite(
-  paragraph: docs_v1.Schema$Paragraph,
-): string | undefined {
-  for (const el of paragraph.elements ?? []) {
-    const url = el.textRun?.textStyle?.link?.url;
-    if (url) return url;
-  }
-  return undefined;
+/**
+ * The link on a project's title line, if it has one.
+ *
+ * Only web links count: a title paragraph sitting next to the contact row can
+ * otherwise adopt its `mailto:`. Projects the title line says nothing about are
+ * picked up later by attachProjectWebsites, which also looks at the line below.
+ */
+function extractProjectWebsite(p: ParagraphInfo): string | undefined {
+  return firstWebLink(p.links);
 }
 
 function findSection(paragraphs: ParagraphInfo[], regex: RegExp): number {
   return paragraphs.findIndex((p) => regex.test(p.text));
+}
+
+/**
+ * The order this document prints its sections in.
+ *
+ * Read off the page rather than assumed, so a tailored resume made from an
+ * uploaded CV keeps that CV's sequence instead of being rearranged into ours.
+ * Works for both sync routes because it looks at the headings, not at either
+ * parser's output.
+ *
+ * Summary is always first: the tailored resume prints it directly under the
+ * name, above every section heading, so its position is not up for debate.
+ */
+function deriveSectionOrder(paragraphs: ParagraphInfo[]): string[] {
+  const projectsIdx = findSection(paragraphs, SECTION_MARKERS.projects);
+  const caseStudiesIdx = findSection(paragraphs, SECTION_MARKERS.caseStudies);
+  const projectLike = [projectsIdx, caseStudiesIdx].filter((i) => i >= 0);
+
+  const found: Array<{ name: string; at: number }> = [
+    { name: "experience", at: findSection(paragraphs, SECTION_MARKERS.work) },
+    { name: "projects", at: projectLike.length ? Math.min(...projectLike) : -1 },
+    { name: "skills", at: findSection(paragraphs, SECTION_MARKERS.skills) },
+    { name: "education", at: findSection(paragraphs, SECTION_MARKERS.education) },
+  ];
+
+  return [
+    "summary",
+    ...found
+      .filter((s) => s.at >= 0)
+      .sort((a, b) => a.at - b.at)
+      .map((s) => s.name),
+  ];
 }
 
 function stripBulletPrefix(text: string): string {
@@ -411,7 +462,7 @@ function heuristicSyncFromParagraphs(
         if (!parsed.name) continue;
         currentProject = {
           ...parsed,
-          website_url: extractProjectWebsite(p.paragraph),
+          website_url: extractProjectWebsite(p),
           bullets: [],
         };
         projects.push(currentProject);
@@ -437,7 +488,7 @@ function heuristicSyncFromParagraphs(
         if (!parsed.name) continue;
         currentProject = {
           ...parsed,
-          website_url: extractProjectWebsite(p.paragraph),
+          website_url: extractProjectWebsite(p),
           bullets: [],
         };
         projects.push(currentProject);
@@ -607,6 +658,14 @@ export async function syncMasterResumeFromDoc(
       "Add Work Experience with each achievement as its own bullet line.",
     );
   }
+
+  // Links last, and on the paragraphs rather than on either parser's output,
+  // so both routes end up with the same answer. The smart agent in particular
+  // is never shown a URL — it maps structure, and asking a model to echo
+  // addresses back is a worse guess than reading them off the page.
+  attachProjectWebsites(synced.content.projects, paragraphs);
+  synced.content.links = collectResumeLinks(paragraphs);
+  synced.layout.section_order = deriveSectionOrder(paragraphs);
 
   assertResumeSyncAtsReady(synced, nonEmptyCount);
   return synced;

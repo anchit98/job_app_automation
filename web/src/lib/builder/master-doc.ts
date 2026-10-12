@@ -44,6 +44,8 @@ export interface BuiltMasterDoc {
   lines: StructuredDocLine[];
   content: MasterContent;
   slots: DocSlot[];
+  /** The sequence this CV was written in, for the tailored PDF to match. */
+  sectionOrder: SectionName[];
 }
 
 function clean(value: string | undefined | null): string {
@@ -146,12 +148,19 @@ export function buildMasterDoc(profile: BuilderProfile): BuiltMasterDoc {
     lines.push(contact);
     content.contact_line = contact.text;
     content.links_line = contact.text;
+    // Same shape master-sync harvests from an imported Doc, so signature sync
+    // and the tailored header read one vocabulary whatever built the master.
+    content.links = (contact.links ?? []).map((link) => ({
+      text: contact.text.slice(link.start, link.end),
+      url: link.url,
+    }));
   }
 
   const heading = (section: SectionName) =>
     lines.push({ text: docHeading(section), kind: "heading" });
 
-  for (const section of resolveSectionOrder(profile)) {
+  const sectionOrder = resolveSectionOrder(profile);
+  for (const section of sectionOrder) {
     switch (section) {
       case "summary": {
         const summary = clean(profile.professional_summary);
@@ -412,7 +421,7 @@ export function buildMasterDoc(profile: BuilderProfile): BuiltMasterDoc {
     appendCustomSection(lines, custom);
   }
 
-  return { lines, content, slots: dedupeSlots(slots) };
+  return { lines, content, slots: dedupeSlots(slots), sectionOrder };
 }
 
 function appendCustomSection(
@@ -467,6 +476,9 @@ export function builtMasterToSynced(
       version: 1,
       mapped_at: new Date().toISOString(),
       slots: built.slots,
+      // What the user arranged in the builder, carried through so tailored
+      // resumes print in the same order their preview showed.
+      section_order: built.sectionOrder,
       word_budget: {
         work_through_skills_total: fixedLineWords + tailorable,
         fixed_line_words: fixedLineWords,

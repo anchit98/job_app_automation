@@ -158,7 +158,7 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                   sort: e.target.value === DEFAULT_SORT ? null : e.target.value,
                 })
               }
-              className="appearance-none cursor-pointer w-full sm:w-auto min-h-11 bg-canvas border border-border-hairline text-on-surface pl-10 pr-9 py-2.5 text-[14px] font-medium rounded-lg focus:border-primary outline-none"
+              className="li-select w-full sm:w-auto pl-10"
             >
               {APPLICATION_SORTS.map((sort) => (
                 <option key={sort} value={sort}>
@@ -166,12 +166,6 @@ export function ApplicationsTable({ initial }: ApplicationsTableProps) {
                 </option>
               ))}
             </select>
-            <span
-              className="material-symbols-outlined pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]"
-              aria-hidden
-            >
-              expand_more
-            </span>
           </div>
         </div>
 

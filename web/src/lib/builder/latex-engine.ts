@@ -447,10 +447,41 @@ const SECTION_GENERATORS: Record<SectionName, (p: BuilderProfile) => string> = {
 };
 
 /**
+ * True when this profile has any content under `name`.
+ *
+ * Exported for the reorder list, which shows every section in the printed
+ * sequence and needs to mark the ones that will drop out for being empty —
+ * a section you can position before you fill it in.
+ */
+export function sectionIsFilled(
+  profile: BuilderProfile,
+  name: SectionName,
+): boolean {
+  if (name === "coursework") {
+    return Boolean(
+      profile.coursework?.major_coursework?.length ||
+        profile.coursework?.minor_coursework?.length,
+    );
+  }
+  // Section names are not profile keys. Every other section happens to match
+  // the field that holds it, but "summary" lives on `professional_summary` —
+  // reading `profile["summary"]` returned undefined, so a CV with a summary
+  // reported it as empty.
+  const value =
+    name === "summary"
+      ? profile.professional_summary
+      : (profile as unknown as Record<string, unknown>)[name];
+  return Array.isArray(value) ? value.length > 0 : Boolean(value);
+}
+
+/**
  * The exact section sequence this profile will be printed in.
  *
- * The field's default order first, then any section the user filled in that
- * the default omits — dropping that data would be worse than an unusual order.
+ * The user's own order if they set one, otherwise the field's default; then
+ * any section they filled in that the chosen order omits — dropping that data
+ * would be worse than an unusual order, and it is also what keeps a saved
+ * order valid after a new section is filled in.
+ *
  * Exported because the live preview must render the same sequence; while the
  * preview kept its own hard-coded order it was simply wrong about the CV.
  */
@@ -459,20 +490,21 @@ export function resolveSectionOrder(profile: BuilderProfile): SectionName[] {
     ? profile.professional_field
     : "general";
 
-  const order: SectionName[] = [...FIELD_SECTION_ORDER[field]];
+  // A saved order can name a section twice, or name one that no longer exists,
+  // if it was written by an older build — filter before trusting it.
+  const seen = new Set<SectionName>();
+  const custom = (profile.section_order ?? []).filter((name) => {
+    if (!SECTION_NAMES.includes(name) || seen.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
+
+  const order: SectionName[] = custom.length
+    ? custom
+    : [...FIELD_SECTION_ORDER[field]];
   for (const name of SECTION_NAMES) {
     if (order.includes(name)) continue;
-    const value = (profile as unknown as Record<string, unknown>)[name];
-    const filled =
-      name === "coursework"
-        ? Boolean(
-            profile.coursework?.major_coursework?.length ||
-              profile.coursework?.minor_coursework?.length,
-          )
-        : Array.isArray(value)
-          ? value.length > 0
-          : Boolean(value);
-    if (filled) order.push(name);
+    if (sectionIsFilled(profile, name)) order.push(name);
   }
   return order;
 }

@@ -32,9 +32,59 @@ export interface TailoredResumeIdentity {
   portfolio_url?: string | null;
 }
 
+/**
+ * The sections a tailored resume can print, and the order it falls back to.
+ *
+ * Narrower than the CV builder's vocabulary because the tailored shape
+ * (`ResumeContent`) only carries these five. A builder order naming anything
+ * else is filtered down to this set rather than rejected.
+ */
+export const TAILORED_SECTION_NAMES = [
+  "summary",
+  "experience",
+  "projects",
+  "skills",
+  "education",
+] as const;
+
+export type TailoredSectionName = (typeof TAILORED_SECTION_NAMES)[number];
+
+/**
+ * Coerce a stored order into something printable.
+ *
+ * Unknown names are dropped, duplicates collapse, and anything the order
+ * forgot is appended in the default sequence — a section must never disappear
+ * from a resume because the saved order predates it.
+ */
+export function resolveTailoredSectionOrder(
+  stored: readonly string[] | null | undefined,
+): TailoredSectionName[] {
+  const seen = new Set<TailoredSectionName>();
+  const order: TailoredSectionName[] = [];
+  for (const name of stored ?? []) {
+    if (!TAILORED_SECTION_NAMES.includes(name as TailoredSectionName)) continue;
+    const section = name as TailoredSectionName;
+    if (seen.has(section)) continue;
+    seen.add(section);
+    order.push(section);
+  }
+  for (const name of TAILORED_SECTION_NAMES) {
+    if (!seen.has(name)) order.push(name);
+  }
+  return order;
+}
+
 export interface TailoredResumeLatexInput {
   content: ResumeContent;
   profile: TailoredResumeIdentity;
+  /**
+   * The master's own section sequence, when one is known.
+   *
+   * Comes from `master_resume.doc_layout.section_order` — either the order the
+   * user arranged in the CV builder, or the order their uploaded resume
+   * actually used. Omitted, the default above applies.
+   */
+  sectionOrder?: readonly string[] | null;
 }
 
 /** Name, contact row, and the JD-targeted headline under it. */
@@ -207,19 +257,29 @@ function educationSection(education: ResumeContent["education"]): string {
   return lines.join("\n");
 }
 
+const SECTION_RENDERERS: Record<
+  TailoredSectionName,
+  (content: ResumeContent) => string
+> = {
+  summary: (c) => summarySection(c.summary),
+  experience: (c) => experienceSection(c.experience),
+  projects: (c) => projectsSection(c.projects),
+  skills: (c) => skillsSection(c.skills ?? []),
+  education: (c) => educationSection(c.education),
+};
+
 /** Build the complete LaTeX document for a tailored resume. */
 export function generateTailoredResumeLatex(
   input: TailoredResumeLatexInput,
 ): string {
   const { content, profile } = input;
 
-  const sections = [
-    summarySection(content.summary),
-    experienceSection(content.experience),
-    projectsSection(content.projects),
-    skillsSection(content.skills ?? []),
-    educationSection(content.education),
-  ].filter((s) => s.trim());
+  // The order used to be fixed here, which meant a CV whose builder preview
+  // put Education second still printed it last on every application made from
+  // it. Same resolver the builder uses, so preview and output agree.
+  const sections = resolveTailoredSectionOrder(input.sectionOrder)
+    .map((name) => SECTION_RENDERERS[name](content))
+    .filter((s) => s.trim());
 
   return BASE_TEMPLATE.replace(
     "% HEADER_PLACEHOLDER",

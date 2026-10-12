@@ -290,19 +290,11 @@ export function QuickApplyForm({
                 value={includeCoverLetter ? "yes" : "no"}
                 onChange={(e) => setIncludeCoverLetter(e.target.value === "yes")}
                 aria-label="Cover letter needed"
-                className="appearance-none cursor-pointer rounded-lg border border-border-hairline bg-surface pl-3 pr-9 py-2 text-[13px] font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+                className="li-select li-select--auto"
               >
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
               </select>
-              <span
-                className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-on-surface-variant"
-                aria-hidden
-              >
-                <span className="material-symbols-outlined text-[18px] leading-none">
-                  expand_more
-                </span>
-              </span>
             </div>
           </label>
         </div>

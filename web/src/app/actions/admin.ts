@@ -23,7 +23,9 @@ import {
   getPaymentClaimById,
   reviewPaymentClaim,
 } from "@/lib/billing/payment-claims";
+import { sendPaymentReceipt } from "@/lib/billing/payment-receipt-email";
 import { dbGet } from "@/lib/db";
+import { env } from "@/lib/env";
 
 const DEFAULT_PASSWORD = "abc12345";
 
@@ -232,6 +234,15 @@ export async function adminApprovePaymentClaim(input: { claimId: string }) {
       admin_user_id: admin.id,
       user_id: claim.user_id,
       upi_reference: claim.upi_reference,
+    });
+    // Until now the user learned their transfer had been accepted only by
+    // noticing the paywall was gone.
+    await sendPaymentReceipt({
+      userId: claim.user_id,
+      amountInr: `₹${env.paymentAmountInr()}`,
+      planLabel: env.paymentPlanLabel(),
+      reference: claim.upi_reference,
+      method: "upi",
     });
     revalidatePath("/admin-center");
     revalidatePath("/billing");

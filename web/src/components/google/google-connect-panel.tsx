@@ -24,7 +24,7 @@ function friendlyGoogleError(raw: string | null | undefined): string | null {
     return raw;
   }
   if (key === "access_denied") {
-    return "Google access was denied. Allow Drive and Gmail permissions to continue setup.";
+    return "Google access was denied. Allow the Drive and Docs permissions to continue setup.";
   }
   return raw;
 }
@@ -79,9 +79,9 @@ export function GoogleConnectPanel({
             {error ? (
               <span className="text-error">{error}</span>
             ) : connected ? (
-              "Drive + Gmail drafts"
+              "Drive + Docs"
             ) : (
-              "Required for docs & drafts"
+              "Required for resume and cover letter files"
             )}
           </p>
         </div>

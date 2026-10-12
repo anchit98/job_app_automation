@@ -15,7 +15,7 @@ const slides = [
     id: "google",
     label: "Google connect",
     icon: "account_circle",
-    caption: "Connect Google once — Drive, Docs, and Gmail drafts, with your consent",
+    caption: "Connect Google once — Drive and Docs only, with your consent",
   },
   {
     id: "apply",
@@ -71,7 +71,7 @@ function DashboardPreview() {
   const metrics = [
     ["Total applications", "7"],
     ["This week", "4"],
-    ["Gmail drafts", "11"],
+    ["Outreach emails", "11"],
     ["Companies contacted", "7"],
   ];
   return (
@@ -117,7 +117,7 @@ function GoogleConnectPreview() {
     },
     {
       icon: "drafts",
-      label: "Gmail drafts",
+      label: "Outreach emails",
       detail: "Save outreach and follow-up emails as drafts — never auto-sent",
     },
     {
@@ -246,7 +246,7 @@ function PipelinePreview() {
     ["resume", "Running"],
     ["cover_letter", "Queued"],
     ["cold_email", "Queued"],
-    ["gmail_drafts", "Queued"],
+    ["prepare_outreach", "Queued"],
   ];
   return (
     <Frame title="JobApp OS · Pipeline">
@@ -292,7 +292,7 @@ function ArtifactsPreview() {
           },
           {
             tag: "Outreach",
-            title: "Gmail drafts queued",
+            title: "Outreach ready to send",
             body: "Cold emails saved as drafts — you send when ready",
           },
         ].map((card, index) => (

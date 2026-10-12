@@ -6,7 +6,7 @@ const stages = [
   { label: "JD parse", icon: "description" },
   { label: "Resume", icon: "article" },
   { label: "Cover letter", icon: "mail" },
-  { label: "Gmail drafts", icon: "drafts" },
+  { label: "Outreach ready", icon: "drafts" },
 ];
 
 export function LandingAgentVisual() {

@@ -20,6 +20,35 @@ export const DOCUMENT_UPLOAD_ACCEPT = `.pdf,.docx,${PDF_MIME},${DOCX_MIME}`;
 export const UNSUPPORTED_UPLOAD_MESSAGE =
   "Only PDF (.pdf) and Word (.docx) files are supported. Convert your file and try again.";
 
+/**
+ * What an imported resume does and does not keep.
+ *
+ * Every generated resume is typeset from one ATS-friendly template, whatever
+ * the master arrived as — so a user who uploads a designed CV gets their words
+ * back in our layout, not theirs. That is deliberate, and it surprised people,
+ * so it is said up front rather than discovered after the first Apply.
+ *
+ * Split into paragraphs so the callout can render them; the middle one is the
+ * reason, and the last is the way out.
+ */
+export const UPLOAD_FORMAT_DISCLAIMER = {
+  heading: "Your uploaded layout is not kept",
+  paragraphs: [
+    "If you upload your own resume, the final tailored resume may not look exactly like your uploaded format. Every generated output uses our standard resume format.",
+    "That format follows an industry-standard, ATS-friendly structure designed to work well with Applicant Tracking Systems.",
+  ],
+  /** Rendered with a link on "CV Builder" — see the onboarding callout. */
+  remedyBefore:
+    "If the output format is not what you want, rebuild your resume in our ",
+  remedyLinkLabel: "CV Builder",
+  remedyAfter:
+    " (recommended) or any other builder you like, then upload it again. For the best results, use our standard CV format.",
+} as const;
+
+/** One-line form, for the message shown after an import finishes. */
+export const UPLOAD_FORMAT_NOTE =
+  "Note: tailored resumes are typeset in our standard ATS-friendly format, not your uploaded layout.";
+
 /** Old Word binaries get a fix-it message instead of the generic refusal. */
 const LEGACY_DOC_MESSAGE =
   "Old Word format (.doc) is not supported. Open it in Word or Google Docs and save as .docx or PDF, then upload again.";

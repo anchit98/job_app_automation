@@ -56,7 +56,8 @@ export async function getUserById(userId: string) {
     | {
         id: string;
         email: string;
-        password_hash: string;
+        /** Null on accounts that only ever signed in with Google. */
+        password_hash: string | null;
         full_name: string | null;
         is_admin: boolean;
         must_reset_password: boolean;
@@ -75,7 +76,8 @@ export async function getUserByEmail(email: string) {
     | {
         id: string;
         email: string;
-        password_hash: string;
+        /** Null on accounts that only ever signed in with Google. */
+        password_hash: string | null;
         full_name: string | null;
         is_admin: boolean;
         must_reset_password: boolean;
@@ -86,7 +88,8 @@ export async function getUserByEmail(email: string) {
 
 export async function createUser(input: {
   email: string;
-  passwordHash: string;
+  /** Null for an account created through Google with no password chosen. */
+  passwordHash: string | null;
   fullName?: string | null;
   isAdmin?: boolean;
   mustResetPassword?: boolean;

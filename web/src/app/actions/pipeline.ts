@@ -10,7 +10,6 @@ import {
   submitCoverLetterResponse,
 } from "@/app/actions/cover-letter";
 import {
-  createGmailDrafts,
   exportColdEmailsPrompt,
   submitColdEmailsResponse,
 } from "@/app/actions/emails";
@@ -101,7 +100,7 @@ function patchStage(
   return stages.map((s) => (s.id === id ? { ...s, ...patch } : s));
 }
 
-/** Skip contact save + cold email + Gmail when Quick Apply has no contacts. */
+/** Skip contact save + cold email + outreach when Quick Apply has no contacts. */
 function skipContactEmailStages(stages: PipelineStage[]): PipelineStage[] {
   let next = stages;
   for (const id of ["save_contacts", "cold_email", "gmail_drafts"] as const) {
@@ -412,7 +411,7 @@ export async function startQuickApplyForApplication(
     let contactsAlreadySaved = false;
 
     // Only fall back to saved contacts when the client omitted the field.
-    // An explicit empty array means "skip cold email / Gmail drafts".
+    // An explicit empty array means "skip cold email / outreach prep".
     if (parsed.data.contacts === undefined) {
       contacts = (await listContacts(application.id))
         .filter((c) => Boolean(c.email?.trim()))
@@ -461,7 +460,7 @@ export async function getPipelineStatus(pipelineId: string) {
 }
 
 type AdvanceOptions = {
-  /** When true, stop after cold_email and let Gmail drafts run in a separate call. */
+  /** When true, stop after cold_email and let outreach prep run separately. */
   deferGmailDrafts?: boolean;
   /**
    * After an AI stage succeeds, return before starting the next LLM stage
@@ -735,7 +734,7 @@ async function advancePipelineInner(
       }
       return awaitExistingChatGptStage(pipelineId, runningStage.id, run);
     }
-    // Drive PDF wait / Gmail draft creation — continue instead of resetting.
+    // Drive PDF wait / outreach prep — continue instead of resetting.
     if (runningStage.id === "gmail_drafts") {
       return runGmailDraftsStage(pipelineId, run);
     }
@@ -1333,7 +1332,7 @@ async function startColdEmailStage(pipelineId: string, run: PipelineRunRecord) {
   );
 }
 
-/** Wait for background Drive PDFs before attaching to Gmail drafts. */
+/** Wait for background Drive PDFs before telling the user outreach is ready. */
 type DrivePdfGate =
   | { status: "ready" }
   | { status: "waiting"; detail: string }
@@ -1355,7 +1354,7 @@ function artifactCreatedAtMs(createdAt: string | undefined): number {
 
 /**
  * Resume (and cover letter when that stage ran) must be Drive-ready with a PDF
- * id before Gmail drafts. Upload failures / stuck uploads fail the gate.
+ * id before outreach prep. Upload failures / stuck uploads fail the gate.
  */
 async function checkDrivePdfsForDrafts(
   applicationId: string,
@@ -1459,7 +1458,7 @@ async function waitForDrivePdfsQuietly(
   return false;
 }
 
-/** Record how the background draft attempt went, without reopening the run. */
+/** Record how the background readiness check went, without reopening the run. */
 async function noteGmailDraftOutcome(
   pipelineId: string,
   detail: string,
@@ -1477,19 +1476,17 @@ async function noteGmailDraftOutcome(
 }
 
 /**
- * Finish the run, and put the Gmail drafts behind it.
+ * Finish the run, and check the attachments are ready behind it.
  *
  * This stage used to hold the whole pipeline open for about 22 seconds while
  * it waited on Drive, pulled two PDFs back down and pushed them into Gmail —
- * and it was the single longest stage in a run whose four AI calls together
- * take thirty. It is also no longer the delivery mechanism: the pipeline now
- * ends on the Cold email panel, which opens a compose window through a plain
- * link and offers the PDFs as downloads. Nothing the user does next needs a
- * Gmail draft to exist.
+ * the single longest stage in a run whose four AI calls together take thirty.
+ * Gmail is out of the loop entirely now: the pipeline ends on the Outreach
+ * panel, which opens a compose window through a plain link and offers the PDFs
+ * as downloads, so the app needs no mail permission at all.
  *
- * So the run completes as soon as the emails are written, and the draft is
- * created afterwards. A Gmail failure was already non-fatal; now it is also
- * invisible to the clock.
+ * What is left is a courtesy check that the PDFs finished uploading, and it
+ * runs after the run completes rather than in front of it.
  */
 async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
   const existing = findStage(run, "gmail_drafts");
@@ -1546,30 +1543,23 @@ async function runGmailDraftsStage(pipelineId: string, run: PipelineRunRecord) {
   const expectCover = expectCoverLetterPdf(run);
   const emailIds = emails.map((e) => e.id);
 
+  // The stage used to create Gmail drafts through the API, which is what made
+  // the app want `gmail.compose` — a restricted scope with an annual paid
+  // security assessment attached to it. The emails now leave from a compose
+  // link in the Outreach tab instead, so all that is left to wait for is the
+  // attachments the user will attach by hand.
   after(() => {
     void runAsUser(userId, async () => {
       const ready = await waitForDrivePdfsQuietly(applicationId, expectCover);
-      if (!ready) {
-        await noteGmailDraftOutcome(
-          pipelineId,
-          `${emailIds.length} email(s) ready to send from the Outreach tab`,
-          "Drive PDFs were not ready, so the Gmail drafts have no attachments.",
-        );
-        return;
-      }
-      const result = await createGmailDrafts(emailIds);
-      const drafted = result.ok
-        ? (result.results?.filter((r) => r.ok).length ?? emailIds.length)
-        : 0;
       await noteGmailDraftOutcome(
         pipelineId,
-        result.ok
-          ? `Created ${drafted} draft(s)`
-          : `${emailIds.length} email(s) ready to send from the Outreach tab (Gmail drafts unavailable)`,
-        result.ok ? null : result.error,
+        `${emailIds.length} email(s) ready to send from the Outreach tab`,
+        ready
+          ? null
+          : "Resume/cover PDFs were still uploading — download them from the application before you send.",
       );
     }).catch((err) => {
-      console.error("[pipeline] background Gmail drafts failed", err);
+      console.error("[pipeline] background outreach readiness check failed", err);
     });
   });
 

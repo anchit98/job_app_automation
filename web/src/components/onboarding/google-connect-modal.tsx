@@ -55,9 +55,10 @@ export function GoogleConnectModal({
             Connect Google first
           </h2>
           <p className="mt-1.5 text-[13px] text-on-surface-variant leading-6">
-            JobApp OS needs Drive/Docs (for files you choose or we create) and
-            Gmail draft access to prepare resumes and outreach. This is a
-            one-time permission — do it before filling your profile.
+            JobApp OS needs Drive and Docs access, and only for the files you
+            choose or that it creates — your resumes and cover letters. No mail
+            permission is requested. This is a one-time step, before you fill
+            in your profile.
           </p>
         </div>
         <div className="p-5 space-y-3">

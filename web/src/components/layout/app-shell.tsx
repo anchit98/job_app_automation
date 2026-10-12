@@ -7,7 +7,16 @@ import { useEffect, useState, useTransition } from "react";
 import { PipelineKeeper } from "@/components/pipeline/pipeline-keeper";
 import { ProfileMenu } from "@/components/layout/profile-menu";
 
-const paidLinks = [
+/**
+ * The app's main navigation.
+ *
+ * Every account sees all of it. It used to be conditional on `isPaid`, from
+ * when an unpaid account could reach nothing but /billing — there is no
+ * paywall any more, so the only thing that still hides a destination is setup
+ * not being finished, which is about whether the page can work rather than
+ * about money.
+ */
+const mainLinks = [
   { href: "/dashboard", icon: "dashboard", label: "Dashboard" },
   { href: "/apply", icon: "rocket_launch", label: "Apply" },
   { href: "/applications", icon: "work", label: "Jobs" },
@@ -39,7 +48,6 @@ export function AppShell({
   userName,
   avatarSrc,
   isAdmin,
-  isPaid = true,
   setupReady = true,
 }: {
   children: React.ReactNode;
@@ -47,7 +55,6 @@ export function AppShell({
   userName?: string | null;
   avatarSrc?: string | null;
   isAdmin?: boolean;
-  isPaid?: boolean;
   /** False until Google + profile + master resume are ready */
   setupReady?: boolean;
 }) {
@@ -64,42 +71,30 @@ export function AppShell({
   const activePath = optimisticPath ?? pathname;
   const onBilling =
     pathname === "/billing" || pathname.startsWith("/billing/");
-  const showApplicationSearch = isPaid && setupReady && activePath === "/applications";
-  const homeHref = !isPaid
-    ? "/billing"
-    : setupReady
-      ? "/dashboard"
-      : "/onboarding";
+  const showApplicationSearch = setupReady && activePath === "/applications";
+  const homeHref = setupReady ? "/dashboard" : "/onboarding";
 
   const setupLockedHrefs = new Set(["/dashboard", "/apply", "/applications"]);
 
-  const navLinks = isPaid
-    ? [
-        ...paidLinks,
-        ...(isAdmin
-          ? [{ href: "/admin-center", icon: "admin_panel_settings", label: "Admin" }]
-          : []),
-        ...(!setupReady
-          ? [{ href: "/onboarding", icon: "checklist", label: "Setup" }]
-          : []),
-      ]
-    : [
-        { href: "/billing", icon: "payments", label: "Billing" },
-        { href: "/settings", icon: "settings", label: "Settings" },
-      ];
+  const navLinks = [
+    ...mainLinks,
+    ...(isAdmin
+      ? [{ href: "/admin-center", icon: "admin_panel_settings", label: "Admin" }]
+      : []),
+    ...(!setupReady
+      ? [{ href: "/onboarding", icon: "checklist", label: "Setup" }]
+      : []),
+  ];
 
   return (
     <div
       className={`app-shell bg-canvas flex flex-col ${
         onBilling
           ? "app-shell--flow min-h-0 flex-1 md:min-h-0 md:overflow-hidden"
-          : isPaid
-            ? "max-md:overflow-hidden md:min-h-[100dvh]"
-            : "max-md:overflow-hidden"
+          : "max-md:overflow-hidden md:min-h-[100dvh]"
       }`}
     >
-      {isPaid &&
-      !pathname.startsWith("/admin-center") &&
+      {!pathname.startsWith("/admin-center") &&
       !pathname.startsWith("/settings") &&
       !pathname.startsWith("/billing") ? (
         <PipelineKeeper />
@@ -126,15 +121,7 @@ export function AppShell({
                 JobApp OS
               </span>
             </Link>
-            {!isPaid ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-status-waiting/30 bg-status-waiting-container px-2.5 py-1 text-[11px] font-semibold text-status-waiting max-md:px-2 max-md:py-0.5 max-md:text-[10px]">
-                <span className="material-symbols-outlined text-[14px] max-md:text-[12px]">
-                  lock
-                </span>
-                <span className="sm:hidden">Locked</span>
-                <span className="hidden sm:inline">Locked until payment</span>
-              </span>
-            ) : !setupReady ? (
+            {!setupReady ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/8 px-2.5 py-1 text-[11px] font-semibold text-primary max-md:px-2 max-md:py-0.5 max-md:text-[10px]">
                 <span className="material-symbols-outlined text-[14px] max-md:text-[12px]">
                   checklist
@@ -173,7 +160,7 @@ export function AppShell({
             <nav className="hidden md:flex items-center gap-0.5 sm:gap-1">
               {navLinks.map((link) => {
                 const lockedBySetup =
-                  isPaid && !setupReady && setupLockedHrefs.has(link.href);
+                  !setupReady && setupLockedHrefs.has(link.href);
                 const href = lockedBySetup ? "/onboarding" : link.href;
                 const active = isActive(activePath, link.href);
                 return (
@@ -222,38 +209,12 @@ export function AppShell({
                   </Link>
                 );
               })}
-              {!isPaid
-                ? paidLinks.map((link) => (
-                    <Link
-                      key={`locked-${link.href}`}
-                      href="/billing"
-                      prefetch={false}
-                      onClick={() => setOptimisticPath("/billing")}
-                      title="Unlock with payment"
-                      className="flex flex-col items-center justify-center min-w-[72px] px-1 py-1 border-b-2 border-transparent text-on-surface-variant/50 no-underline hover:text-on-surface-variant"
-                    >
-                      <span className="relative material-symbols-outlined text-[22px]">
-                        {link.icon}
-                        <span
-                          className="material-symbols-outlined absolute -right-1 -top-1 text-status-waiting"
-                          style={{ fontSize: 12 }}
-                        >
-                          lock
-                        </span>
-                      </span>
-                      <span className="text-[11px] font-semibold mt-0.5 leading-none">
-                        {link.label}
-                      </span>
-                    </Link>
-                  ))
-                : null}
             </nav>
             <ProfileMenu
               userEmail={userEmail}
               userName={userName}
               avatarSrc={avatarSrc}
               isAdmin={isAdmin}
-              isPaid={isPaid}
             />
           </div>
         </div>
@@ -263,20 +224,22 @@ export function AppShell({
         className={`
           w-full min-w-0
           ${
-            isWorkspace && isPaid
+            isWorkspace
               ? "flex-1 overflow-hidden min-h-0"
               : onBilling
+                // `md:overflow-y-auto` here is necessary but not sufficient:
+                // `.app-shell > main { overflow: visible }` in globals.css is
+                // a more specific selector and wins. The scrolling is actually
+                // turned on by the `.app-shell--flow > main` rule there, which
+                // matches at equal specificity and comes later in the file.
                 ? "relative flex flex-col w-full px-margin-mobile md:px-margin-desktop py-3 md:py-4 pb-3 md:flex-1 md:min-h-0 md:overflow-y-auto"
-                : isPaid
-                  ? "flex-1 mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-4 md:py-5 pb-8 max-md:min-h-0 max-md:overflow-y-auto max-md:py-3 max-md:pb-3"
-                  : "mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-3 md:py-4 pb-3"
+                : "flex-1 mx-auto max-w-content-max w-full px-margin-mobile md:px-margin-desktop py-4 md:py-5 pb-8 max-md:min-h-0 max-md:overflow-y-auto max-md:py-3 max-md:pb-3"
           }
         `}
       >
         {children}
       </main>
 
-      {!onBilling ? (
       <nav
         className="md:hidden shrink-0 z-50 border-t border-border-hairline bg-surface pb-[env(safe-area-inset-bottom,0px)]"
         aria-label="Primary"
@@ -284,7 +247,7 @@ export function AppShell({
         <div className="mx-auto flex h-14 max-w-content-max items-stretch justify-around px-1">
           {navLinks.map((link) => {
             const lockedBySetup =
-              isPaid && !setupReady && setupLockedHrefs.has(link.href);
+              !setupReady && setupLockedHrefs.has(link.href);
             const href = lockedBySetup ? "/onboarding" : link.href;
             const active = isActive(activePath, link.href);
             return (
@@ -326,7 +289,6 @@ export function AppShell({
           })}
         </div>
       </nav>
-      ) : null}
     </div>
   );
 }

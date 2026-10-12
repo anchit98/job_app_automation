@@ -247,7 +247,7 @@ export function CoverLetterFlow({
               onChange={(e) =>
                 setSelectedResumeVersion(Number.parseInt(e.target.value, 10))
               }
-              className="mt-1 block rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              className="li-select li-select--auto mt-1"
             >
               {readyResumes.map((v) => (
                 <option key={v.id} value={v.version}>

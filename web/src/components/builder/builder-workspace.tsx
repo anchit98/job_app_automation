@@ -20,6 +20,7 @@ import type { BuilderCvVersion } from "@/lib/builder/queries";
 import {
   SECTION_LABELS,
   resolveSectionOrder,
+  sectionIsFilled,
   type SectionName,
 } from "@/lib/builder/latex-engine";
 import type { MasterResumeSource } from "@/lib/db/types";
@@ -149,6 +150,32 @@ export function BuilderWorkspace({
 
   function patchContact(next: Partial<BuilderProfile["contact"]>) {
     setProfile((prev) => ({ ...prev, contact: { ...prev.contact, ...next } }));
+  }
+
+  /**
+   * Move one section up or down the printed sequence.
+   *
+   * The swap is written against the *resolved* order rather than against
+   * whatever `section_order` currently holds, so the first move made on a CV
+   * that never had a custom order saves the field default with one pair
+   * exchanged — rather than a one-item list that would drop everything else to
+   * the end.
+   */
+  function moveSection(name: SectionName, delta: -1 | 1) {
+    setProfile((prev) => {
+      const current = resolveSectionOrder(prev);
+      const from = current.indexOf(name);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= current.length) return prev;
+      const next = [...current];
+      [next[from], next[to]] = [next[to], next[from]];
+      return { ...prev, section_order: next };
+    });
+  }
+
+  /** Back to whatever this industry prints by default. */
+  function resetSectionOrder() {
+    setProfile((prev) => ({ ...prev, section_order: undefined }));
   }
 
   function runSave() {
@@ -487,9 +514,17 @@ export function BuilderWorkspace({
             preview instantly
           </p>
           {/* "What does picking an industry even do?" — this is the answer,
-              stated as the concrete section sequence it produces. */}
+              stated as the concrete section sequence it produces, and now as a
+              way into changing it. */}
           <p className="text-[12px] text-on-surface-variant mt-1">
-            <span className="font-semibold">Section order on your CV:</span>{" "}
+            <button
+              type="button"
+              onClick={() => setOpenSection("order")}
+              className="font-semibold text-primary hover:underline"
+            >
+              Section order on your CV
+            </button>
+            :{" "}
             {activeSections.map((name) => SECTION_LABELS[name]).join(" → ")}
           </p>
         </div>
@@ -624,6 +659,16 @@ export function BuilderWorkspace({
               </div>
             ) : null}
           </CollapsibleCard>
+
+          <SectionOrderCard
+            profile={profile}
+            order={activeSections}
+            open={openSection === "order"}
+            onToggle={() => toggleSection("order")}
+            onMove={moveSection}
+            onReset={resetSectionOrder}
+            customised={Boolean(profile.section_order?.length)}
+          />
 
           {/* Printed order drives the form order. */}
           {activeSections.map((name) =>
@@ -822,6 +867,126 @@ function countSummary(count: number, noun = "entry"): string {
  * The collapsed header still says how much is in there, so folding a section
  * away never hides whether it has been filled in.
  */
+/**
+ * Reorder the CV's sections.
+ *
+ * One list rather than a pair of arrows on every section header: the question
+ * being answered is "what order does my CV print in", and that is only
+ * answerable by seeing the whole sequence at once. Moving an item here also
+ * reorders the editor cards below, because both read resolveSectionOrder.
+ *
+ * Up/down buttons rather than drag-and-drop — no DnD library is installed, and
+ * buttons work from the keyboard without one.
+ */
+function SectionOrderCard({
+  profile,
+  order,
+  open,
+  onToggle,
+  onMove,
+  onReset,
+  customised,
+}: {
+  profile: BuilderProfile;
+  order: SectionName[];
+  open: boolean;
+  onToggle: () => void;
+  onMove: (name: SectionName, delta: -1 | 1) => void;
+  onReset: () => void;
+  customised: boolean;
+}) {
+  return (
+    <CollapsibleCard
+      title="Section order"
+      summary={order.map((name) => SECTION_LABELS[name]).join(" → ")}
+      open={open}
+      onToggle={onToggle}
+    >
+      <p className="text-[13px] text-on-surface-variant">
+        This is the order your CV prints in — the preview, the PDF and every
+        tailored resume all follow it. Empty sections are skipped when the CV is
+        built.
+      </p>
+      <ol className="space-y-1.5">
+        {order.map((name, index) => {
+          const filled = sectionIsFilled(profile, name);
+          return (
+            <li
+              key={name}
+              className="flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2"
+            >
+              <span className="li-meta w-5 shrink-0 tabular-nums">
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-on-surface">
+                {SECTION_LABELS[name]}
+              </span>
+              {!filled ? (
+                <span className="li-meta shrink-0 uppercase tracking-wide">
+                  empty
+                </span>
+              ) : null}
+              <span className="flex shrink-0 items-center gap-0.5">
+                <MoveButton
+                  direction="up"
+                  label={`Move ${SECTION_LABELS[name]} up`}
+                  disabled={index === 0}
+                  onClick={() => onMove(name, -1)}
+                />
+                <MoveButton
+                  direction="down"
+                  label={`Move ${SECTION_LABELS[name]} down`}
+                  disabled={index === order.length - 1}
+                  onClick={() => onMove(name, 1)}
+                />
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      {customised ? (
+        <button
+          type="button"
+          onClick={onReset}
+          className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
+        >
+          <span className="material-symbols-outlined text-[16px]" aria-hidden>
+            restart_alt
+          </span>
+          Reset to the {FIELD_LABELS[profile.professional_field]} default
+        </button>
+      ) : null}
+    </CollapsibleCard>
+  );
+}
+
+function MoveButton({
+  direction,
+  label,
+  disabled,
+  onClick,
+}: {
+  direction: "up" | "down";
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-on-surface-variant hover:bg-[var(--ghost-hover)] hover:text-on-surface disabled:opacity-30 disabled:hover:bg-transparent"
+    >
+      <span className="material-symbols-outlined text-[18px]" aria-hidden>
+        {direction === "up" ? "arrow_upward" : "arrow_downward"}
+      </span>
+    </button>
+  );
+}
+
 function CollapsibleCard({
   title,
   summary,

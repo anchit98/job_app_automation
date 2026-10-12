@@ -46,6 +46,9 @@ function parseLabeledValue(line: string, label: string): string | null {
   return normalizeUrl(candidate) || null;
 }
 
+/** Labels a resume puts on its own site, as opposed to a project's demo. */
+const PORTFOLIO_LABEL_RE = /^(online\s+)?(portfolio|website|personal\s+site|blog|site)$/i;
+
 function classifyUrl(url: string): "linkedin" | "github" | "portfolio" | null {
   if (/linkedin\.com/i.test(url)) return "linkedin";
   if (/github\.com/i.test(url)) return "github";
@@ -53,7 +56,7 @@ function classifyUrl(url: string): "linkedin" | "github" | "portfolio" | null {
 }
 
 export function extractSignatureFieldsFromResume(
-  content: Pick<ResumeContent, "contact_line" | "links_line">,
+  content: Pick<ResumeContent, "contact_line" | "links_line" | "links">,
 ): ExtractedSignatureFields {
   const result: ExtractedSignatureFields = {
     phone: extractPhone(content.contact_line),
@@ -61,6 +64,28 @@ export function extractSignatureFieldsFromResume(
     github_url: null,
     portfolio_url: null,
   };
+
+  // Real hyperlinks first. Everything below this reads the contact row's text,
+  // which on an imported resume is usually just the words "LinkedIn | GitHub |
+  // Portfolio" — the addresses live only in the links, so guessing from the
+  // text is what left these fields empty for every uploaded master.
+  for (const link of content.links ?? []) {
+    const url = normalizeUrl(link.url);
+    if (!url) continue;
+    const kind = classifyUrl(url);
+    if (kind === "linkedin" && !result.linkedin_url) result.linkedin_url = url;
+    else if (kind === "github" && !result.github_url) result.github_url = url;
+    // Portfolio is the fallback bucket in classifyUrl, so a project's demo
+    // link would land in it. Only a link that *says* it is the portfolio can
+    // claim the field.
+    else if (
+      kind === "portfolio" &&
+      !result.portfolio_url &&
+      PORTFOLIO_LABEL_RE.test(link.text)
+    ) {
+      result.portfolio_url = url;
+    }
+  }
 
   const linksLine = content.links_line?.trim() ?? "";
   if (!linksLine) return result;

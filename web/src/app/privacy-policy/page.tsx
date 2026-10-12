@@ -23,8 +23,9 @@ export default function PrivacyPolicyPage() {
             and protects information when you use the service. JobApp OS is a
             job application automation web app: it helps users create tailored
             resumes and cover letters, store materials in Google Drive and
-            Google Docs, prepare Gmail drafts for outreach and follow-ups, and
-            track applications in one place.
+            Google Docs, write outreach and follow-up emails, and track
+            applications in one place. JobApp OS does not connect to your
+            mailbox — emails open in your own mail client for you to send.
           </p>
         </div>
 
@@ -61,12 +62,18 @@ export default function PrivacyPolicyPage() {
               <p className="font-semibold">Google integration data</p>
               <p>
                 If you connect Google, we store encrypted Google OAuth tokens
-                and the granted scopes needed to access Google Drive, Google
-                Docs, and Gmail on your behalf. These tokens are tied to your
-                individual account and are not shared with other users. We use
-                this access to create and update application documents, export
-                PDFs, and create Gmail drafts — not to sell your Google data or
-                use it for advertising.
+                and the granted scopes needed to access Google Drive and Google
+                Docs on your behalf. We request no Gmail or other mail scope.
+                These tokens are tied to your individual account and are not
+                shared with other users. We use this access to create and
+                update application documents and export PDFs — not to sell your
+                Google data or use it for advertising.
+              </p>
+              <p>
+                If you sign in with Google, we additionally store the Google
+                account identifier and email address that identify you, so the
+                same account is recognised next time. That sign-in grants no
+                access to your Google files; it is identity only.
               </p>
             </div>
             <div>
@@ -75,9 +82,9 @@ export default function PrivacyPolicyPage() {
                 When you run Apply, selected job description text, profile and
                 master-document context, and related workflow inputs may be sent
                 to our server-side AI provider (OpenAI) to generate tailored
-                resumes, cover letters, and outreach drafts. Generated outputs
+                resumes, cover letters, and outreach emails. Generated outputs
                 are validated and stored in your JobApp OS account and, where
-                applicable, written to your Google Drive or Gmail drafts.
+                applicable, written to your Google Drive.
               </p>
             </div>
             <div>
@@ -111,15 +118,16 @@ export default function PrivacyPolicyPage() {
               <li>connect to your Google account when you authorize it;</li>
               <li>
                 generate, save, and manage job application artifacts (including
-                Drive/Docs files and Gmail drafts);
+                Drive/Docs files);
               </li>
               <li>
-                create Gmail drafts for outreach and follow-ups (users send
-                manually from Gmail);
+                prepare outreach and follow-up emails, which open pre-filled in
+                your own mail client for you to send;
               </li>
               <li>
-                send limited admin-originated transactional emails (for example
-                password reset or payment-claim notices) when configured;
+                send transactional emails through our email provider (Resend) —
+                for example password resets, payment receipts, and
+                payment-claim notices;
               </li>
               <li>
                 schedule follow-up reminders using India Standard Time (IST /
@@ -161,19 +169,24 @@ export default function PrivacyPolicyPage() {
               including hosting, database, Google services, and server-side AI
               generation (OpenAI). When you use the Google integration, your
               data may be transmitted to Google in order to access or create
-              Google Drive, Google Docs, and Gmail resources that you authorize.
+              the Google Drive and Google Docs resources that you authorize.
             </p>
             <p>
               <strong className="font-semibold">Google user data use.</strong>{" "}
-              With your consent, JobApp OS uses Google APIs to: create and
-              update documents in Google Drive and Google Docs for resumes and
-              cover letters; export PDFs; create Gmail drafts for cold outreach
-              and follow-ups (including attaching Drive PDFs when ready); and,
-              for follow-up threading, look up related Gmail threads where the
-              readonly scope is granted. Outreach email is never auto-sent —
-              drafts remain in your Gmail until you review and send them.
-              Limited admin features may use Gmail send for transactional
-              notices you expect from the service (such as password recovery).
+              With your consent, JobApp OS uses Google APIs to create and update
+              documents in Google Drive and Google Docs for your resumes and
+              cover letters, and to export those as PDFs. The Drive scope we
+              request (<code>drive.file</code>) reaches only files the app
+              created or that you selected through Google&apos;s own file
+              picker; the rest of your Drive is not visible to us.
+              {" "}
+              JobApp OS requests <strong className="font-semibold">no Gmail
+              scope of any kind</strong>. Outreach and follow-up emails open
+              pre-filled in whichever mail client you use, and you send them
+              yourself — the service cannot read, draft, or send mail on your
+              behalf. The service&apos;s own transactional email (password
+              resets, payment receipts) is sent through Resend, not through your
+              account.
             </p>
             <p>
               JobApp OS&apos;s use and transfer to any other app of information

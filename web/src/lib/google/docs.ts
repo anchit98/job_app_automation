@@ -27,6 +27,15 @@ export interface DocLayoutMap {
   version: number;
   mapped_at: string;
   slots: DocSlot[];
+  /**
+   * The sequence this master prints its sections in.
+   *
+   * Either the order arranged in the CV builder or the order an imported
+   * resume actually used. Read by the tailored PDF so an application looks
+   * like the resume it was built from; absent on masters synced before this
+   * existed, which fall back to the default sequence.
+   */
+  section_order?: string[];
   /** Word budget from WORK EXPERIENCE through SKILLS (synced from Google Doc). */
   word_budget?: {
     work_through_skills_total: number;

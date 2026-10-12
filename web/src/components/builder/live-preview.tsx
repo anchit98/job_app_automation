@@ -23,10 +23,37 @@ import {
 import type { BuilderProfile } from "@/lib/builder/types";
 import "./live-preview.css";
 
-/** A4 at 96dpi — 210mm x 297mm. */
+/** A4 at 96dpi — 210mm x 297mm. The sheet the builder has always drawn. */
 const PAGE_W = 794;
 const PAGE_H = 1122;
 const CONTAINER_PADDING = 10;
+
+/**
+ * How much preview content fits on one printed page.
+ *
+ * Measured, not derived. The sheet is a facsimile, not a renderer: it sets the
+ * CV in Times at 15px/1.4 with ordinary margins, while pdflatex sets the same
+ * content at 11pt with small bullets and a negative vertical space after
+ * almost every element. Preview pixels and printed pixels are therefore not
+ * interchangeable, and this constant is the conversion.
+ *
+ * The number comes from compiling a real CV: 1127px of preview content became
+ * a PDF that filled 98% of one page. It is rounded up from there so a CV that
+ * only just fits is not reported as spilling over.
+ *
+ * Tightening the preview's own typography would have made the two match
+ * directly, and that was the first attempt — but it changes the design the
+ * user is looking at in order to fix a number, which is the wrong trade. The
+ * sheet keeps its own type; the arithmetic carries the difference.
+ *
+ * Advisory, not exact: a CV weighted differently between headings and bullets
+ * drifts either way. It answers "will this fit on one page", which is the only
+ * question the marker exists to answer.
+ */
+const PREVIEW_PAGE_PX = 1160;
+
+/** `.live-preview-page` vertical padding, excluded from the content measure. */
+const SHEET_PADDING_Y = 56;
 
 function filled(values: string[] | undefined): string[] {
   return (values ?? []).filter((v) => v && v.trim());
@@ -341,6 +368,13 @@ export function LivePreview({ data }: { data: BuilderProfile }) {
     .map((name) => ({ name, body: SECTION_RENDERERS[name](data) }))
     .filter((s) => s.body !== null);
 
+  // Page count is measured on the *content*, converted to printed height —
+  // not on the sheet, whose A4 proportions are a drawing choice rather than a
+  // statement about the PDF. One marker per boundary, so three pages draw two.
+  const contentHeight = Math.max(0, pageHeight - SHEET_PADDING_Y * 2);
+  const pageCount = Math.max(1, Math.ceil(contentHeight / PREVIEW_PAGE_PX));
+  const breaks = Array.from({ length: pageCount - 1 }, (_, i) => i + 1);
+
   return (
     <div className="live-preview-shell">
       <div className="live-preview-scroll" ref={setScrollEl}>
@@ -412,12 +446,40 @@ export function LivePreview({ data }: { data: BuilderProfile }) {
                 </div>
               );
             })}
+
+            {/* Drawn last so the rules sit over the content they cut through.
+                A CV that runs onto page two is usually a mistake the user
+                cannot see any other way — the sheet just kept scrolling. */}
+            {breaks.map((n) => (
+              <div
+                key={n}
+                className="lp-page-break"
+                style={{ top: SHEET_PADDING_Y + n * PREVIEW_PAGE_PX }}
+                aria-hidden
+              >
+                <span className="lp-page-break-label">Page {n + 1}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       {/* Outside the scroller so the controls stay put while the CV scrolls. */}
       <div className="live-preview-controls">
+        <span
+          className="live-preview-pages"
+          data-overflow={pageCount > 1}
+          title={
+            pageCount > 1
+              ? "Recruiters and ATS filters expect one page — trim bullets or move a section to fit."
+              : "Fits on one page."
+          }
+        >
+          <span className="material-symbols-outlined text-[14px]" aria-hidden>
+            {pageCount > 1 ? "warning" : "description"}
+          </span>
+          {pageCount === 1 ? "1 page" : `${pageCount} pages`}
+        </span>
         <button
           type="button"
           title="Zoom out"

@@ -110,7 +110,7 @@ export function FollowUpFlow({
     return (
       <div className="rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-[13px] text-on-surface-variant">
         Follow-ups are scheduled when you mark the application as{" "}
-        <strong>Email sent</strong> (one pair per Gmail draft created).
+        <strong>Email sent</strong> (one pair per cold email written).
       </div>
     );
   }
@@ -121,8 +121,9 @@ export function FollowUpFlow({
         <h3 className="text-[16px] font-medium text-on-surface">Follow-ups</h3>
         <p className="text-[13px] text-on-surface-variant mt-1">
           Cadence: 5 business days after email sent, then 10 business days after
-          the first follow-up is sent. Times use India (IST) business days. Gmail
-          drafts reply in the original cold-email thread (no re-attached PDFs).
+          the first follow-up is sent. Times use India (IST) business days.
+          Follow-ups reply in the original cold-email thread, so send them from
+          that thread rather than as a new message.
         </p>
         {needsConfirm && (
           <p className="text-[12px] text-amber-700 dark:text-amber-300 mt-2">
@@ -203,7 +204,7 @@ export function FollowUpFlow({
                       onClick={() => manualSend(fu.id)}
                       className="px-3 py-1.5 rounded-full border border-outline-variant text-[12px] hover:bg-surface-container-high disabled:opacity-50"
                     >
-                      Create draft & open Gmail
+                      Mark as sent
                     </button>
                   )}
                   <button

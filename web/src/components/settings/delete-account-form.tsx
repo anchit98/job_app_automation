@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { deleteMyAccount } from "@/app/actions/auth";
 
-export function DeleteAccountForm({ userEmail }: { userEmail: string }) {
+export function DeleteAccountForm({
+  userEmail,
+  hasPassword = true,
+}: {
+  userEmail: string;
+  /** False for a Google-only account — typing the email is the confirmation. */
+  hasPassword?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
@@ -124,19 +131,21 @@ export function DeleteAccountForm({ userEmail }: { userEmail: string }) {
                   onChange={(e) => setConfirmEmail(e.target.value)}
                 />
               </label>
-              <label className="block space-y-1.5">
-                <span className="text-[13px] font-semibold text-on-surface">
-                  Password
-                </span>
-                <input
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  className="w-full rounded-md border border-border-hairline bg-surface px-3 py-2 text-[14px]"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </label>
+              {hasPassword ? (
+                <label className="block space-y-1.5">
+                  <span className="text-[13px] font-semibold text-on-surface">
+                    Password
+                  </span>
+                  <input
+                    type="password"
+                    required
+                    autoComplete="current-password"
+                    className="w-full rounded-md border border-border-hairline bg-surface px-3 py-2 text-[14px]"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </label>
+              ) : null}
               {error ? (
                 <p className="rounded-md bg-error-container/40 px-3 py-2 text-[13px] text-error">
                   {error}

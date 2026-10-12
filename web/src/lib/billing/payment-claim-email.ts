@@ -1,5 +1,4 @@
 import { env } from "@/lib/env";
-import { AdminGmailConfigError } from "@/lib/google/admin-gmail";
 import {
   sendTransactionalEmail,
   transactionalAdminRecipients,
@@ -78,11 +77,9 @@ export async function notifyAdminsOfPaymentClaim(input: {
     return { ok: true, emailedTo: result.emailed_to };
   } catch (error) {
     const message =
-      error instanceof AdminGmailConfigError
+      error instanceof Error
         ? error.message
-        : error instanceof Error
-          ? error.message
-          : "Failed to send payment notification email.";
+        : "Failed to send payment notification email.";
     console.error("[payment-claim-email]", error);
     return { ok: false, error: message };
   }

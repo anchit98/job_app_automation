@@ -5,6 +5,7 @@ import { getProfile } from "@/app/actions/profile";
 import { getGoogleConnectedState } from "@/lib/google/tokens";
 import { parseMetricsRange } from "@/lib/tracker/metrics-range";
 import { searchApplications } from "@/lib/tracker/queries";
+import { ApplyCreditsCard } from "@/components/dashboard/apply-credits-card";
 import { DashboardMetricsGrid } from "@/components/dashboard/dashboard-metrics";
 import { RecentApplications } from "@/components/dashboard/recent-applications";
 import { QuickActions } from "@/components/dashboard/quick-actions";
@@ -147,6 +148,10 @@ export default async function DashboardPage({
           <ClearPendingPromptsButton count={pendingPrompts} />
         </div>
       )}
+
+      <Suspense fallback={null}>
+        <ApplyCreditsCard />
+      </Suspense>
 
       <section className="li-card p-4 lg:p-5 shrink-0">
         <Suspense fallback={null}>

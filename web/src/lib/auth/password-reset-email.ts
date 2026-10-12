@@ -63,7 +63,6 @@ export async function sendPasswordResetEmail(input: {
       resetUrl: token.resetUrl,
       fullName: input.fullName,
     }),
-    preferredAdminId: input.preferredAdminId,
   });
 
   if (!sent.ok) {

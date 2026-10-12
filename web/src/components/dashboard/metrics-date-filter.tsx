@@ -56,8 +56,7 @@ export function MetricsDateFilter({ range }: MetricsDateFilterProps) {
     pushParams({ range: "custom", from, to });
   }
 
-  const controlClass =
-    "rounded-lg border border-border-hairline bg-surface px-2.5 py-1.5 text-[12px] text-on-surface outline-none focus:border-primary";
+  const controlClass = "li-field li-field--auto";
 
   return (
     <div
@@ -68,7 +67,7 @@ export function MetricsDateFilter({ range }: MetricsDateFilterProps) {
       </label>
       <select
         id="metrics-range"
-        className={`${controlClass} max-w-[11rem]`}
+        className="li-select li-select--auto max-w-[11rem]"
         value={range.preset}
         onChange={(e) => onPresetChange(e.target.value as MetricsRangePreset)}
       >

@@ -11,6 +11,11 @@
 import { dbGet, dbRun } from "@/lib/db";
 import { getRequestUserId } from "@/lib/auth/request-user";
 import { requireUser } from "@/lib/auth/user";
+import {
+  FREE_ALLOWANCE,
+  TIER_CONFIG,
+  type EntitlementPlan,
+} from "@/lib/billing/pricing";
 
 /** Mirrors the resolver in db/queries: explicit id → request scope → session. */
 async function currentUserId(explicit?: string): Promise<string> {
@@ -18,12 +23,10 @@ async function currentUserId(explicit?: string): Promise<string> {
   return getRequestUserId() ?? (await requireUser()).id;
 }
 
-export type EntitlementPlan =
-  | "free"
-  | "legacy_lifetime"
-  | "starter"
-  | "pro"
-  | "enterprise";
+// The plan vocabulary and the price list live in ./pricing, which the client
+// bundles read — this module talks to the database and cannot.
+export type { EntitlementPlan };
+export { FREE_ALLOWANCE, TIER_CONFIG };
 
 export type MeteredAction = "apply" | "cv" | "tailor";
 
@@ -37,24 +40,6 @@ const USED_COLUMN: Record<MeteredAction, string> = {
   apply: "applies_used",
   cv: "cvs_generated",
   tailor: "tailors_used",
-};
-
-export const FREE_ALLOWANCE = { apply: 4, cv: 4, tailor: 4 } as const;
-
-/** Paid top-ups, carried over from ResumeBuilderV2's TIER_CONFIG. */
-export const TIER_CONFIG: Record<
-  Exclude<EntitlementPlan, "free" | "legacy_lifetime">,
-  { price_inr: number; label: string; apply: number; cv: number; tailor: number }
-> = {
-  starter: { price_inr: 100, label: "Starter", apply: 25, cv: 100, tailor: 100 },
-  pro: { price_inr: 250, label: "Pro", apply: 100, cv: 500, tailor: 500 },
-  enterprise: {
-    price_inr: 500,
-    label: "Enterprise",
-    apply: 250,
-    cv: 1000,
-    tailor: 1000,
-  },
 };
 
 export interface Entitlements extends Record<string, unknown> {
@@ -255,6 +240,33 @@ export async function applyTierPurchase(
     config.apply,
     config.cv,
     config.tailor,
+    userId,
+  );
+}
+
+/**
+ * Add Apply runs without touching the plan — a top-up, or "token renewal".
+ *
+ * Deliberately not `applyTierPurchase` with a zero-tier: buying more runs is
+ * not the same as changing what you are on, and overwriting `plan` would
+ * silently demote someone who topped up while on Pro.
+ *
+ * `legacy_lifetime` is excluded for the same reason every other check skips
+ * it — those users are unmetered, so credits mean nothing to them, and adding
+ * some would imply a limit they do not have.
+ */
+export async function addApplyCredits(
+  userId: string,
+  runs: number,
+): Promise<void> {
+  if (!Number.isFinite(runs) || runs <= 0) return;
+  await getEntitlements(userId);
+  await dbRun(
+    `UPDATE user_entitlements
+        SET apply_credits = apply_credits + ?,
+            updated_at = (NOW() AT TIME ZONE 'utc')::text
+      WHERE user_id = ? AND plan <> 'legacy_lifetime'`,
+    Math.floor(runs),
     userId,
   );
 }

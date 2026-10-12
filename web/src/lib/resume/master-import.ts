@@ -247,6 +247,12 @@ export async function importBytesAndSync(
       // leaves both as dead text, which is why a converted "LinkedIn" did
       // nothing when clicked.
       await docs.applyKnownLinks(convertedDocId, links);
+    } else {
+      // Word keeps its real hyperlinks through the conversion, so there is
+      // nothing to restore — but a .docx that merely *types* a URL arrives
+      // with it as dead text just like a PDF does. Linkifying those is what
+      // lets a project demo address reach the tailored resume.
+      await docs.applyKnownLinks(convertedDocId, []);
     }
   } catch (error) {
     console.error("[master-import] file conversion failed:", error);

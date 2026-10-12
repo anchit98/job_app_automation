@@ -14,29 +14,21 @@ import {
   markdownToEmailHtml,
   validateColdEmailBatch,
 } from "@/lib/emails/validate";
-import {
-  buildCoverLetterPdfFilename,
-  buildResumePdfFilename,
-} from "@/lib/emails/attachment-names";
 import { stripEmailSignature } from "@/lib/emails/strip-signature";
 import {
   buildEmailSendPack,
   type EmailSendPack,
 } from "@/lib/emails/manual-send";
-import { appendEmailSignatureHtml } from "@/lib/emails/signature";
 import {
   extractSignatureFieldsFromResume,
   mergeSignatureFields,
 } from "@/lib/emails/extract-resume-links";
 import { extractExpectedContactIdsFromPrompt } from "@/lib/emails/prompt-contacts";
 import {
-  claimEmailForDraftCreation,
   completePromptRun,
   getApplicationById,
   getContactById,
   getEmailById,
-  getLatestReadyCoverLetterVersion,
-  getLatestReadyResumeVersion,
   getLatestUsableResumeVersion,
   getMasterResumeRow,
   getProfileRow,
@@ -45,26 +37,13 @@ import {
   insertEmail,
   listContacts,
   listEmails,
-  listEmailsByIds,
   listEmailsByPromptRun,
-  markEmailDraftCreated,
-  markEmailDraftDeletedExternally,
-  markEmailDraftFailed,
   markEmailNotSent,
   markEmailSent,
-  resetEmailDraftForRecreate,
   updatePromptRunValidationErrors,
 } from "@/lib/db/queries";
-import type { DraftAttachment, DraftDriveLink } from "@/lib/google/gmail";
 import type { Contact, EmailRecord } from "@/lib/db/types";
-import { DriveClient } from "@/lib/google/drive";
-import {
-  GmailClient,
-  GmailScopeMissingError,
-} from "@/lib/google/gmail";
-import { gmailDraftWebUrl } from "@/lib/emails/gmail-url";
 import { replySubject } from "@/lib/emails/reply-thread";
-import { resolveColdEmailThreadReplyContext } from "@/lib/emails/thread-reply-context";
 import {
   activateSecondFollowUp,
   getFollowUpByDraftEmailId,
@@ -73,11 +52,6 @@ import {
 } from "@/lib/follow-ups/queries";
 import { scheduleFollowUpsForApplication } from "@/lib/follow-ups/enqueue";
 import { nextFollowUpDueAt, toUtcIso } from "@/lib/follow-ups/business-days";
-import {
-  getGoogleAuthClient,
-  GoogleNotConnectedError,
-  GoogleTokenRevokedError,
-} from "@/lib/google/tokens";
 import {
   composePrompt,
   warnIfPromptTooLong,
@@ -771,324 +745,6 @@ export async function undoEmailSent(emailId: string) {
     console.error("[emails] undo sent failed:", error);
     return { ok: false as const, error: explainMarkSentError(error) };
   }
-}
-
-export async function createGmailDrafts(emailIds: string[]) {
-  if (!emailIds.length) {
-    return { ok: false as const, error: "No emails selected." };
-  }
-
-  const emails = await listEmailsByIds(emailIds);
-  if (emails.length === 0) {
-    return { ok: false as const, error: "Emails not found." };
-  }
-
-  let auth;
-  try {
-    auth = await getGoogleAuthClient();
-  } catch (e) {
-    if (
-      e instanceof GoogleNotConnectedError ||
-      e instanceof GoogleTokenRevokedError
-    ) {
-      return {
-        ok: false as const,
-        error: "Connect Google on the dashboard (needs Gmail compose scope).",
-        reconnect_required: true,
-      };
-    }
-    throw e;
-  }
-
-  const gmail = new GmailClient(auth);
-  const drive = new DriveClient(auth);
-
-  const results: {
-    email_id: string;
-    ok: boolean;
-    draft_id?: string;
-    draft_url?: string;
-    error?: string;
-  }[] = [];
-
-  for (const email of emails) {
-    if (email.draft_status === "creating") {
-      results.push({
-        email_id: email.id,
-        ok: false,
-        error: "Draft creation already in progress or locked.",
-      });
-      continue;
-    }
-
-    if (email.gmail_draft_id && email.draft_status === "created") {
-      try {
-        const exists = await gmail.getDraft(email.gmail_draft_id);
-        if (exists) {
-          if (email.kind === "cold" && !email.gmail_thread_id) {
-            await resolveColdEmailThreadReplyContext(gmail, email);
-          }
-          results.push({
-            email_id: email.id,
-            ok: true,
-            draft_id: email.gmail_draft_id,
-            draft_url: gmailDraftWebUrl(email.gmail_draft_id),
-          });
-          continue;
-        }
-        await markEmailDraftDeletedExternally(email.id);
-      } catch (e) {
-        if (e instanceof GmailScopeMissingError) {
-          return {
-            ok: false as const,
-            error: e.message,
-            reconnect_required: true,
-            results,
-          };
-        }
-      }
-    }
-
-    const claimed = await claimEmailForDraftCreation(email.id);
-    if (!claimed) {
-      const fresh = await getEmailById(email.id);
-      if (fresh?.draft_status === "created" && fresh.gmail_draft_id) {
-        results.push({
-          email_id: email.id,
-          ok: true,
-          draft_id: fresh.gmail_draft_id,
-          draft_url: gmailDraftWebUrl(fresh.gmail_draft_id),
-        });
-      } else {
-        results.push({
-          email_id: email.id,
-          ok: false,
-          error: "Draft creation already in progress or locked.",
-        });
-      }
-      continue;
-    }
-
-    const contact = await getContactById(email.contact_id);
-    if (!contact?.email) {
-      await markEmailDraftFailed(email.id, "Contact has no email address.");
-      results.push({
-        email_id: email.id,
-        ok: false,
-        error: "Contact has no email address.",
-      });
-      continue;
-    }
-
-    try {
-      const application = await getApplicationById(email.application_id);
-      const profile = await getProfileRow();
-      const fullName = profile?.full_name ?? "Candidate";
-      const company = application?.company ?? null;
-      const role = application?.role ?? null;
-
-      const isFollowUp = email.kind === "follow_up";
-      let threadReply = null;
-
-      if (isFollowUp) {
-        const followUp = await getFollowUpByDraftEmailId(email.id);
-        if (followUp) {
-          const coldEmail = await getEmailById(followUp.email_id);
-          if (coldEmail) {
-            threadReply = await resolveColdEmailThreadReplyContext(gmail, coldEmail);
-          }
-        }
-      }
-
-      const attachments: DraftAttachment[] = [];
-      const driveLinks: DraftDriveLink[] = [];
-
-      if (!isFollowUp) {
-        let runningBytes = Buffer.byteLength(email.body_html || email.body_md, "utf8");
-        const limit = 24 * 1024 * 1024;
-
-        async function tryAttachPdf(
-          driveFileId: string | null | undefined,
-          filename: string,
-          label: string,
-        ) {
-          if (!driveFileId) return;
-          try {
-            const buffer = await drive.getFile(driveFileId);
-            if (runningBytes + buffer.length <= limit) {
-              attachments.push({
-                filename,
-                mimeType: "application/pdf",
-                buffer,
-              });
-              runningBytes += buffer.length;
-            } else {
-              const link = await drive.getWebViewLink(driveFileId);
-              if (link) {
-                driveLinks.push({ label, url: link });
-              }
-            }
-          } catch {
-            // optional attachment
-          }
-        }
-
-        const resume = await getLatestReadyResumeVersion(email.application_id);
-        const coverLetter = await getLatestReadyCoverLetterVersion(
-          email.application_id,
-        );
-
-        if (resume?.drive_pdf_id && resume.status === "ready") {
-          await tryAttachPdf(
-            resume.drive_pdf_id,
-            buildResumePdfFilename(fullName, company, role, resume.version),
-            "Resume PDF",
-          );
-        }
-
-        if (coverLetter?.drive_pdf_id && coverLetter.status === "ready") {
-          await tryAttachPdf(
-            coverLetter.drive_pdf_id,
-            buildCoverLetterPdfFilename(
-              fullName,
-              company,
-              role,
-              coverLetter.version,
-            ),
-            "Cover letter PDF",
-          );
-        }
-      }
-
-      const bodyHtml = appendEmailSignatureHtml(
-        markdownToEmailHtml(
-          stripEmailSignature(email.body_md || "", fullName),
-        ),
-        await resolveSignatureForDraft(profile),
-      );
-
-      const subject = threadReply
-        ? replySubject(threadReply.originalSubject, email.subject)
-        : email.subject;
-
-      const created = await gmail.createDraft({
-        to: contact.email,
-        subject,
-        bodyHtml,
-        attachments,
-        driveLinks,
-        replyTo: threadReply
-          ? {
-              threadId: threadReply.threadId,
-              rfcMessageId: threadReply.rfcMessageId,
-            }
-          : undefined,
-      });
-
-      await markEmailDraftCreated(email.id, created.draftId, created.messageId, {
-        gmail_thread_id: created.threadId,
-        gmail_rfc_message_id: created.rfcMessageId,
-      });
-      results.push({
-        email_id: email.id,
-        ok: true,
-        draft_id: created.draftId,
-        draft_url: gmailDraftWebUrl(created.draftId),
-      });
-
-      await writeAuditLog("gmail.draft_created", "emails", email.id, {
-        gmail_draft_id: created.draftId,
-        attachments: created.attachedFilenames,
-        drive_links: created.driveLinkLabels,
-        threaded_reply: Boolean(threadReply),
-        gmail_thread_id: created.threadId,
-      });
-    } catch (e) {
-      if (e instanceof GmailScopeMissingError) {
-        await markEmailDraftFailed(email.id, e.message);
-        return {
-          ok: false as const,
-          error: e.message,
-          reconnect_required: true,
-          results,
-        };
-      }
-      const message = e instanceof Error ? e.message : "Draft creation failed";
-      await markEmailDraftFailed(email.id, message);
-      results.push({ email_id: email.id, ok: false, error: message });
-    }
-  }
-
-  const applicationId = emails[0]?.application_id;
-  if (applicationId) revalidateApplication(applicationId);
-
-  const createdCount = results.filter((r) => r.ok).length;
-  const status_advance =
-    applicationId && createdCount > 0
-      ? await syncApplicationStatusAfterOutreach(applicationId)
-      : undefined;
-
-  return {
-    ok: true as const,
-    created: createdCount,
-    total: results.length,
-    summary: `${createdCount} of ${results.length} drafts created`,
-    results,
-    status_advance,
-  };
-}
-
-export async function verifyGmailDraft(emailId: string) {
-  const email = await getEmailById(emailId);
-  if (!email?.gmail_draft_id) {
-    return { ok: false as const, error: "No Gmail draft linked." };
-  }
-
-  try {
-    const auth = await getGoogleAuthClient();
-    const gmail = new GmailClient(auth);
-    const exists = await gmail.getDraft(email.gmail_draft_id);
-    if (!exists) {
-      await markEmailDraftDeletedExternally(email.id);
-      revalidateApplication(email.application_id);
-      return {
-        ok: false as const,
-        deleted_externally: true,
-        error: "Draft was deleted in Gmail. You can recreate it.",
-      };
-    }
-    return {
-      ok: true as const,
-      draft_url: gmailDraftWebUrl(email.gmail_draft_id),
-    };
-  } catch (e) {
-    if (e instanceof GmailScopeMissingError) {
-      return {
-        ok: false as const,
-        error: e.message,
-        reconnect_required: true,
-      };
-    }
-    if (
-      e instanceof GoogleNotConnectedError ||
-      e instanceof GoogleTokenRevokedError
-    ) {
-      return {
-        ok: false as const,
-        error: "Connect Google first.",
-        reconnect_required: true,
-      };
-    }
-    return {
-      ok: false as const,
-      error: e instanceof Error ? e.message : "Verification failed",
-    };
-  }
-}
-
-export async function recreateGmailDraft(emailId: string) {
-  await resetEmailDraftForRecreate(emailId);
-  return createGmailDrafts([emailId]);
 }
 
 export async function retryMissingContactsPrompt(

@@ -63,11 +63,18 @@ export const BASE_TEMPLATE = String.raw`\documentclass[letterpaper,11pt]{article
 \pdfgentounicode=1
 
 % Custom commands
-\newcommand{\resumeItem}[1]{
-  \item\small{
-    {#1 \vspace{-2pt}}
-  }
-}
+% The bullet, and the one-line gap it used to leave.
+%
+% The tightening \vspace used to sit inside the paragraph, with a space in
+% front of it: \item\small{{#1 \vspace{-2pt}}}. That space is a legal
+% break point, so a bullet whose text happened to reach the right margin broke
+% there and carried the \vspace onto a line of its own: a blank line in the
+% middle of a role, on that bullet only, which is why it looked random.
+%
+% Keeping the \vspace outside the text (and with no space before it) leaves
+% nowhere to break, so it attaches to the last line as intended. \unskip drops
+% any trailing glue the content itself ends with.
+\newcommand{\resumeItem}[1]{\item\small{#1}\unskip\vspace{-2pt}}
 
 \newcommand{\resumeSubheading}[4]{
   \vspace{-2pt}\item

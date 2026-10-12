@@ -64,7 +64,7 @@ export default async function HealthPage() {
       {!googleConnected && (
         <div className="li-card-flat border-l-4 border-l-status-waiting bg-status-waiting-container p-4">
           <p className="text-[14px] text-on-surface">
-            Connect Google to see Drive/Gmail status for exports.
+            Connect Google to see Drive and Docs status for exports.
           </p>
           <Link href="/dashboard" className="text-[13px] font-semibold text-primary hover:underline mt-2 inline-block">
             Go to dashboard →

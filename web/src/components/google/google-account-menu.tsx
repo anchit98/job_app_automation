@@ -97,7 +97,7 @@ export function GoogleAccountMenu({
               {googleError ? (
                 <span className="text-error">{googleError}</span>
               ) : (
-                "Drive, Docs & Gmail drafts"
+                "Drive & Docs — no mail access"
               )}
             </p>
           </div>

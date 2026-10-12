@@ -113,7 +113,7 @@ export function ComposePlatformSelect({
           onChange={(e) => {
             if (isComposePlatform(e.target.value)) onChange(e.target.value);
           }}
-          className="appearance-none cursor-pointer rounded-lg border border-border-hairline bg-surface pl-3 pr-8 py-1.5 text-[13px] font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+          className="li-select li-select--auto"
         >
           {COMPOSE_PLATFORMS.map((p) => (
             <option key={p} value={p}>
@@ -121,14 +121,6 @@ export function ComposePlatformSelect({
             </option>
           ))}
         </select>
-        <span
-          className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-on-surface-variant"
-          aria-hidden
-        >
-          <span className="material-symbols-outlined text-[16px] leading-none">
-            expand_more
-          </span>
-        </span>
       </div>
     </div>
   );

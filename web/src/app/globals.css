@@ -371,59 +371,149 @@ html {
   line-height: 16px;
 }
 
-.li-btn-primary {
+/* One control metric for every button, select and text input.
+   These used to be set per rule, and they disagreed: a primary button carried
+   8px padding *and* a 1px transparent border (38px tall), while a secondary
+   dropped to 7px padding to "pay for" its border and came out at 36px. Any row
+   holding one of each — the CV builder header does — sat 2px out of true.
+   Every control below is now 38px by construction: 8 + 20 + 8 + 2. */
+:root {
+  --control-padding-y: 8px;
+  --control-padding-x: 16px;
+  --control-line-height: 20px;
+  --control-radius: 8px;
+  --control-font-size: 14px;
+}
+
+.li-btn-primary,
+.li-btn-secondary,
+.li-btn-ghost,
+.li-btn-danger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  border-radius: var(--control-radius);
+  padding: var(--control-padding-y) var(--control-padding-x);
+  font-size: var(--control-font-size);
+  font-weight: 600;
+  line-height: var(--control-line-height);
+  /* Always a border, even when invisible, so the box is the same height
+     whether or not the variant draws one. */
+  border: 1px solid transparent;
+  /* A floor as well as a formula: content taller than the line box (an icon,
+     a chip) must not be able to grow the control past its neighbours. */
+  min-height: 38px;
+  transition: background-color 0.15s ease;
+}
+
+/* Icons must not drive button height.
+   Google's Material Symbols stylesheet is a <link> in <head> that Next loads
+   *after* its own CSS, and it sets `.material-symbols-outlined { font-size:
+   24px }`. That is the same (0,1,0) specificity as our base rule and as every
+   Tailwind `text-[16px]` utility, so it wins on source order alone and every
+   icon renders at 24px whatever the markup asked for. Inside a button that
+   turned a 38px control into a 42px one — the CV builder header had two 41.6px
+   icon buttons sitting beside a 37.6px text-only one.
+   Scoping by child selector takes this to (0,2,0), which beats Google's rule
+   without touching icons anywhere else in the app. */
+.li-btn-primary > .material-symbols-outlined,
+.li-btn-secondary > .material-symbols-outlined,
+.li-btn-ghost > .material-symbols-outlined,
+.li-btn-danger > .material-symbols-outlined {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.li-btn-primary {
   background: var(--primary);
   color: var(--on-primary);
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
-  border: 1px solid transparent;
-  transition: background-color 0.15s ease;
 }
 .li-btn-primary:hover {
   background: var(--primary-hover);
 }
 
 .li-btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
   background: transparent;
   color: var(--primary);
-  border-radius: 8px;
-  padding: 7px 15px;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
-  border: 1px solid var(--primary);
-  transition: background-color 0.15s ease;
+  border-color: var(--primary);
 }
 .li-btn-secondary:hover {
   background: var(--secondary-hover);
 }
 
 .li-btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
   background: transparent;
   color: var(--on-surface);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 14px;
-  font-weight: 600;
-  border: 1px solid transparent;
+  /* Ghost buttons sit in tighter rows (icon + word), so only the horizontal
+     padding is reduced — the height stays in step with the others. */
+  padding-left: 12px;
+  padding-right: 12px;
 }
 .li-btn-ghost:hover {
   background: var(--ghost-hover);
+}
+
+.li-btn-danger {
+  background: var(--error);
+  color: var(--on-error);
+}
+.li-btn-danger:hover {
+  filter: brightness(0.94);
+}
+
+/* Text inputs and dropdowns, matching the buttons exactly.
+   Seven <select> elements had six different recipes between them — heights
+   from 30px to 44px, and one that ignored the theme tokens entirely and
+   hard-coded zinc colours that only looked right in light mode. */
+.li-field,
+.li-select {
+  width: 100%;
+  border-radius: var(--control-radius);
+  border: 1px solid var(--border-hairline);
+  background: var(--surface);
+  color: var(--on-surface);
+  padding: var(--control-padding-y) var(--control-padding-x);
+  font-size: var(--control-font-size);
+  line-height: var(--control-line-height);
+  outline: none;
+}
+
+.li-field {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.li-field::placeholder {
+  color: var(--on-surface-variant);
+}
+
+.li-field:focus,
+.li-select:focus {
+  border-color: var(--primary);
+}
+
+.li-select {
+  /* The native arrow is replaced by one drawn here, so the control looks the
+     same in every browser and the chevron follows the theme's text colour. */
+  appearance: none;
+  cursor: pointer;
+  font-weight: 600;
+  padding-left: 12px;
+  padding-right: 34px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% + 1px),
+    calc(100% - 13px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* Sits inline rather than filling its row — sort controls, filters. */
+.li-select--auto,
+.li-field--auto {
+  width: auto;
 }
 
 .material-symbols-outlined {
@@ -931,6 +1021,20 @@ html {
 }
 
 /* ---- Billing page ambience + motion ---- */
+
+/* Billing's main pane scrolls inside the viewport-locked shell.
+   This has to live here rather than as a `md:overflow-y-auto` utility: the
+   desktop rule `.app-shell > main { overflow: visible }` above is a (0,1,1)
+   selector and beats any single-class utility, whatever the markup asks for.
+   `.app-shell--flow > main` matches that specificity and comes later, so it
+   wins — and only for billing, leaving every other page's frame untouched.
+   Without it the plans ladder overflowed a shell that could not scroll and
+   the top-up buttons were simply unreachable. */
+@media (min-width: 768px) {
+  .app-shell--flow > main {
+    overflow-y: auto;
+  }
+}
 
 /* Ambient background for the billing main area (applied via .app-shell--flow) */
 .app-shell--flow > main {

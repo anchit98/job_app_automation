@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { getCurrentUser, userHasPaidAccess } from "@/lib/auth/user";
+import { getCurrentUser } from "@/lib/auth/user";
 import { getSetupReadiness } from "@/lib/setup/readiness";
 import { LandingPage } from "@/components/marketing/landing-page";
 
@@ -22,9 +22,6 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const user = await getCurrentUser();
   if (user) {
-    if (!userHasPaidAccess(user)) {
-      redirect("/billing");
-    }
     const readiness = await getSetupReadiness().catch(() => null);
     redirect(readiness?.setupReady ? "/dashboard" : "/onboarding");
   }

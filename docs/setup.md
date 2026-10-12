@@ -90,18 +90,49 @@ Monitor token usage in the OpenAI dashboard as users grow (typical full Apply is
 
 ---
 
-## 3. Google Cloud (Gmail + Drive + Docs)
+## 3. Google Cloud (Drive + Docs)
 
 See [`architecture.md`](architecture.md) §11. Summary:
 
-1. Enable **Gmail API**, **Google Drive API**, **Google Docs API**.
+1. Enable **Google Drive API** and **Google Docs API**. The Gmail API is no longer used — see §3a.
 2. OAuth consent scopes (user Connect Google):
-   - `gmail.compose`, `drive.file`, `documents`
-   - Admins additionally get `gmail.send` (password / payment emails)
+   - `drive.file`, `documents` — both non-sensitive-to-sensitive, neither *restricted*
    - Master Doc selection uses **Google Picker** (no `drive.readonly`)
 3. Enable **Google Picker API** and create a Browser API key → `NEXT_PUBLIC_GOOGLE_API_KEY`
 4. Web client origins + redirect: `…/api/auth/google/callback`
-5. Admin must **Connect Google** (with send) for password + payment emails.
+
+### Removing the Gmail scope (§3a)
+
+The app used to request `gmail.compose` to create outreach drafts through the
+API. Google classifies that as a **restricted** scope: publishing on it costs an
+annual third-party security assessment. It bought nothing a compose link does
+not, so it is gone — outreach opens in the user's own mail client
+(`web/src/lib/emails/manual-send.ts`) and the app's own mail goes through Resend.
+
+After deploying a build that no longer lists it, tidy the Cloud console:
+
+1. **APIs & Services → Enabled APIs** → disable **Gmail API**.
+2. **OAuth consent screen → Data access** → remove
+   `.../auth/gmail.compose` (and `gmail.send` / `gmail.readonly` if present).
+3. Existing users keep a stale grant until they reconnect. `getGoogleAuthUrl`
+   already sends `prompt=consent` with `include_granted_scopes: false`, so the
+   next Connect Google drops it. Nothing breaks in the meantime — the app never
+   calls Gmail.
+
+---
+
+## 3b. Resend (the app's own mail)
+
+Password resets, payment receipts and payment-claim alerts.
+
+1. Create a Resend account and **verify the sending domain** (DKIM + SPF). An
+   unverified domain means every send is rejected at delivery time.
+2. Create an API key → `RESEND_API_KEY`.
+3. Set `TRANSACTIONAL_FROM_EMAIL` to an address on that domain, e.g.
+   `JobApp OS <noreply@jobappos.in>`. Optionally `TRANSACTIONAL_REPLY_TO`.
+4. With no key the app reports `not_configured` and sends nothing — password
+   reset tokens are still created, so an admin can hand the link over from
+   Admin Center.
 
 ---
 
@@ -127,6 +158,9 @@ Open [http://localhost:3000](http://localhost:3000) → **Create an account**.
 | `NEXT_PUBLIC_GOOGLE_APP_ID` | No | Cloud project number for Picker |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Yes | Encrypt Google tokens |
 | `CHATGPT_API_KEY` or `OPENAI_API_KEY` | Yes for Apply | OpenAI |
+| `RESEND_API_KEY` | Yes for app email | Password resets, receipts, admin alerts |
+| `TRANSACTIONAL_FROM_EMAIL` | With Resend | From address on the verified domain |
+| `TRANSACTIONAL_REPLY_TO` | No | Reply-to for the app's own mail |
 | `RESUME_MASTER_DOC_ID` / `COVER_LETTER_MASTER_DOC_ID` | No | Default master Docs |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Yes for auto billing | Payment Links API |
 | `RAZORPAY_WEBHOOK_SECRET` | Yes for auto unlock | Webhook HMAC |
@@ -144,7 +178,7 @@ Migrate payment links if needed: `cd web && node scripts/migrate-razorpay-paymen
 
 1. Sign up → complete **billing** if unpaid  
 2. Open **Profile** (`/onboarding`)  
-3. **Connect Google** (Drive + Docs + Gmail)  
+3. **Connect Google** (Drive + Docs — no mail permission is requested)  
 4. Save required **profile** fields (full name, location, phone, LinkedIn) and sync **master resume**  
 5. Optionally sync master cover letter (enables cover letter on Apply)  
 6. **Optional:** Install JobApp Bridge (not required when OpenAI key is set)  
@@ -153,7 +187,7 @@ Migrate payment links if needed: `cd web && node scripts/migrate-razorpay-paymen
 
 Dashboard and Apply stay locked until Google + profile + master resume are ready. Profile settings remain editable anytime.
 
-Dashboard metrics (default last **30 days**, IST day bounds): Total applications, This week, Gmail drafts, Companies contacted.
+Dashboard metrics (default last **30 days**, IST day bounds): Total applications, This week, Outreach emails, Companies contacted.
 
 ### Master resume Google Doc
 
@@ -176,7 +210,7 @@ Details: [`extension/README.md`](../extension/README.md).
 1. Open **Apply** — company, role, JD (≥ 50 chars)  
 2. Optionally add 2–3 contacts (use the in-form finder guide)  
 3. Start auto-apply → `/pipeline/[id]`  
-4. Confirm stages complete; PDFs downloadable; Gmail drafts appear **with attachments** after Drive uploads finish  
+4. Confirm stages complete; PDFs downloadable; Outreach tab opens each email in a compose window with the PDFs offered as downloads  
 
 ---
 
@@ -185,11 +219,11 @@ Details: [`extension/README.md`](../extension/README.md).
 1. Deploy `web/`  
 2. Production env: pooler `DATABASE_URL`, OpenAI key, production `NEXT_PUBLIC_APP_URL` + Google redirect, Razorpay live keys + webhook URL/secret, `AUTH_SECRET`, `CRON_SECRET`  
 3. Confirm `/api/health`  
-4. Admin Connect Google with `gmail.send`  
+4. Set `RESEND_API_KEY` + `TRANSACTIONAL_FROM_EMAIL`, then trigger a password reset to confirm delivery  
 
 ### Google brand verification notes
 
-- Homepage (`/`) must publicly describe what JobApp OS does (job application automation; Drive/Docs/Gmail drafts).  
+- Homepage (`/`) must publicly describe what JobApp OS does (job application automation; Google Drive/Docs for resume files).  
 - Privacy Policy URL on the site must **exactly match** the OAuth consent screen URL.  
 - Privacy Policy includes Google Limited Use / API Services User Data Policy language.  
 
@@ -201,7 +235,7 @@ Details: [`extension/README.md`](../extension/README.md).
 |---|---|
 | Apply fails: API key missing | Set `CHATGPT_API_KEY` / `OPENAI_API_KEY` |
 | OpenAI 429 / quota | Check OpenAI billing & rate limits |
-| Gmail drafts without PDFs | Ensure Drive upload completed; pipeline waits then fails clearly if not |
+| Outreach without PDFs | Ensure Drive upload completed; the run flags it if the PDFs were still uploading |
 | Resume fails: keyword coverage below 70% | Master must contain those JD tools/terms; repair rewrites bullets/skills without changing wrap lines |
 | Resume layout / second page | Master bullets define wrap line counts; do not pad past master width |
 | `No active template` | `node scripts/seed-prompt-templates.mjs` (resume: `activate-resume-v30.mjs` if needed) |

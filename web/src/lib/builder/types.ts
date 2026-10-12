@@ -6,6 +6,10 @@
  * out to `user_entitlements`, which also governs Apply.
  */
 
+// Type-only, so nothing is emitted and the two modules do not form a runtime
+// cycle — latex-engine imports values from here.
+import type { SectionName } from "@/lib/builder/latex-engine";
+
 export const PROFESSIONAL_FIELDS = [
   "tech",
   "sales",
@@ -114,6 +118,18 @@ export interface BuilderCustomSection {
 export interface BuilderProfile {
   name: string;
   professional_field: ProfessionalField;
+  /**
+   * The order the user dragged their sections into, when they have.
+   *
+   * Absent means "whatever this professional field prints by default", which is
+   * what every CV started as. Once set it wins over the field default, and
+   * `resolveSectionOrder` still appends anything filled in that the saved order
+   * predates — a section added after the reorder must not silently vanish.
+   *
+   * Lives in the same JSONB blob as the rest of the profile, so there is no
+   * column and no migration.
+   */
+  section_order?: SectionName[];
   professional_summary?: string;
   contact: BuilderContact;
   education: BuilderEducation[];

@@ -130,14 +130,6 @@ export async function getFollowUpDraftStatus(followUpId: string) {
   const active = allSameSeq.filter((f) => f.status !== "sent");
   const targets = active.length > 0 ? active : allSameSeq;
   const withDraft = targets.filter((f) => f.draft_email_id);
-  let gmailReady = 0;
-  for (const f of withDraft) {
-    if (!f.draft_email_id) continue;
-    const email = await getEmailById(f.draft_email_id);
-    if (email?.gmail_draft_id && email.draft_status === "created") {
-      gmailReady += 1;
-    }
-  }
 
   let promptStatus: string | null = null;
   if (followUp.prompt_run_id) {
@@ -155,9 +147,7 @@ export async function getFollowUpDraftStatus(followUpId: string) {
     prompt_status: promptStatus,
     contact_count: expected,
     drafts_ready: withDraft.length,
-    gmail_ready: gmailReady,
     all_drafts_ready: withDraft.length >= expected && withDraft.length > 0,
-    all_gmail_ready: gmailReady >= expected && gmailReady > 0,
   };
 }
 
@@ -415,7 +405,7 @@ export async function submitFollowUpResponse(
 /**
  * Record that a whole follow-up sequence has been sent.
  *
- * Used to create the Gmail drafts and mark the rows in one go. There is no
+ * Used to create Gmail drafts and mark the rows in one go. There is no
  * draft to create any more — the user sends from a compose link — so this only
  * records the outcome, and the per-email "Mark as sent" button does the same
  * thing for a single contact.

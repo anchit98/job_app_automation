@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { updatePassword } from "@/app/actions/auth";
 
-export function UpdatePasswordForm() {
+export function UpdatePasswordForm({
+  hasPassword = true,
+  providers = [],
+}: {
+  /** False for an account created through Google that never set one. */
+  hasPassword?: boolean;
+  /** Providers this account can sign in with, for the description line. */
+  providers?: string[];
+}) {
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -47,7 +55,9 @@ export function UpdatePasswordForm() {
           <div>
             <h2 className="li-section-title">Password</h2>
             <p className="li-meta mt-1">
-              Change the password used to sign in to JobApp OS.
+              {hasPassword
+                ? "Change the password used to sign in to JobApp OS."
+                : `You sign in with ${providers.includes("google") ? "Google" : "a linked account"}. Set a password to sign in with your email as well.`}
             </p>
           </div>
           <button
@@ -55,7 +65,7 @@ export function UpdatePasswordForm() {
             className="li-btn-secondary text-[13px] justify-center"
             onClick={openModal}
           >
-            Change password
+            {hasPassword ? "Change password" : "Set a password"}
           </button>
         </div>
       </div>
@@ -80,10 +90,12 @@ export function UpdatePasswordForm() {
                   id="change-password-title"
                   className="li-section-title"
                 >
-                  Update password
+                  {hasPassword ? "Update password" : "Set a password"}
                 </h2>
                 <p className="li-meta mt-1">
-                  Enter your current password, then choose a new one.
+                  {hasPassword
+                    ? "Enter your current password, then choose a new one."
+                    : "You are signed in already, so there is no current password to confirm."}
                 </p>
               </div>
               <button
@@ -125,6 +137,7 @@ export function UpdatePasswordForm() {
                 });
               }}
             >
+              {hasPassword ? (
               <label className="block space-y-1.5">
                 <span className="text-[13px] font-semibold text-on-surface">
                   Current password
@@ -139,6 +152,7 @@ export function UpdatePasswordForm() {
                   onChange={(e) => setCurrentPassword(e.target.value)}
                 />
               </label>
+              ) : null}
               <label className="block space-y-1.5">
                 <span className="text-[13px] font-semibold text-on-surface">
                   New password

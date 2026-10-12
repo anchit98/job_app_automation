@@ -120,7 +120,7 @@ export async function maybeAdvanceApplicationStatus(
 ): Promise<StatusAdvanceOutcome> {
   let lastAdvanced: StatusAdvanceOutcome = { outcome: "skipped" };
 
-  // Chain auto steps (e.g. ready → applied → email_sent on gmail drafts).
+  // Chain auto steps (e.g. ready → applied → email_sent once outreach exists).
   for (let i = 0; i < 4; i++) {
     const existing = await getApplicationById(applicationId);
     if (!existing) {
@@ -160,7 +160,6 @@ export async function maybeAdvanceApplicationStatus(
   return lastAdvanced;
 }
 
-/** Advance to applied → email_sent when cold Gmail drafts exist. */
 /**
  * Advance the application once outreach exists for it.
  *
