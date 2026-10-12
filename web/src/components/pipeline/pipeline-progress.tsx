@@ -39,7 +39,7 @@ function friendlyMessage(raw: string | null | undefined): string {
   }
   if (/more email batches/i.test(msg)) return "Writing more emails…";
   if (/no new drafts/i.test(msg)) return "Nothing new to draft";
-  if (/creating gmail drafts/i.test(msg)) return "Creating Gmail drafts…";
+  if (/creating gmail drafts/i.test(msg)) return "Preparing outreach…";
   if (/uploading resume pdf/i.test(msg)) return "Uploading resume PDF to Drive…";
   if (/uploading cover letter pdf/i.test(msg)) {
     return "Uploading cover letter PDF to Drive…";

@@ -230,7 +230,7 @@ export function QuickApplyForm({
   const pipelineSummary = useMemo(() => {
     const steps = ["Parse JD", "Resume"];
     if (includeCoverLetter) steps.push("Cover letter");
-    if (contactCount > 0) steps.push("Cold emails", "Gmail drafts");
+    if (contactCount > 0) steps.push("Cold emails", "Prepare outreach");
     return steps;
   }, [includeCoverLetter, contactCount]);
 

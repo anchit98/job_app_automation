@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     absolute: "JobApp OS",
   },
   description:
-    "JobApp OS is an AI-powered job application assistant that helps job seekers create tailored resumes and cover letters, organize job applications, and send personalized application emails via Gmail drafts. Learn why we request Google access in our Privacy Policy.",
+    "JobApp OS is an AI-powered job application assistant that helps job seekers create tailored resumes and cover letters, organize job applications, and write personalized outreach emails that you send from your own mail client. Learn why we request Google access in our Privacy Policy.",
   openGraph: {
     title: "JobApp OS",
     siteName: "JobApp OS",
