@@ -1,9 +1,20 @@
 import { google } from "googleapis";
 import { env } from "@/lib/env";
 
-/** Scopes every Connect Google user gets (Apply + onboarding). */
+/**
+ * Scopes every Connect Google user gets (Apply + onboarding).
+ *
+ * Drive and Docs only, and both are narrow: `drive.file` sees nothing but the
+ * files the app itself creates or the user hands it through the Picker.
+ *
+ * `gmail.compose` used to be here, for creating outreach drafts through the
+ * API. Google classifies it as *restricted* — a public launch on it requires
+ * an annual paid security assessment — and it bought nothing that a compose
+ * link does not: `lib/emails/manual-send` opens the user's own mail client
+ * with the message filled in, and the app's own mail goes through Resend
+ * (`lib/emails/transactional`). Nothing in this list is restricted now.
+ */
 export const GOOGLE_USER_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.compose",
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/documents",
 ] as const;

@@ -185,7 +185,7 @@ export function MailmeteorPasteModal({
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-[14px] text-on-surface"
+                    className="li-select"
                   />
                 </div>
                 <div>

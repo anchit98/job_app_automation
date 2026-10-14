@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { dbGet, dbAll, dbRun } from "@/lib/db";
 import type { FollowUp, FollowUpStatus } from "@/lib/db/types";
 import {
-  addBusinessDays,
+  nextFollowUpDueAt,
   toUtcIso,
 } from "@/lib/follow-ups/business-days";
 
@@ -81,7 +81,6 @@ export async function followUpsExistForEmail(emailId: string): Promise<boolean> 
 export async function scheduleFollowUpsForColdEmail(
   applicationId: string,
   emailId: string,
-  timezone: string,
   fromDate = new Date(),
 ): Promise<{ followUp1Id: string; followUp2Id: string }> {
   if (await followUpsExistForEmail(emailId)) {
@@ -93,7 +92,7 @@ export async function scheduleFollowUpsForColdEmail(
     };
   }
 
-  const due1 = toUtcIso(addBusinessDays(fromDate, 5, timezone));
+  const due1 = toUtcIso(nextFollowUpDueAt(fromDate));
   const followUp1Id = await insertFollowUp({
     application_id: applicationId,
     email_id: emailId,
@@ -111,14 +110,60 @@ export async function scheduleFollowUpsForColdEmail(
   return { followUp1Id, followUp2Id };
 }
 
-export async function activateSecondFollowUp(emailId: string, timezone: string): Promise<void> {
+export async function activateSecondFollowUp(emailId: string): Promise<void> {
   const second = await getFollowUpByEmailSequence(emailId, 2);
   if (!second || second.status !== "waiting") return;
 
-  const due2 = toUtcIso(addBusinessDays(new Date(), 10, timezone));
+  // Same 3-day gap again, counted from the moment #1 went out.
+  const due2 = toUtcIso(nextFollowUpDueAt());
   await dbRun(`UPDATE follow_ups
        SET status = 'pending', due_at = ?
        WHERE id = ? AND status = 'waiting'`, due2, second.id);
+}
+
+/**
+ * Push a scheduled follow-up out to a new due date.
+ *
+ * Used when the cold email is actually marked sent: the row was created when
+ * the draft was written, so its clock started too early. Only rows nobody has
+ * acted on move — a follow-up already generated, snoozed or skipped keeps
+ * whatever the user decided.
+ */
+export async function rescheduleFollowUpForEmail(
+  emailId: string,
+  sequence: 1 | 2,
+  dueAt: string,
+): Promise<void> {
+  await dbRun(
+    `UPDATE follow_ups
+       SET due_at = ?
+     WHERE email_id = ?
+       AND sequence = ?
+       AND status = 'pending'`,
+    dueAt,
+    emailId,
+    sequence,
+  );
+}
+
+/**
+ * Stop every outstanding follow-up for one application.
+ *
+ * "Stop" has to mean stop: a reminder the user has dismissed for good must not
+ * come back when #2 activates, so waiting rows are closed alongside pending
+ * ones. Rows already sent keep their history.
+ */
+export async function stopFollowUpsForApplication(
+  applicationId: string,
+): Promise<number> {
+  const result = await dbRun(
+    `UPDATE follow_ups
+       SET status = 'skipped'
+     WHERE application_id = ?
+       AND status IN ('waiting', 'pending', 'snoozed', 'enqueued', 'processing')`,
+    applicationId,
+  );
+  return result.changes;
 }
 
 export async function claimFollowUpForProcessing(id: string): Promise<boolean> {

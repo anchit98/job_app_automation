@@ -113,6 +113,19 @@ export const env = {
     ),
   /** Optional override for payment-claim alert recipients (comma-separated). */
   adminNotifyEmail: () => optional("ADMIN_NOTIFY_EMAIL"),
+  /** Resend API key. Present = the app sends its own mail through Resend. */
+  resendApiKey: () => optional("RESEND_API_KEY"),
+  /**
+   * From address for the app's own mail.
+   *
+   * Must be on a domain verified in Resend, or every send is rejected. Named
+   * rather than defaulted to something plausible: a wrong default fails at
+   * delivery time, where the failure is easy to miss.
+   */
+  transactionalFromEmail: () =>
+    optional("TRANSACTIONAL_FROM_EMAIL", "JobApp OS <noreply@jobappos.in>"),
+  /** Where replies to the app's own mail should go, when it differs. */
+  transactionalReplyTo: () => optional("TRANSACTIONAL_REPLY_TO"),
   /** Razorpay Key ID (server). Also accepts legacy Razorpay_API_KEY. */
   razorpayKeyId: () =>
     optional("RAZORPAY_KEY_ID", optional("Razorpay_API_KEY")),
@@ -144,4 +157,8 @@ export function hasGoogleConfig(): boolean {
 
 export function hasCoreConfig(): boolean {
   return hasGoogleConfig() && Boolean(process.env.DATABASE_URL);
+}
+
+export function hasResendConfig(): boolean {
+  return Boolean(env.resendApiKey() && env.transactionalFromEmail());
 }

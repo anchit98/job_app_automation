@@ -2,7 +2,6 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { maybeAdvanceApplicationStatus } from "@/app/actions/applications";
 import { writeAuditLog } from "@/lib/audit";
 import {
@@ -21,17 +20,18 @@ import {
   getResumeVersionById,
   insertCoverLetterVersion,
   listCoverLetterVersions,
+  markCoverLetterVersionBuilt,
   markCoverLetterVersionUploadFailed,
   updateApplicationCompanyBlurb,
-  updateCoverLetterVersionDriveIds,
+  updateCoverLetterVersionDrivePdf,
   updateCoverLetterVersionContentForRetry,
   updatePromptRunText,
   updatePromptRunValidationErrors,
 } from "@/lib/db/queries";
 import { isGoogleReconnectError } from "@/lib/google/reconnect";
-import { generateCoverLetterArtifacts } from "@/lib/cover-letter/gdoc-export";
+import { compileLatexToPdf } from "@/lib/builder/compile-pdf";
+import { generateCoverLetterLatex } from "@/lib/builder/cover-letter-latex";
 import { htmlToPlainText } from "@/lib/cover-letter/html";
-import type { CoverLetterLayoutMap } from "@/lib/cover-letter/master-sync";
 import {
   assembleBodyFromSections,
   coverLetterContentSchema,
@@ -40,10 +40,9 @@ import {
 } from "@/lib/cover-letter/validate";
 import { normalizeCoverLetterContent } from "@/lib/cover-letter/normalize";
 import { DriveClient } from "@/lib/google/drive";
-import { DocsClient } from "@/lib/google/docs";
 import { getGoogleAuthClient } from "@/lib/google/tokens";
 import { getRequestUserId, runAsUser } from "@/lib/auth/request-user";
-import { requireUser } from "@/lib/auth/user";
+import { getUserById, requireUser } from "@/lib/auth/user";
 import { buildJdContent } from "@/lib/resume/context";
 import { resumeContentSchema } from "@/lib/resume/fabrication";
 import {
@@ -70,21 +69,6 @@ export async function getMasterCoverLetter() {
   return await getMasterCoverLetterRow();
 }
 
-function assertMasterCoverLetterReady(
-  masterRow: Awaited<ReturnType<typeof getMasterCoverLetterRow>>,
-) {
-  if (!masterRow?.doc_id) {
-    throw new Error(
-      "Cover letter template not synced. Go to Onboarding and click \"Sync cover letter template\" first.",
-    );
-  }
-  if (!masterRow.doc_layout) {
-    throw new Error(
-      "Cover letter layout map missing. Re-sync the cover letter Google Doc from Onboarding.",
-    );
-  }
-}
-
 function buildCompanyBlurbBlock(blurb: string | null | undefined): string {
   if (!blurb?.trim()) {
     return "Company blurb: (not provided - use the JD and your knowledge of the company sparingly; do not invent facts.)";
@@ -96,18 +80,22 @@ ${blurb.trim()}
 }
 
 function formatCoverLetterExportError(error: unknown): string {
-  const message = error instanceof Error ? error.message : "Export failed";
-  if (/not connected|token revoked|reconnect|invalid_grant|unauthorized|401|403/i.test(
-    message,
-  )) {
-    return (
-      "Cover letter JSON was accepted, but Google Drive export failed. " +
-      "Reconnect Google on the dashboard - the pipeline will retry the export automatically."
-    );
+  const message = error instanceof Error ? error.message : "Build failed";
+  if (/timed out|could not reach|compilation failed|pdf builder/i.test(message)) {
+    return `Cover letter text was accepted, but the PDF build failed: ${message}`;
   }
-  return `Cover letter saved but file export failed: ${message}`;
+  return `Cover letter saved but PDF build failed: ${message}`;
 }
 
+/**
+ * Save the letter and build its PDF.
+ *
+ * Nothing here needs the user to have set anything up. There used to be a
+ * synced Google Doc template standing between "Yes, write a cover letter" and
+ * a PDF, and forgetting to sync it turned the option off entirely; the letter
+ * is composed from the JD and compiled from LaTeX now, so the only
+ * prerequisite left is the tailored resume the previous stage produced.
+ */
 async function persistCoverLetterArtifacts(
   applicationId: string,
   promptRunId: string | null,
@@ -120,9 +108,6 @@ async function persistCoverLetterArtifacts(
 ) {
   const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found.");
-
-  const masterRow = await getMasterCoverLetterRow();
-  assertMasterCoverLetterReady(masterRow);
 
   const profile = await getProfileRow();
   const fullName = profile?.full_name ?? "Candidate";
@@ -154,42 +139,40 @@ async function persistCoverLetterArtifacts(
     await updateCoverLetterVersionContentForRetry(coverLetterVersionId, content);
   }
 
-  const finishDrive = async (userId: string) => {
+  const latex = generateCoverLetterLatex({
+    content,
+    profile: {
+      full_name: fullName,
+      email: await resolveLetterheadEmail(),
+      phone: profile?.phone ?? null,
+      location: profile?.location ?? null,
+      linkedin_url: profile?.linkedin_url ?? null,
+      portfolio_url: profile?.portfolio_url ?? null,
+    },
+    company: application.company,
+    role: application.role,
+  });
+
+  const pdfName = `${buildCoverLetterFileBase(fullName, application)}_v${version}.pdf`;
+
+  const build = async (userId: string) => {
     try {
-      const auth = await getGoogleAuthClient(userId);
-      const drive = new DriveClient(auth);
-      const docs = new DocsClient(auth);
+      const pdf = await compileLatexToPdf(latex);
 
-      const result = await generateCoverLetterArtifacts(
-        drive,
-        docs,
-        {
-          masterDocId: masterRow!.doc_id!,
-          layout: masterRow!.doc_layout as unknown as CoverLetterLayoutMap,
-          content,
-          application,
-          version,
-          fullName,
-        },
-        {
-          onPdfReady: async (partial) => {
-            // Unblock Gmail drafts as soon as the PDF exists; DOCX can finish after.
-            await updateCoverLetterVersionDriveIds(
-              coverLetterVersionId,
-              partial.drive_pdf_id,
-              null,
-              partial.drive_doc_id,
-            );
-          },
-        },
-      );
+      // Ready as soon as the PDF compiles. Drive is a convenience copy — the
+      // download route rebuilds from this LaTeX when Drive is unavailable, so
+      // blocking the pipeline on an upload would be blocking it on nothing.
+      await markCoverLetterVersionBuilt(coverLetterVersionId, latex, null);
 
-      await updateCoverLetterVersionDriveIds(
+      void uploadCoverLetterToDrive({
+        userId,
         coverLetterVersionId,
-        result.drive_pdf_id,
-        result.drive_docx_id,
-        result.drive_doc_id,
-      );
+        pdf,
+        pdfName,
+        application,
+      }).catch((err) => {
+        console.warn("[cover-letter] Drive copy failed (PDF still usable):", err);
+      });
 
       await writeAuditLog(
         "cover_letter.generated",
@@ -198,8 +181,6 @@ async function persistCoverLetterArtifacts(
         {
           application_id: applicationId,
           version,
-          drive_doc_id: result.drive_doc_id,
-          drive_pdf_id: result.drive_pdf_id,
           edited: Boolean(options.editedFromVersionId),
         },
       );
@@ -207,7 +188,7 @@ async function persistCoverLetterArtifacts(
       return {
         cover_letter_version_id: coverLetterVersionId,
         version,
-        pdf_name: result.pdf_name,
+        pdf_name: pdfName,
       };
     } catch (e) {
       await markCoverLetterVersionUploadFailed(coverLetterVersionId);
@@ -215,25 +196,77 @@ async function persistCoverLetterArtifacts(
     }
   };
 
-  if (options.deferDrive) {
-    // Prefer ALS userId (pipeline wraps runAsUser) — cookies() are forbidden inside after().
-    const userId =
-      getRequestUserId() ?? (await requireUser()).id;
-    after(() => {
-      void runAsUser(userId, () => finishDrive(userId)).catch((err) => {
-        console.error("[cover-letter] deferred Drive export failed", err);
-      });
-    });
-    return {
-      cover_letter_version_id: coverLetterVersionId,
-      version,
-      pdf_name: null as string | null,
-      deferred: true as const,
-    };
-  }
-
+  // Built inline, on purpose, even when the caller asked to defer.
+  //
+  // Deferring made sense when this meant a Doc copy, two Docs batch updates, a
+  // PDF export and an upload — half a minute of Google round trips. It is one
+  // LaTeX compile now, about three seconds. Against that, `after()` brings a
+  // silent failure mode that cost a real run: the callback did not fire, the
+  // row sat at `uploading` with no source forever, and because nothing waits
+  // on the cover letter any more, the pipeline completed and reported success.
+  // Three seconds on the stage is worth not having that state exist.
+  //
+  // The Drive copy is still fire-and-forget inside build() — that one is a
+  // genuine convenience and nothing reads it synchronously.
   const userId = getRequestUserId() ?? (await requireUser()).id;
-  return finishDrive(userId);
+  return build(userId);
+}
+
+/**
+ * The address on the letterhead.
+ *
+ * The profile row has no email column - the account's login address is the one
+ * the recruiter should reply to, and it lives on the user record. Looked up by
+ * id when one is in scope, because requireUser() reads cookies and this can run
+ * from a background tick where there are none.
+ */
+async function resolveLetterheadEmail(): Promise<string | null> {
+  try {
+    const userId = getRequestUserId();
+    if (userId) {
+      return (await getUserById(userId))?.email ?? null;
+    }
+    return (await requireUser()).email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function buildCoverLetterFileBase(
+  fullName: string,
+  application: { company: string | null; role: string | null },
+): string {
+  const first = fullName.split(/\s+/)[0] || "Cover";
+  const last = fullName.split(/\s+/).slice(-1)[0] || "";
+  const company = (application.company || "Company").trim();
+  const role = (application.role || "Role").trim();
+  return `${first}_${last}_Cover_Letter_${company}_${role}`
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+/** Best-effort second copy in the user's own Drive, alongside the resume. */
+async function uploadCoverLetterToDrive(input: {
+  userId: string;
+  coverLetterVersionId: string;
+  pdf: Buffer;
+  pdfName: string;
+  application: { id: string; company: string | null; role: string | null };
+}): Promise<void> {
+  await runAsUser(input.userId, async () => {
+    const auth = await getGoogleAuthClient(input.userId);
+    const drive = new DriveClient(auth);
+    const folderId = await drive.ensureApplicationFolder(input.application);
+    const fileId = await drive.uploadFile(
+      input.pdf,
+      input.pdfName,
+      "application/pdf",
+      folderId,
+    );
+    await updateCoverLetterVersionDrivePdf(input.coverLetterVersionId, fileId);
+  });
 }
 
 export async function exportCoverLetterPrompt(
@@ -245,9 +278,6 @@ export async function exportCoverLetterPrompt(
 ) {
   const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found.");
-
-  const masterRow = await getMasterCoverLetterRow();
-  assertMasterCoverLetterReady(masterRow);
 
   const resumeVersion =
     options?.resumeVersion != null
@@ -311,6 +341,12 @@ export async function exportCoverLetterPrompt(
       ),
       target_company: targetCompany,
       target_role: targetRole,
+      // Deliberately the plain JD, without the applicant notes block the
+      // resume prompt gets. Those notes are written about the resume - "the
+      // headline must read exactly X", "put the payments work first" - and
+      // feeding them here pulled the model into paraphrasing the role instead
+      // of quoting resume achievements, which is what a cover letter is
+      // validated on. Two live runs failed that check with the block present.
       jd_content: buildJdContent(application),
       company_blurb_block: buildCompanyBlurbBlock(application.company_blurb),
       tailored_resume_json: JSON.stringify(resumeParsed.data, null, 2),
@@ -441,32 +477,35 @@ export async function submitCoverLetterResponse(
     "the company";
 
   const rawContent = parsed as Partial<CoverLetterContent>;
-  const withBody: CoverLetterContent = {
+  const sections = {
     opening_hook: rawContent.opening_hook ?? "",
     why_this_role: rawContent.why_this_role ?? "",
     evidence_points: rawContent.evidence_points ?? [],
     why_this_company: rawContent.why_this_company ?? "",
     cta: rawContent.cta ?? "",
-    body:
-      rawContent.body?.trim() ||
-      assembleBodyFromSections(
-        {
-          opening_hook: rawContent.opening_hook ?? "",
-          why_this_role: rawContent.why_this_role ?? "",
-          evidence_points: rawContent.evidence_points ?? [],
-          why_this_company: rawContent.why_this_company ?? "",
-          cta: rawContent.cta ?? "",
-        },
-        fullName,
-        targetCompany,
-      ),
+  };
+
+  // One decision, made once: assembleBodyFromSections keeps whichever of the
+  // model's `body` and its section fields is the actual letter. This used to
+  // short-circuit on any non-empty `body`, which let a summary of the letter
+  // replace the letter — and since body is what gets validated, rendered and
+  // checked against the resume, the whole run then failed on a letter that
+  // cited nothing.
+  const withBody: CoverLetterContent = {
+    ...sections,
+    body: assembleBodyFromSections(
+      { ...sections, body: rawContent.body },
+      fullName,
+      targetCompany,
+    ),
   };
 
   const normalizedContent = normalizeCoverLetterContent(withBody);
-  normalizedContent.body =
-    rawContent.body?.trim()
-      ? normalizedContent.body
-      : assembleBodyFromSections(normalizedContent, fullName, targetCompany);
+  normalizedContent.body = assembleBodyFromSections(
+    normalizedContent,
+    fullName,
+    targetCompany,
+  );
 
   const schemaResult = coverLetterContentSchema.safeParse(normalizedContent);
   if (!schemaResult.success) {
@@ -699,63 +738,28 @@ export async function updateCompanyBlurb(
   return { ok: true as const };
 }
 
+/**
+ * Rebuild a cover letter whose PDF never compiled.
+ *
+ * Only the LaTeX build can fail now — there is no Drive step to retry, because
+ * Drive is a background copy the download route does not depend on. So this is
+ * simply "run the build again with the content we already have".
+ */
 export async function retryCoverLetterUpload(coverLetterVersionId: string) {
   const versionRow = await getCoverLetterVersionById(coverLetterVersionId);
   if (!versionRow || versionRow.status !== "upload_failed") {
     return { ok: false as const, error: "Nothing to retry." };
   }
 
-  const application = await getApplicationById(versionRow.application_id);
-  if (!application) {
-    return { ok: false as const, error: "Application not found." };
-  }
-
-  const masterRow = await getMasterCoverLetterRow();
   try {
-    assertMasterCoverLetterReady(masterRow);
-  } catch (e) {
-    return {
-      ok: false as const,
-      error: e instanceof Error ? e.message : "Cover letter template not ready",
-    };
-  }
-
-  const profile = await getProfileRow();
-  const fullName = profile?.full_name ?? "Candidate";
-
-  try {
-    const auth = await getGoogleAuthClient();
-    const drive = new DriveClient(auth);
-    const docs = new DocsClient(auth);
-
-    const result = await generateCoverLetterArtifacts(
-      drive,
-      docs,
+    await persistCoverLetterArtifacts(
+      versionRow.application_id,
+      versionRow.prompt_run_id,
+      versionRow.content,
       {
-        masterDocId: masterRow!.doc_id!,
-        layout: masterRow!.doc_layout as unknown as CoverLetterLayoutMap,
-        content: versionRow.content,
-        application,
-        version: versionRow.version,
-        fullName,
+        resumeVersionId: versionRow.resume_version_id ?? "",
+        editedFromVersionId: versionRow.edited_from_version_id,
       },
-      {
-        onPdfReady: async (partial) => {
-          await updateCoverLetterVersionDriveIds(
-            versionRow.id,
-            partial.drive_pdf_id,
-            null,
-            partial.drive_doc_id,
-          );
-        },
-      },
-    );
-
-    await updateCoverLetterVersionDriveIds(
-      versionRow.id,
-      result.drive_pdf_id,
-      result.drive_docx_id,
-      result.drive_doc_id,
     );
 
     if (versionRow.prompt_run_id) {
@@ -770,7 +774,7 @@ export async function retryCoverLetterUpload(coverLetterVersionId: string) {
           "prompt.completed",
           "prompt_runs",
           versionRow.prompt_run_id,
-          { recovered_from: "cover_letter_upload_retry" },
+          { recovered_from: "cover_letter_build_retry" },
         );
       }
     }

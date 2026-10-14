@@ -60,6 +60,22 @@ function normalizeForMatch(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ");
 }
 
+/**
+ * Is the letter actually grounded in this candidate's resume?
+ *
+ * Two kinds of evidence count, and either is enough on its own:
+ *
+ *   - a four-word run lifted from a resume bullet, or
+ *   - a metric that appears in the resume ("40%", "$4M", "3 years")
+ *
+ * The phrase test alone was too literal. A good letter says "reduced
+ * deployment times by 40%" where the bullet said "slashing internal deployment
+ * cycle times by 40%" — the same achievement, the same number, none of the
+ * same four-word runs. That failed the check and killed the whole run, and the
+ * fix the model was being pushed toward was to plagiarise its own bullets,
+ * which reads badly in a letter. The number is the part that cannot be
+ * invented, so it is the better proof of grounding.
+ */
 export function checkResumeReferencesInCoverLetter(
   resume: {
     experience?: Array<{ bullets?: string[] }>;
@@ -68,11 +84,10 @@ export function checkResumeReferencesInCoverLetter(
   body: string,
   minMatches = 2,
 ): CoverLetterValidationIssue | null {
-  const phrases = extractResumePhrases(resume);
   const normalizedBody = normalizeForMatch(body);
   let matches = 0;
 
-  for (const phrase of phrases) {
+  for (const phrase of extractResumePhrases(resume)) {
     if (phrase.length < 8) continue;
     if (normalizedBody.includes(phrase)) {
       matches++;
@@ -80,9 +95,16 @@ export function checkResumeReferencesInCoverLetter(
     }
   }
 
+  for (const metric of extractResumeMetricTokens(resume)) {
+    if (normalizedBody.includes(metric)) {
+      matches++;
+      if (matches >= minMatches) return null;
+    }
+  }
+
   return {
     path: "body",
-    message: `Cover letter should reference at least ${minMatches} specific achievements from the tailored resume. Found ${matches}. Cite concrete bullets with metrics from the resume.`,
+    message: `Cover letter should reference at least ${minMatches} specific achievements from the tailored resume. Found ${matches}. Cite concrete bullets, and reuse the resume's own numbers (percentages, amounts, scale).`,
   };
 }
 
@@ -243,18 +265,28 @@ export function validateCoverLetterContent(
   return issues;
 }
 
+/**
+ * The letter itself, as one block of prose.
+ *
+ * The model fills `body` inconsistently: sometimes the whole letter, sometimes
+ * nothing, and sometimes a three-line summary of the letter it just wrote in
+ * the section fields. The old rule took `body` whenever it cleared 80
+ * characters, so that summary won — a 308-character precis replaced a
+ * 1,400-character letter, and because everything downstream reads this one
+ * string, the summary was what got validated, rendered into the PDF, and
+ * checked against the resume. It failed that check for the obvious reason: a
+ * summary cites nothing.
+ *
+ * So the longer text wins. The sections are the letter the prompt actually
+ * asked for; `body` only displaces them when it is at least as substantial,
+ * which is true of a real full-letter reply and of anything the user has
+ * edited by hand, and false of a summary.
+ */
 export function assembleBodyFromSections(
   content: Omit<CoverLetterContent, "body"> & { body?: string },
   _fullName: string,
   _targetCompany: string,
 ): string {
-  if (content.body?.trim()) {
-    const cleaned = normalizeCoverLetterSection(
-      stripBodyEnvelope(content.body),
-    );
-    if (cleaned.length >= 80) return cleaned;
-  }
-
   // Body is reference-only. Template already has greeting + sign-off — never append them.
   const paragraphs = [
     normalizeCoverLetterSection(content.opening_hook),
@@ -264,7 +296,13 @@ export function assembleBodyFromSections(
       `${content.why_this_company} ${content.cta}`.trim(),
     ),
   ];
-  return paragraphs.filter(Boolean).join("\n\n");
+  const fromSections = paragraphs.filter(Boolean).join("\n\n");
+
+  if (!content.body?.trim()) return fromSections;
+
+  const cleaned = normalizeCoverLetterSection(stripBodyEnvelope(content.body));
+  if (cleaned.length < 80) return fromSections;
+  return cleaned.length >= fromSections.length ? cleaned : fromSections;
 }
 
 function stripBodyEnvelope(body: string): string {

@@ -2,6 +2,12 @@
 node_modules/
 web/node_modules/
 
+# ResumeBuilderV2 source repos, cloned here only to port the builder into web/.
+# They carry their own .git, venv/, node_modules/ and .env with live secrets —
+# committing them would leak the Mongo URI, NVIDIA key and Razorpay secrets.
+ResumeBuilderV2-Backend/
+ResumeBuilderV2-Frontend/
+
 # Next.js
 web/.next/
 web/out/

@@ -6,6 +6,7 @@ import {
   getLatestReadyCoverLetterVersion,
   getLatestReadyResumeVersion,
 } from "@/lib/db/queries";
+import { loadPipelineOutreach } from "@/lib/pipeline/outreach";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +32,22 @@ export async function GET(
     );
   }
 
-  const application = await getApplicationById(run.application_id);
-  const resume = await getLatestReadyResumeVersion(run.application_id);
-  const coverLetter = await getLatestReadyCoverLetterVersion(run.application_id);
+  // Four independent reads at ~200ms each on the pooler. Run together they
+  // cost one round trip instead of four — and this route is polled every
+  // couple of seconds for the whole length of a run.
+  const [application, resume, coverLetter] = await Promise.all([
+    getApplicationById(run.application_id),
+    getLatestReadyResumeVersion(run.application_id),
+    getLatestReadyCoverLetterVersion(run.application_id),
+  ]);
+
+  // Only once the run is done. This poll fires every couple of seconds, and
+  // the emails are several KB each — no reason to ship them on every tick of a
+  // pipeline that has not written them yet.
+  const outreach =
+    run.status === "completed"
+      ? await loadPipelineOutreach(run.application_id).catch(() => null)
+      : null;
 
   return NextResponse.json({
     ok: true,
@@ -45,5 +59,6 @@ export async function GET(
       resume_version: resume?.version ?? null,
       cover_letter_version: coverLetter?.version ?? null,
     },
+    outreach,
   });
 }

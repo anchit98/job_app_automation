@@ -70,10 +70,12 @@ export function ApplicationStatusSelect({
     });
   }
 
+  // Both variants are the shared control; compact only narrows the box so it
+  // can sit inline in a table row.
   const selectClass =
     variant === "compact"
-      ? "rounded-full border border-outline-variant bg-surface-container-high px-3 py-1.5 text-[13px] font-medium text-on-surface disabled:opacity-50 cursor-pointer min-w-[148px]"
-      : "w-full rounded-lg border border-outline-variant bg-surface-container px-3 py-2.5 text-sm text-on-surface disabled:opacity-50 cursor-pointer";
+      ? "li-select li-select--auto min-w-[148px] disabled:opacity-50"
+      : "li-select disabled:opacity-50";
 
   return (
     <div className={variant === "compact" ? "shrink-0" : "w-full"}>
@@ -108,7 +110,7 @@ export function ApplicationStatusSelect({
       {variant === "default" && (
         <p className="mt-2 text-[12px] text-on-surface-variant leading-snug">
           Pipeline statuses advance when you parse the JD, generate documents, or
-          create Gmail drafts. Use the second group when you get a reply, interview,
+          write the outreach emails. Use the second group when you get a reply, interview,
           offer, or outcome.
         </p>
       )}

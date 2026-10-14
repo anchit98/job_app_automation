@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPipelineRunById } from "@/lib/db/pipeline";
 import { getApplicationById } from "@/lib/db/queries";
+import { loadPipelineOutreach } from "@/lib/pipeline/outreach";
 import { PipelineProgress } from "@/components/pipeline/pipeline-progress";
 
 export default async function PipelinePage({
@@ -13,6 +14,12 @@ export default async function PipelinePage({
   const pipeline = await getPipelineRunById(id);
   if (!pipeline) notFound();
   const application = await getApplicationById(pipeline.application_id);
+  // Reopening a finished run should show the emails immediately rather than
+  // waiting a poll cycle for them.
+  const outreach =
+    pipeline.status === "completed"
+      ? await loadPipelineOutreach(pipeline.application_id).catch(() => null)
+      : null;
 
   return (
     <div className="qa-ambient space-y-3">
@@ -36,6 +43,7 @@ export default async function PipelinePage({
       <PipelineProgress
         initialPipeline={pipeline}
         initialApplicationStatus={application?.status ?? null}
+        initialOutreach={outreach}
       />
     </div>
   );

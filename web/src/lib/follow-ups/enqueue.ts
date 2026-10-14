@@ -11,7 +11,6 @@ import {
   updatePromptRunText,
 } from "@/lib/db/queries";
 import type { FollowUp } from "@/lib/db/types";
-import { APP_TIMEZONE } from "@/lib/datetime/india";
 import {
   claimFollowUpForProcessing,
   followUpsExistForEmail,
@@ -26,20 +25,33 @@ import {
   composePrompt,
   warnIfPromptTooLong,
 } from "@/lib/prompt/composer";
+import { parseDbTimestamp } from "@/lib/follow-ups/business-days";
 import { buildJdContent } from "@/lib/resume/context";
 
+/**
+ * Put every cold email on the follow-up clock.
+ *
+ * The gate used to be draft_status === 'created', which only ever meant "the
+ * Gmail API made a draft". Nothing creates those any more — the email is
+ * written by Apply and sent from a compose link — so that filter silently
+ * scheduled nothing and no reminder ever fired. Every written cold email
+ * counts now, and the clock starts from the send when the user has marked one,
+ * otherwise from when the draft was written.
+ */
 export async function scheduleFollowUpsForApplication(
   applicationId: string,
 ): Promise<number> {
-  const profile = await getProfileRow();
-  const timezone = profile?.timezone?.trim() || APP_TIMEZONE;
   const emails = (await listEmails(applicationId)).filter(
-    (e) => e.kind === "cold" && e.draft_status === "created",
+    (e) => e.kind === "cold",
   );
 
   for (const email of emails) {
     const before = await followUpsExistForEmail(email.id);
-    await scheduleFollowUpsForColdEmail(applicationId, email.id, timezone);
+    const from =
+      parseDbTimestamp(email.sent_at) ??
+      parseDbTimestamp(email.created_at) ??
+      new Date();
+    await scheduleFollowUpsForColdEmail(applicationId, email.id, from);
     if (!before) {
       void writeAuditLog("follow_ups.scheduled", "applications", applicationId, {
         email_id: email.id,

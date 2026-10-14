@@ -1,5 +1,12 @@
 import { DocsClient, DocLayoutMap, DocSlot } from "@/lib/google/docs";
 import { countWords } from "@/lib/resume/bullet-layout";
+import {
+  type DocTextLink,
+  attachProjectWebsites,
+  collectResumeLinks,
+  firstWebLink,
+  paragraphLinks,
+} from "@/lib/resume/doc-links";
 import type { ResumeWordBudget } from "@/lib/resume/word-budget";
 import {
   heuristicSyncLooksWeak,
@@ -10,6 +17,7 @@ import {
   mapResumeSyncFailureToAts,
 } from "@/lib/resume/ats-sync";
 import { throwAts } from "@/lib/ats/readiness-error";
+import { SECTION_HEADING_RE } from "@/lib/resume/pdf-doc-normalize";
 import { docs_v1 } from "googleapis";
 
 /** Accept common / adjacent section titles — not only our internal template. */
@@ -27,10 +35,51 @@ const SECTION_MARKERS = {
 const RULE_RE = /^-{10,}$|^=+$|^_{10,}$|^\|+$/;
 const CONTACT_LABEL_RE = /(Email|LinkedIn|GitHub|Portfolio|Phone|Mobile):/i;
 
+/**
+ * Section titles that can appear above WORK EXPERIENCE.
+ *
+ * The headline is picked from the lines between the name and the first role,
+ * and a title sitting there is not a headline: a resume that opens with
+ * "PROFESSIONAL SUMMARY" had that heading chosen as its tailorable headline,
+ * so tailoring rewrote the section title and the section lost its name.
+ */
+const HEADER_SECTION_RE =
+  /^(SUMMARY|PROFESSIONAL\s+SUMMARY|EXECUTIVE\s+SUMMARY|PROFILE|OBJECTIVE|CAREER\s+OBJECTIVE|ABOUT(\s+ME)?|CONTACT(\s+INFORMATION)?|CERTIFICATIONS?|LICENS(?:E|ES)|LANGUAGES|AWARDS(\s*(&|AND)\s*HONou?RS)?|HONou?RS)\s*:?\s*$/i;
+
+function looksLikeSectionTitle(text: string): boolean {
+  return (
+    HEADER_SECTION_RE.test(text) ||
+    SECTION_HEADING_RE.test(text) ||
+    SECTION_MARKERS.work.test(text) ||
+    SECTION_MARKERS.projects.test(text) ||
+    SECTION_MARKERS.caseStudies.test(text) ||
+    SECTION_MARKERS.skills.test(text) ||
+    SECTION_MARKERS.education.test(text)
+  );
+}
+
+/**
+ * The contact row, whether or not it labels its fields.
+ *
+ * A CV built in the app prints "9910980793 | name@example.com | LinkedIn |
+ * Bengaluru" — no "Email:" anywhere — and that row was being taken for the
+ * headline, which meant a tailored resume replaced the user's phone number
+ * and email with a sentence about the job.
+ */
+function looksLikeContactLine(text: string): boolean {
+  if (CONTACT_LABEL_RE.test(text)) return true;
+  if (/\S+@\S+\.[a-z]{2,}/i.test(text)) return true;
+  if (/linkedin\.com|github\.com|https?:\/\//i.test(text)) return true;
+  const digits = text.replace(/\D/g, "");
+  return digits.length >= 10 && /\d[\d\s().+-]{8,}\d/.test(text);
+}
+
 interface ParagraphInfo {
   index: number;
   text: string;
   isBullet: boolean;
+  /** Hyperlinks this line carries — see lib/resume/doc-links. */
+  links: DocTextLink[];
   paragraph: docs_v1.Schema$Paragraph;
 }
 
@@ -51,6 +100,7 @@ function extractParagraphs(doc: docs_v1.Schema$Document): ParagraphInfo[] {
       index: i++,
       text: text.replace(/\n$/, "").trim(),
       isBullet: paragraphIsBullet(el.paragraph),
+      links: paragraphLinks(el.paragraph),
       paragraph: el.paragraph,
     });
   }
@@ -78,6 +128,14 @@ export interface SyncedMasterResume {
     }>;
     skills: string[];
     education: Array<{ institution_line: string; dates: string }>;
+    /**
+     * Every hyperlink the source document carried, label and all.
+     *
+     * Stored rather than re-read because the addresses are the half of a
+     * resume's links that no amount of text parsing can recover — and because
+     * they must keep resolving after Drive access is gone.
+     */
+    links?: DocTextLink[];
   };
   layout: DocLayoutMap;
   sync_mode?: "heuristic" | "smart_agent";
@@ -175,18 +233,51 @@ function parseProjectTitleLine(line: string): {
   };
 }
 
-function extractProjectWebsite(
-  paragraph: docs_v1.Schema$Paragraph,
-): string | undefined {
-  for (const el of paragraph.elements ?? []) {
-    const url = el.textRun?.textStyle?.link?.url;
-    if (url) return url;
-  }
-  return undefined;
+/**
+ * The link on a project's title line, if it has one.
+ *
+ * Only web links count: a title paragraph sitting next to the contact row can
+ * otherwise adopt its `mailto:`. Projects the title line says nothing about are
+ * picked up later by attachProjectWebsites, which also looks at the line below.
+ */
+function extractProjectWebsite(p: ParagraphInfo): string | undefined {
+  return firstWebLink(p.links);
 }
 
 function findSection(paragraphs: ParagraphInfo[], regex: RegExp): number {
   return paragraphs.findIndex((p) => regex.test(p.text));
+}
+
+/**
+ * The order this document prints its sections in.
+ *
+ * Read off the page rather than assumed, so a tailored resume made from an
+ * uploaded CV keeps that CV's sequence instead of being rearranged into ours.
+ * Works for both sync routes because it looks at the headings, not at either
+ * parser's output.
+ *
+ * Summary is always first: the tailored resume prints it directly under the
+ * name, above every section heading, so its position is not up for debate.
+ */
+function deriveSectionOrder(paragraphs: ParagraphInfo[]): string[] {
+  const projectsIdx = findSection(paragraphs, SECTION_MARKERS.projects);
+  const caseStudiesIdx = findSection(paragraphs, SECTION_MARKERS.caseStudies);
+  const projectLike = [projectsIdx, caseStudiesIdx].filter((i) => i >= 0);
+
+  const found: Array<{ name: string; at: number }> = [
+    { name: "experience", at: findSection(paragraphs, SECTION_MARKERS.work) },
+    { name: "projects", at: projectLike.length ? Math.min(...projectLike) : -1 },
+    { name: "skills", at: findSection(paragraphs, SECTION_MARKERS.skills) },
+    { name: "education", at: findSection(paragraphs, SECTION_MARKERS.education) },
+  ];
+
+  return [
+    "summary",
+    ...found
+      .filter((s) => s.at >= 0)
+      .sort((a, b) => a.at - b.at)
+      .map((s) => s.name),
+  ];
 }
 
 function stripBulletPrefix(text: string): string {
@@ -224,17 +315,24 @@ function heuristicSyncFromParagraphs(
     .slice(0, workIdx)
     .filter((p) => p.text.length > 0 && !RULE_RE.test(p.text));
 
+  // Anything that is a section title or the contact row is not a headline —
+  // rewriting either of those per job would damage the resume.
+  const headlineCandidates = header.filter(
+    (p) => !looksLikeSectionTitle(p.text) && !looksLikeContactLine(p.text),
+  );
   const headline =
-    header.find((p, i) => i > 0 && p.text.length > 12 && !CONTACT_LABEL_RE.test(p.text))
-      ?.text ??
-    header.find((p) => p.text.length > 20 && !CONTACT_LABEL_RE.test(p.text))?.text ??
+    // Index 0 is the candidate's name, which is never tailored.
+    headlineCandidates.find((p, i) => i > 0 && p.text.length > 12)?.text ??
+    headlineCandidates.find((p) => p.text.length > 20)?.text ??
     "";
   const contactLine =
     header.find(
       (p) =>
         CONTACT_LABEL_RE.test(p.text) &&
         /email|phone|mobile/i.test(p.text),
-    )?.text ?? "";
+    )?.text ??
+    header.find((p, i) => i > 0 && looksLikeContactLine(p.text))?.text ??
+    "";
   const linksLine =
     header.find(
       (p) =>
@@ -248,10 +346,31 @@ function heuristicSyncFromParagraphs(
     slots.push({ key: "headline", original: headline, section: "headline" });
   }
 
-  const sectionStarts = [projectsIdx, caseStudiesIdx, skillsIdx, eduIdx]
-    .filter((i) => i >= 0)
-    .sort((a, b) => a - b);
-  const workEnd = sectionStarts[0] ?? paragraphs.length;
+  /**
+   * A section runs until the next section title, whatever that section is.
+   *
+   * This used to end WORK EXPERIENCE at the *first* other section in the
+   * document, and SKILLS and EDUCATION at fixed neighbours. All of it assumed
+   * education came last. Put Education above Experience — the order the CV
+   * builder itself prints for a tech CV, and a common one on real resumes —
+   * and the work section ended before it began, so the resume synced with no
+   * roles at all and fell through to the paid smart-sync agent.
+   */
+  const sectionStarts = [
+    ...new Set([
+      ...[workIdx, projectsIdx, caseStudiesIdx, skillsIdx, eduIdx].filter(
+        (i) => i >= 0,
+      ),
+      // Any other section title ends the one before it too — without this a
+      // SKILLS block ran on through CERTIFICATIONS and listed its contents
+      // as skills.
+      ...paragraphs.flatMap((p, i) => (looksLikeSectionTitle(p.text) ? [i] : [])),
+    ]),
+  ].sort((a, b) => a - b);
+  const sectionEnd = (startIdx: number): number =>
+    sectionStarts.find((i) => i > startIdx) ?? paragraphs.length;
+
+  const workEnd = sectionEnd(workIdx);
   const workSection = paragraphs.slice(workIdx + 1, workEnd);
   const experience: SyncedMasterResume["content"]["experience"] = [];
   let currentRole: (typeof experience)[number] | null = null;
@@ -343,7 +462,7 @@ function heuristicSyncFromParagraphs(
         if (!parsed.name) continue;
         currentProject = {
           ...parsed,
-          website_url: extractProjectWebsite(p.paragraph),
+          website_url: extractProjectWebsite(p),
           bullets: [],
         };
         projects.push(currentProject);
@@ -369,7 +488,7 @@ function heuristicSyncFromParagraphs(
         if (!parsed.name) continue;
         currentProject = {
           ...parsed,
-          website_url: extractProjectWebsite(p.paragraph),
+          website_url: extractProjectWebsite(p),
           bullets: [],
         };
         projects.push(currentProject);
@@ -386,22 +505,17 @@ function heuristicSyncFromParagraphs(
     .filter((s) => s.idx >= 0)
     .sort((a, b) => a.idx - b.idx);
 
-  for (let i = 0; i < projectLikeSections.length; i++) {
-    const start = projectLikeSections[i].idx;
-    const nextSection = projectLikeSections[i + 1]?.idx;
-    const endCandidates = [nextSection, skillsIdx, eduIdx, paragraphs.length].filter(
-      (n): n is number => typeof n === "number" && n >= 0,
-    );
-    const end = Math.min(...endCandidates);
-    parseProjectLikeBlock(start, end);
+  const projectRanges: Array<[number, number]> = [];
+  for (const section of projectLikeSections) {
+    const end = sectionEnd(section.idx);
+    projectRanges.push([section.idx + 1, end]);
+    parseProjectLikeBlock(section.idx, end);
   }
 
   const skills: string[] = [];
+  const skillsEnd = skillsIdx >= 0 ? sectionEnd(skillsIdx) : -1;
   if (skillsIdx >= 0) {
-    const skillSection = paragraphs.slice(
-      skillsIdx + 1,
-      eduIdx >= 0 ? eduIdx : paragraphs.length,
-    );
+    const skillSection = paragraphs.slice(skillsIdx + 1, skillsEnd);
     let skillIndex = 0;
     for (const p of skillSection) {
       if (!p.text || RULE_RE.test(p.text)) continue;
@@ -420,7 +534,7 @@ function heuristicSyncFromParagraphs(
 
   const education: SyncedMasterResume["content"]["education"] = [];
   if (eduIdx >= 0) {
-    const eduSection = paragraphs.slice(eduIdx + 1);
+    const eduSection = paragraphs.slice(eduIdx + 1, sectionEnd(eduIdx));
     for (const p of eduSection) {
       if (!p.text || RULE_RE.test(p.text)) continue;
       const collapsed = p.text.replace(/\s{2,}/g, "\t").trim();
@@ -435,20 +549,27 @@ function heuristicSyncFromParagraphs(
     }
   }
 
+  // The budget covers what Apply may rewrite: work, projects and skills.
+  // Counting a straight span from WORK EXPERIENCE onwards would fold in an
+  // education block that happens to sit between them.
   let fixedLineWords = 0;
   let tailorableWords = 0;
-  const budgetEnd = eduIdx >= 0 ? eduIdx : paragraphs.length;
-  for (let i = workIdx + 1; i < budgetEnd; i++) {
-    const p = paragraphs[i];
-    if (!p?.text) continue;
-    if (p.isBullet || looksLikeBulletBody(p.text)) {
-      tailorableWords += countWords(p.text);
-    } else if (
-      !SECTION_MARKERS.projects.test(p.text) &&
-      !SECTION_MARKERS.caseStudies.test(p.text) &&
-      !SECTION_MARKERS.skills.test(p.text)
-    ) {
-      fixedLineWords += countWords(p.text);
+  const budgetRanges: Array<[number, number]> = [
+    [workIdx + 1, workEnd],
+    ...projectRanges,
+    ...(skillsIdx >= 0
+      ? ([[skillsIdx + 1, skillsEnd]] as Array<[number, number]>)
+      : []),
+  ];
+  for (const [from, to] of budgetRanges) {
+    for (let i = from; i < to; i++) {
+      const p = paragraphs[i];
+      if (!p?.text) continue;
+      if (p.isBullet || looksLikeBulletBody(p.text)) {
+        tailorableWords += countWords(p.text);
+      } else {
+        fixedLineWords += countWords(p.text);
+      }
     }
   }
   const wordBudget: ResumeWordBudget = {
@@ -537,6 +658,14 @@ export async function syncMasterResumeFromDoc(
       "Add Work Experience with each achievement as its own bullet line.",
     );
   }
+
+  // Links last, and on the paragraphs rather than on either parser's output,
+  // so both routes end up with the same answer. The smart agent in particular
+  // is never shown a URL — it maps structure, and asking a model to echo
+  // addresses back is a worse guess than reading them off the page.
+  attachProjectWebsites(synced.content.projects, paragraphs);
+  synced.content.links = collectResumeLinks(paragraphs);
+  synced.layout.section_order = deriveSectionOrder(paragraphs);
 
   assertResumeSyncAtsReady(synced, nonEmptyCount);
   return synced;

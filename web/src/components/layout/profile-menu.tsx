@@ -11,13 +11,11 @@ export function ProfileMenu({
   userName,
   avatarSrc,
   isAdmin,
-  isPaid = true,
 }: {
   userEmail?: string | null;
   userName?: string | null;
   avatarSrc?: string | null;
   isAdmin?: boolean;
-  isPaid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -92,18 +90,18 @@ export function ProfileMenu({
           </div>
 
           <div className="py-1">
-            {!isPaid ? (
-              <MenuLink
-                href="/billing"
-                icon="payments"
-                label="Activate / Billing"
-                onNavigate={() => setOpen(false)}
-              />
-            ) : null}
+            {/* Always present now that there is no paywall — this is where
+                you come to see what plan you are on and buy more runs. */}
             <MenuLink
-              href={isPaid ? "/onboarding" : "/billing"}
+              href="/billing"
+              icon="payments"
+              label="Plans & credits"
+              onNavigate={() => setOpen(false)}
+            />
+            <MenuLink
+              href="/onboarding"
               icon="person"
-              label={isPaid ? "View Profile" : "View Profile (locked)"}
+              label="View Profile"
               onNavigate={() => setOpen(false)}
             />
             <MenuLink
@@ -112,7 +110,7 @@ export function ProfileMenu({
               label="Privacy & Settings"
               onNavigate={() => setOpen(false)}
             />
-            {isAdmin && isPaid ? (
+            {isAdmin ? (
               <MenuLink
                 href="/admin-center"
                 icon="admin_panel_settings"

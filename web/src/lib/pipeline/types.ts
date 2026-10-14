@@ -84,7 +84,11 @@ export const PIPELINE_STAGE_DEFS: Array<{
   { id: "resume", label: "Tailor resume", needsChatGpt: true },
   { id: "cover_letter", label: "Write cover letter", needsChatGpt: true },
   { id: "cold_email", label: "Draft cold emails", needsChatGpt: true },
-  { id: "gmail_drafts", label: "Create Gmail drafts", needsChatGpt: false },
+  // The id stays `gmail_drafts` because every stored pipeline run names it
+  // that; the label does not, because the stage no longer touches Gmail — it
+  // waits for the resume and cover PDFs, then hands the emails to the Outreach
+  // tab, where a compose link opens them in whatever client the user uses.
+  { id: "gmail_drafts", label: "Prepare outreach", needsChatGpt: false },
 ];
 
 export function buildInitialStages(): PipelineStage[] {

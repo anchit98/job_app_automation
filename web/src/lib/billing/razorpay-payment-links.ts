@@ -17,6 +17,10 @@ export type RazorpayPaymentLinkRow = {
   status: RazorpayPaymentLinkStatus;
   razorpay_payment_id: string | null;
   reference_id: string | null;
+  /** 'plan' | 'topup'; null on links created before tiers existed. */
+  purchase_kind: string | null;
+  /** Catalogue code in lib/billing/pricing — 'pro', 'apply_60', … */
+  purchase_code: string | null;
   created_at: string;
   paid_at: string | null;
 };
@@ -33,6 +37,10 @@ function mapRow(row: Record<string, unknown>): RazorpayPaymentLinkRow {
     razorpay_payment_id:
       row.razorpay_payment_id == null ? null : String(row.razorpay_payment_id),
     reference_id: row.reference_id == null ? null : String(row.reference_id),
+    purchase_kind:
+      row.purchase_kind == null ? null : String(row.purchase_kind),
+    purchase_code:
+      row.purchase_code == null ? null : String(row.purchase_code),
     created_at: String(row.created_at),
     paid_at: row.paid_at == null ? null : String(row.paid_at),
   };
@@ -45,12 +53,16 @@ export async function insertRazorpayPaymentLink(input: {
   currency?: string;
   shortUrl?: string;
   referenceId?: string;
+  /** What this link buys. Omitted = the legacy lifetime offer. */
+  purchaseKind?: string;
+  purchaseCode?: string;
 }): Promise<RazorpayPaymentLinkRow> {
   const id = randomUUID();
   await dbRun(
     `INSERT INTO razorpay_payment_links
-      (id, user_id, razorpay_payment_link_id, short_url, amount_paise, currency, status, reference_id)
-     VALUES (?, ?, ?, ?, ?, ?, 'created', ?)`,
+      (id, user_id, razorpay_payment_link_id, short_url, amount_paise, currency, status,
+       reference_id, purchase_kind, purchase_code)
+     VALUES (?, ?, ?, ?, ?, ?, 'created', ?, ?, ?)`,
     id,
     input.userId,
     input.razorpayPaymentLinkId,
@@ -58,6 +70,8 @@ export async function insertRazorpayPaymentLink(input: {
     input.amountPaise,
     input.currency ?? "INR",
     input.referenceId ?? null,
+    input.purchaseKind ?? null,
+    input.purchaseCode ?? null,
   );
   const row = await getRazorpayPaymentLinkById(id);
   if (!row) throw new Error("Failed to create razorpay payment link row.");

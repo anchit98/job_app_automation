@@ -334,7 +334,7 @@ Do **not** trust unpaid → paid from query params without signature verificatio
   - `payment_link.paid` → resolve `payment_link.id` or `reference_id` → user → mark paid → `setUserPaid`
   - `payment.captured` → resolve via `notes.user_id` and/or linked payment link / order metadata
 3. Idempotent: already paid → `200`.
-4. Add path to middleware **public** allowlist (no login).
+4. Add path to proxy **public** allowlist (no login).
 5. Audit `payment.razorpay_link_paid`.
 
 - [x] Phase 9 done
@@ -532,7 +532,7 @@ In Razorpay Dashboard → Webhooks → that delivery → **Resend** (or redelive
 | Webhook                  | `web/src/app/api/billing/razorpay/webhook/route.ts`                     |
 | Return UX                | `web/src/app/(app)/billing/razorpay/return/page.tsx`                    |
 | Page                     | `web/src/app/(app)/billing/page.tsx`                                    |
-| Middleware               | public allowlist for webhook                                            |
+| Proxy                    | public allowlist for webhook                                            |
 
 
 ---

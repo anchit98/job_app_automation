@@ -42,6 +42,32 @@ ${linkLine("Online Portfolio", profile.portfolio_url)}
 </div>`;
 }
 
+/**
+ * The same signature as plain text, for a compose window opened by a link.
+ *
+ * A `mailto:` or Gmail compose URL carries no HTML, so the HTML version above
+ * cannot be reused there. Lines the profile has no value for are dropped
+ * rather than left as an empty "GitHub:" — the reader sees a bare label as a
+ * mistake, where the HTML version keeps it as layout.
+ */
+export function buildEmailSignatureText(
+  profile: EmailSignatureProfile,
+): string {
+  const name = profile.full_name?.trim() || "Candidate";
+  const phone = profile.phone?.trim() || DEFAULT_PHONE;
+  const lines = ["--", name, `Contact Number: ${phone}`];
+
+  const link = (label: string, url: string | null | undefined) => {
+    const trimmed = url?.trim();
+    if (trimmed) lines.push(`${label}: ${trimmed}`);
+  };
+  link("LinkedIn", profile.linkedin_url);
+  link("GitHub", profile.github_url);
+  link("Online Portfolio", profile.portfolio_url);
+
+  return lines.join("\n");
+}
+
 export function appendEmailSignatureHtml(
   bodyHtml: string,
   profile: EmailSignatureProfile,

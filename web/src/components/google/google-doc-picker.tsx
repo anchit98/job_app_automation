@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cn } from "@/lib/utils/cn";
 
 type PickerTokenResponse = {
   accessToken: string;
@@ -10,9 +11,21 @@ type PickerTokenResponse = {
   error?: string;
 };
 
+export const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
+
+/** Resume-shaped files the Picker offers. Non-Doc picks are converted server-side. */
+export const RESUME_PICKER_MIME_TYPES = [
+  GOOGLE_DOC_MIME,
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
+].join(",");
+
 export type PickerDoc = {
   id: string;
   name: string;
+  /** Google Doc, PDF or Word — decides whether a conversion step is needed. */
+  mimeType: string;
   url: string;
 };
 
@@ -117,7 +130,8 @@ async function fetchPickerAuth(): Promise<PickerTokenResponse> {
  * “The API developer key is invalid” even when the key is fine.
  */
 export async function pickGoogleDoc(
-  title = "Choose a Google Doc",
+  title = "Choose a resume (Doc, PDF or Word)",
+  mimeTypes: string = RESUME_PICKER_MIME_TYPES,
 ): Promise<PickerDoc | null> {
   const auth = await fetchPickerAuth();
   await loadGapiPicker();
@@ -128,11 +142,13 @@ export async function pickGoogleDoc(
 
   return new Promise((resolve, reject) => {
     try {
-      // Official sample uses ViewId.DOCS / DOCUMENTS — DocsView+mime filters
-      // are fine, but keep close to Google's reference for fewer key quirks.
-      const view = new pickerApi.DocsView(pickerApi.ViewId.DOCUMENTS)
+      // ViewId.DOCUMENTS would list Google Docs only. Resumes commonly live in
+      // Drive as PDFs or Word files, so widen the view and filter by mime —
+      // anything non-Doc is converted server-side before syncing.
+      const view = new pickerApi.DocsView(pickerApi.ViewId.DOCS)
         .setIncludeFolders(false)
-        .setSelectFolderEnabled(false);
+        .setSelectFolderEnabled(false)
+        .setMimeTypes(mimeTypes);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let builder: any = new pickerApi.PickerBuilder()
@@ -156,13 +172,11 @@ export async function pickGoogleDoc(
               reject(new Error("No document selected."));
               return;
             }
-            if (
-              doc.mimeType &&
-              doc.mimeType !== "application/vnd.google-apps.document"
-            ) {
+            const mimeType = doc.mimeType || GOOGLE_DOC_MIME;
+            if (!mimeTypes.split(",").includes(mimeType)) {
               reject(
                 new Error(
-                  "Please choose a Google Doc (not Word/PDF). In Drive: right-click → Open with → Google Docs, then pick that Doc.",
+                  "Pick a Google Doc, PDF or Word file — sheets, slides and images cannot be used as a resume.",
                 ),
               );
               return;
@@ -170,6 +184,7 @@ export async function pickGoogleDoc(
             resolve({
               id: doc.id,
               name: doc.name || "Google Doc",
+              mimeType,
               url:
                 doc.url ||
                 `https://docs.google.com/document/d/${doc.id}/edit`,
@@ -197,13 +212,19 @@ export async function pickGoogleDoc(
 
 export function GoogleDocPickerButton({
   label = "Choose from Drive",
-  title = "Choose a Google Doc",
+  title = "Choose a resume (Doc, PDF or Word)",
+  mimeTypes = RESUME_PICKER_MIME_TYPES,
+  className,
   disabled,
   onPicked,
   onError,
 }: {
   label?: string;
   title?: string;
+  /** Narrow this for callers that cannot convert non-Doc files. */
+  mimeTypes?: string;
+  /** Layout overrides — e.g. full width inside a source-picker row. */
+  className?: string;
   disabled?: boolean;
   onPicked: (doc: PickerDoc) => void;
   onError?: (message: string) => void;
@@ -213,7 +234,7 @@ export function GoogleDocPickerButton({
   async function open() {
     setPending(true);
     try {
-      const doc = await pickGoogleDoc(title);
+      const doc = await pickGoogleDoc(title, mimeTypes);
       if (doc) onPicked(doc);
     } catch (e) {
       onError?.(e instanceof Error ? e.message : "Picker failed.");
@@ -227,7 +248,10 @@ export function GoogleDocPickerButton({
       type="button"
       disabled={disabled || pending}
       onClick={() => void open()}
-      className="inline-flex items-center gap-1.5 li-btn-secondary text-[13px] disabled:opacity-50"
+      className={cn(
+        "inline-flex items-center gap-1.5 li-btn-secondary text-[13px] disabled:opacity-50",
+        className,
+      )}
     >
       <span className="material-symbols-outlined text-[16px]" aria-hidden>
         folder_open

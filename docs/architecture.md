@@ -6,7 +6,7 @@
 
 ## 0. Executive Summary
 
-**JobApp OS** is a hosted, multi-user web app that turns a pasted job description (plus optional contacts) into a tracked application package: tailored resume, cover letter, cold emails, Gmail drafts, and follow-ups.
+**JobApp OS** is a hosted, multi-user web app that turns a pasted job description (plus optional contacts) into a tracked application package: tailored resume, cover letter, cold emails, and follow-ups.
 
 **LLM path (default):** generations run **server-side** via OpenAI **`gpt-4.1-mini`** (API key in env). The pipeline advances without ChatGPT tabs for the Apply flow.
 
@@ -14,7 +14,7 @@
 
 **Design pillars:**
 
-1. **Draft-only outbound** — Gmail drafts for outreach; never auto-send cold email  
+1. **No outbound mail access** — outreach opens in the user's own mail client through a compose link; the app holds no mail scope and cannot send  
 2. **Structured contracts** — every LLM response is Zod-validated; malformed JSON gets a repair pass  
 3. **Grounded generation** — resume/cover anchored to master materials; fabrication checks; **≥70% grounded JD keyword coverage** required on resume accept  
 4. **Layout lock** — each experience/project bullet keeps the **same Google Doc wrap line count** as master (estimator + auto-fit); one-page PDF  
@@ -37,7 +37,7 @@
 ### Data & Auth
 - **Supabase Postgres** (remote; connection via `postgres` npm package)
 - **Email/password auth** — `bcryptjs` passwords, `jose` JWT session cookie (`applyforge_session`, 30 days)
-- **`users` + `sessions`** tables; middleware gates all non-public routes
+- **`users` + `sessions`** tables; proxy gates all non-public routes
 - **Multi-tenant** — `profiles`, `applications`, `pipelines`, `google_tokens`, `extension_tokens`, etc. all keyed by `user_id`
 - **Google OAuth** — Drive + Gmail scopes; separate from app login
 
@@ -49,7 +49,8 @@
 - **Legacy Bridge path** — optional Chrome extension for ChatGPT UI automation
 
 ### Outbound & files
-- **Gmail API** — `gmail.compose` for drafts; `gmail.readonly` for thread lookup; `gmail.send` for admin password-reset / payment-claim emails
+- **Resend** — the app's own mail: password resets, payment receipts, payment-claim alerts (`RESEND_API_KEY`, `TRANSACTIONAL_FROM_EMAIL`)
+- **No Gmail API.** Outreach opens in the user's own mail client through a compose link (`lib/emails/manual-send`); the app holds no mail scope
 - **Google Drive + Docs API** — master resume/cover sync; Docs copy → export PDF → upload; pipeline page download links
 
 ### Hosting
@@ -70,7 +71,7 @@ flowchart LR
     subgraph Vercel["Vercel / Local"]
         API["Server Actions + Route Handlers"]
         LLM["OpenAI gpt-4.1-mini"]
-        Middleware["Auth Middleware"]
+        Proxy["Auth Proxy"]
     end
     subgraph Supabase
         PG[("Postgres")]
@@ -86,7 +87,7 @@ flowchart LR
 
     User --> UI
     UI --> API
-    Middleware --> API
+    Proxy --> API
     API --> LLM
     API --> PG
     API --> Drive
@@ -104,12 +105,12 @@ flowchart LR
 |---|---|
 | Signup / login | `bcryptjs` + `users` table; forms at `/signup`, `/login` |
 | Session | JWT (`jose`) in `applyforge_session` httpOnly cookie; `sessions` table in Postgres |
-| Middleware | `middleware.ts` verifies JWT on every non-public route; redirects to `/login` |
+| Proxy | `proxy.ts` verifies JWT on every non-public route; redirects to `/login` |
 | Multi-tenant | Every query helper resolves `user_id` from session (`currentUserId()`) |
 | Password recovery | Forgot-password email with one-time token; `/reset-password` |
 | Forced reset | `users.must_reset_password` → `/reset-password-required` |
 | Admin | `users.is_admin`; first signup on empty DB is admin; `/admin-center` |
-| Paid access | `users.is_paid` / `paid_at`; unpaid users gated to `/billing` (admins treated as paid) |
+| Plan & credits | `user_entitlements.plan` + `apply_credits`; metered at `spendCredit('apply')`. No route-level paywall — every account gets the free plan |
 | Setup readiness | `getSetupReadiness()` — Google connected + profile (name, location, phone, LinkedIn) + master resume; locks Dashboard/Apply until ready |
 | Google OAuth | Separate — Drive + Docs + Gmail; tokens encrypted with `GOOGLE_TOKEN_ENCRYPTION_KEY` |
 | App timezone | `Asia/Kolkata` (`web/src/lib/datetime/india.ts`) for display, metrics ranges, follow-up business days |
@@ -133,7 +134,7 @@ flowchart LR
 | `applications` | FK `user_id` | JD + status + notes |
 | `contacts` | FK `application_id` | Recruiter contacts |
 | `resume_versions` / `cover_letter_versions` | FK `application_id` | Generated artifacts + Drive file ids |
-| `emails` | FK `application_id` | Cold emails + Gmail drafts |
+| `emails` | FK `application_id` | Cold emails and follow-ups (`gmail_draft_id` only on rows predating the compose-link flow) |
 | `follow_ups` | FK `application_id` | Scheduled follow-up prompts |
 | `prompt_runs` | FK `user_id` | Prompt ↔ response ledger |
 | `prompt_templates` | — | Versioned templates |
@@ -142,7 +143,7 @@ flowchart LR
 
 Schema: [`supabase/schema.sql`](../supabase/schema.sql).
 
-**Note:** Application **quota metering** (e.g. launch offer “60 Apply runs”) is **product messaging** as of this doc revision; enforcement is planned with tiered pricing infrastructure. Lifetime **product** access remains via `is_paid`.
+**Note:** Apply metering is **enforced** — `spendCredit('apply')` in `actions/pipeline` charges one credit per run and refuses when the balance is zero. CV building and AI tailoring are deliberately unmetered (`METERED_ACTIONS`). Accounts on `legacy_lifetime` (the old ₹299 buyers) skip every check.
 
 ---
 
@@ -164,7 +165,7 @@ Default engine: **`openai`** (`normalizePipelineLlmEngine` maps legacy `gemma` �
 
 ### Contacts (optional)
 
-- **With contacts:** cold email + Gmail drafts run  
+- **With contacts:** cold email + outreach prep run  
 - **Without:** `save_contacts`, `cold_email`, `gmail_drafts` are **skipped**  
 - Apply UI includes a collapsible **contact finder guide** (LinkedIn recruiters → Mailmeteor LinkedIn Email Finder → paste emails into the form). Aim for 2–3 contacts when possible.
 
@@ -181,9 +182,9 @@ Default engine: **`openai`** (`normalizePipelineLlmEngine` maps legacy `gemma` �
 4. On schema / keyword-floor failure → repair prompt → limited repair rounds (resume up to **2** keyword/structure repairs)  
 5. Resume/cover Docs export runs deferred (`after()`); cover marks PDF ready before DOCX finishes so Gmail is not blocked on Word export  
 
-### Drive PDFs before Gmail drafts
+### Drive PDFs before outreach is announced
 
-Before `gmail_drafts` creates drafts with attachments:
+Before `gmail_drafts` reports the outreach as ready to send:
 
 1. Pipeline waits until resume (and cover, if not skipped) PDFs are **uploaded and ready** in Drive  
 2. Progress surfaces messages such as waiting for Drive PDFs / upload delays  
@@ -231,7 +232,7 @@ UI lives on **`/onboarding` (Profile)** with a minimizable setup progress chip n
 4. **Pipeline metrics** (date-filtered in **IST**):
    - Total applications  
    - This week  
-   - Gmail drafts  
+   - Outreach emails  
    - Companies contacted  
    - Presets: Last 7 days / 30 days (default) / 3 months / Custom  
 5. **Recent applications** + **Quick actions**
@@ -243,9 +244,9 @@ Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`, `li
 ## 7. Marketing site (public `/`)
 
 - Landing sections: About, Features, Benefits, **Insider tips** (last-hour jobs + email finder), AI, Gallery, **Pricing**, **FAQ**  
-- Hero and page metadata describe JobApp OS as a **job application automation** product (resumes, cover letters, Google Drive/Docs, Gmail drafts, tracking)  
+- Hero and page metadata describe JobApp OS as a **job application automation** product (resumes, cover letters, Google Drive/Docs, recruiter outreach, tracking)  
 - Header includes a **Privacy** link; footer links Privacy Policy + Terms (URLs must match OAuth consent screen for Google brand verification)  
-- **Launch offer messaging:** ₹299 for the **first 100 buyers** — **lifetime product access** + **60 applications included**; strike ₹699; DIY comparison callout under pricing  
+- **Pricing section:** free plan + three paid tiers + Apply-run top-ups, all rendered from `lib/billing/pricing` so the page and the billing screen cannot disagree; DIY comparison callout underneath  
 - FAQ covers drafts-only, Google scopes, fabrication, no user API keys, ATS-friendly PDFs, runtime, cold email norms, failed-stage repair  
 
 ---
@@ -277,7 +278,7 @@ Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`, `li
 | `/onboarding` | **Profile** — Google connect, profile fields, master resume/cover |
 | `/prompts` | Prompts inbox |
 | `/settings` | Privacy & Settings (password / account; links to Profile) |
-| `/billing` | Razorpay Payment Link paywall (launch offer) |
+| `/billing` | Plans, top-ups and current credit balance (open to everyone) |
 | `/billing/razorpay/return` | Post-payment confirm / poll until unlocked |
 | `/review-payment/[token]` | Legacy signed mobile UPI claim review |
 | `/admin-center` | Admin users, Mark paid, Razorpay links, legacy UPI claims |
@@ -306,7 +307,7 @@ Logic: `parseMetricsRange`, `getDashboardMetricsRow`, `mapDashboardMetrics`, `li
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Yes (billing) | Payment Links API |
 | `RAZORPAY_WEBHOOK_SECRET` | Yes (billing) | Webhook HMAC |
 | `NEXT_PUBLIC_PAYMENT_AMOUNT_INR` | No | Default `299` |
-| `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | No | Default launch-offer label (60 apps · lifetime access) |
+| `NEXT_PUBLIC_PAYMENT_PLAN_LABEL` | No | Label on legacy lifetime links / receipts |
 | `NEXT_PUBLIC_UPI_ID` | No | Legacy UPI fallback VPA |
 | `ADMIN_NOTIFY_EMAIL` | No | Legacy payment-claim alert recipients |
 | `CRON_SECRET` | No | Bearer for `/api/cron/*` |
@@ -330,11 +331,11 @@ Job Application Automation/
 └── Master Resume/
 ```
 
-### Gmail
+### Outbound mail
 
-- Outreach: **drafts only** (`gmail.compose`), with resume/cover PDFs attached when ready  
-- Follow-ups: draft replies in-thread when possible  
-- Admin: `gmail.send` for password reset + payment-claim alerts  
+- Outreach: a **compose link** (Gmail / Outlook / `mailto:`) pre-filled with the message; the user attaches the PDFs and sends. No API, no scope, no draft created by us  
+- Follow-ups: same mechanism, with `Re:` threading on the subject  
+- App mail (password reset, payment receipt, admin alerts): **Resend**, via `lib/emails/transactional`  
 
 ---
 
@@ -342,15 +343,16 @@ Job Application Automation/
 
 | Item | Value |
 |---|---|
-| Launch price | **₹299** one-time |
-| Audience | First **100** buyers (messaging) |
-| Access | **Lifetime** product access after successful payment (auto-unlock) |
-| Included Apply volume | **60** applications (messaging; metering TBD) |
-| Payment (primary) | Razorpay **Payment Link** → redirect → webhook `payment_link.paid` / `payment.captured` → `setUserPaid` |
+| Model | Freemium. No paywall in front of the app; Apply runs are metered |
+| Free plan | `FREE_ALLOWANCE.apply` runs, created lazily on first credit check |
+| Paid tiers | Starter / Pro / Enterprise — see `lib/billing/pricing` for prices and volumes |
+| Top-ups | Apply-run packs that add credits without changing the plan |
+| Catalogue | `lib/billing/pricing` — one source for the billing page and the landing page |
+| Payment | Razorpay **Payment Link**, carrying `purchase_kind` + `purchase_code` on the row → webhook → `applyTierPurchase` or `addApplyCredits` |
+| Receipt | Emailed on the paid transition via `lib/billing/payment-receipt-email` |
 | Return UX | `/billing/razorpay/return` (optional callback signature fast path + poll) |
-| Support override | Admin **Mark paid / unpaid** |
-| Legacy | Collapsed manual UPI + `payment_claims` |
-| Future | Tiered packs / top-ups after usage data |
+| Support override | Admin **Mark paid / unpaid** (`setUserPaid` → `legacy_lifetime`) |
+| Legacy | ₹299 lifetime buyers sit on `legacy_lifetime` and are never metered. Links created before tiers carry no purchase columns and still unlock that way |
 
 Implementation guide: [`razorpay-payment-links.md`](razorpay-payment-links.md).
 

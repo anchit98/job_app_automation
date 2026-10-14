@@ -23,7 +23,9 @@ import {
   getPaymentClaimById,
   reviewPaymentClaim,
 } from "@/lib/billing/payment-claims";
+import { sendPaymentReceipt } from "@/lib/billing/payment-receipt-email";
 import { dbGet } from "@/lib/db";
+import { env } from "@/lib/env";
 
 const DEFAULT_PASSWORD = "abc12345";
 
@@ -126,7 +128,7 @@ export async function adminCreateRecoveryLink(input: { userId: string }) {
       return { ok: false as const, error: "User not found." };
     }
 
-    const token = await sendPasswordResetEmail({
+    const reset = await sendPasswordResetEmail({
       userId: user.id,
       email: user.email,
       fullName: user.full_name,
@@ -135,13 +137,20 @@ export async function adminCreateRecoveryLink(input: { userId: string }) {
     });
     await writeAuditLog("admin.password_reset_email", "users", parsed.data.userId, {
       admin_user_id: admin.id,
-      expires_at: token.expires_at,
+      expires_at: reset.token.expires_at,
+      delivered: reset.delivered,
+      delivery_error: reset.delivery_error,
     });
     revalidatePath("/admin-center");
+    // Undelivered is still a usable outcome: the link works, so hand it back
+    // for the admin to pass on however they can reach the user. Failing the
+    // whole action would leave a locked-out user with no route back in.
     return {
       ok: true as const,
-      emailedTo: user.email,
-      expires_at: token.expires_at,
+      emailedTo: reset.delivered ? user.email : null,
+      expires_at: reset.token.expires_at,
+      recovery_url: reset.delivered ? null : reset.token.resetUrl,
+      delivery_error: reset.delivery_error,
     };
   } catch (error) {
     return { ok: false as const, error: adminFailureMessage(error) };
@@ -225,6 +234,15 @@ export async function adminApprovePaymentClaim(input: { claimId: string }) {
       admin_user_id: admin.id,
       user_id: claim.user_id,
       upi_reference: claim.upi_reference,
+    });
+    // Until now the user learned their transfer had been accepted only by
+    // noticing the paywall was gone.
+    await sendPaymentReceipt({
+      userId: claim.user_id,
+      amountInr: `₹${env.paymentAmountInr()}`,
+      planLabel: env.paymentPlanLabel(),
+      reference: claim.upi_reference,
+      method: "upi",
     });
     revalidatePath("/admin-center");
     revalidatePath("/billing");

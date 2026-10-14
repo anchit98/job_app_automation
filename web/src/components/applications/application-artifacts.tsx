@@ -1,12 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import {
+  ColdEmailSendPanel,
+  EmailSendList,
+  type EmailAttachment,
+} from "@/components/emails/email-send-list";
 import type {
   Contact,
   CoverLetterVersion,
   EmailRecord,
   ResumeVersion,
 } from "@/lib/db/types";
+import type { EmailSendPack } from "@/lib/emails/manual-send";
+
+export type { EmailAttachment };
 
 export function ResumeArtifacts({
   applicationId,
@@ -145,42 +153,69 @@ export function ContactArtifacts({ contacts }: { contacts: Contact[] }) {
   );
 }
 
-export function EmailArtifacts({ emails }: { emails: EmailRecord[] }) {
-  const cold = emails.filter((e) => e.kind === "cold");
-  if (cold.length === 0) {
+/**
+ * Cold emails, ready to send by hand — see ColdEmailSendPanel for why the app
+ * no longer creates the Gmail draft itself.
+ */
+export function EmailArtifacts({
+  emails,
+  contacts,
+  sendPacks,
+  attachments,
+}: {
+  emails: EmailRecord[];
+  contacts: Contact[];
+  sendPacks: EmailSendPack[];
+  attachments: EmailAttachment[];
+}) {
+  return (
+    <ColdEmailSendPanel
+      emails={emails}
+      contacts={contacts}
+      sendPacks={sendPacks}
+      attachments={attachments}
+    />
+  );
+}
+
+/**
+ * Follow-ups, sent the same way as cold emails.
+ *
+ * No attachments: a follow-up lands on a thread where the resume has already
+ * been sent once, and re-attaching it reads as a resend rather than a nudge.
+ *
+ * Compose links are offered despite the caveat that a URL cannot set
+ * In-Reply-To, so Gmail and Outlook start a new conversation rather than
+ * threading under the original. The subject is already rewritten as a reply
+ * ("Re: ..."), which is what both clients group on when the header is absent,
+ * and one click beats copy-paste for the common case. Copy is still there for
+ * anyone who wants to paste into the real thread instead.
+ */
+export function FollowUpEmailArtifacts({
+  emails,
+  contacts,
+  sendPacks,
+}: {
+  emails: EmailRecord[];
+  contacts: Contact[];
+  sendPacks: EmailSendPack[];
+}) {
+  const followUps = emails.filter((e) => e.kind === "follow_up");
+  if (followUps.length === 0) {
     return (
       <p className="text-[14px] text-on-surface-variant">
-        No cold emails yet - drafted automatically by Apply.
+        No follow-ups written yet - press Generate once one is due.
       </p>
     );
   }
   return (
-    <ul className="space-y-3">
-      {cold.map((e) => (
-        <li
-          key={e.id}
-          className="rounded-xl border border-outline-variant p-4 space-y-1"
-        >
-          <div className="text-[14px] font-medium text-on-surface">
-            {e.subject}
-          </div>
-          <div className="text-[12px] text-on-surface-variant">
-            Draft: {e.draft_status}
-            {e.gmail_draft_id ? " · ready in Gmail" : ""}
-          </div>
-          {e.gmail_draft_id && (
-            <a
-              href={`https://mail.google.com/mail/u/0/#drafts`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[12px] text-primary hover:underline"
-            >
-              Open Gmail drafts
-            </a>
-          )}
-        </li>
-      ))}
-    </ul>
+    <EmailSendList
+      emails={followUps}
+      contacts={contacts}
+      sendPacks={sendPacks}
+      attachments={[]}
+      hint="Open it in your mail client, or copy it into the original thread. Mark it sent to schedule the next one."
+    />
   );
 }
 

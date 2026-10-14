@@ -21,8 +21,14 @@ const PUBLIC_PREFIXES = [
   "/api/cron",
   "/api/health",
   "/api/billing/razorpay/webhook",
-  // Clears revoked JWTs that middleware still treats as signed-in.
+  // Clears revoked JWTs that proxy still treats as signed-in.
   "/api/auth/clear-stale-session",
+  // "Continue with Google" — both halves must be public, and the callback
+  // especially: there is no session until it creates one, so gating it on
+  // having a session makes signing in impossible. Distinct from
+  // /api/auth/google/* (Drive consent), which does require a session and is
+  // correctly left protected.
+  "/api/auth/oauth",
   // Must stay public: Razorpay redirect can drop the session cookie; unlock
   // still runs from signed callback params / API reconcile.
   "/billing/razorpay/return",
@@ -35,7 +41,7 @@ function isPublic(pathname: string) {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   let sessionPayload:

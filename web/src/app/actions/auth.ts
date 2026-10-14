@@ -27,6 +27,10 @@ import {
   markAllPasswordResetTokensUsed,
 } from "@/lib/auth/password-reset";
 import { sendPasswordResetEmail } from "@/lib/auth/password-reset-email";
+import {
+  PASSWORD_AUTH_DISABLED_MESSAGE,
+  PASSWORD_AUTH_ENABLED,
+} from "@/lib/auth/password-auth";
 import { isSetupReadyForUserId } from "@/lib/setup/readiness";
 
 const credentialsSchema = z.object({
@@ -41,15 +45,16 @@ const credentialsSchema = z.object({
  * transitions from /(auth) → /(app) + setup redirect often paint blank
  * until a hard refresh.
  */
-async function postAuthRedirectPath(user: {
+export async function postAuthRedirectPath(user: {
   id: string;
   is_admin: boolean;
   is_paid: boolean;
   must_reset_password: boolean;
 }): Promise<string> {
   if (user.must_reset_password) return "/reset-password-required";
-  const paid = Boolean(user.is_admin) || Boolean(user.is_paid);
-  if (!paid) return "/billing";
+  // No billing detour: every account lands on the free plan and can use the
+  // product straight away. Payment is asked for at the point the free Apply
+  // runs are gone, not before anyone has seen it work.
   try {
     const ready = await isSetupReadyForUserId(user.id);
     return ready ? "/dashboard" : "/onboarding";
@@ -74,7 +79,10 @@ function authFailureMessage(error: unknown): string {
   if (/timed out|timeout|canceling statement/i.test(msg)) {
     return "Login is taking too long (database busy). Wait a moment and try again.";
   }
-  if (/password recovery email|gmail\.send|Reconnect Google from the admin account/i.test(msg)) {
+  // Mail-provider problems are stated as they are: the user cannot act on
+  // them, but the admin reading the logs can, and a generic "something went
+  // wrong" hides the one detail that names the fix.
+  if (/password recovery email|RESEND_API_KEY|cannot send email/i.test(msg)) {
     return msg;
   }
   console.error("[auth]", error);
@@ -86,6 +94,11 @@ export async function signUp(input: {
   password: string;
   full_name?: string;
 }) {
+  // Hiding the form is not a gate — a server action is reachable whether or
+  // not anything renders a form pointing at it.
+  if (!PASSWORD_AUTH_ENABLED) {
+    return { ok: false as const, error: PASSWORD_AUTH_DISABLED_MESSAGE };
+  }
   const parsed = credentialsSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -137,6 +150,9 @@ export async function signUp(input: {
 }
 
 export async function signIn(input: { email: string; password: string }) {
+  if (!PASSWORD_AUTH_ENABLED) {
+    return { ok: false as const, error: PASSWORD_AUTH_DISABLED_MESSAGE };
+  }
   const parsed = credentialsSchema
     .pick({ email: true, password: true })
     .safeParse(input);
@@ -153,6 +169,17 @@ export async function signIn(input: { email: string; password: string }) {
       return {
         ok: false as const,
         error: "No account was found for this email. Create an account to log in.",
+      };
+    }
+
+    // An account created through Google has no password at all. Comparing
+    // against a null hash would answer "invalid email or password", which
+    // sends the user off to reset a password that never existed.
+    if (!user.password_hash) {
+      return {
+        ok: false as const,
+        error:
+          "This account signs in with Google. Use “Continue with Google”, or set a password from Settings once you are in.",
       };
     }
 
@@ -214,6 +241,9 @@ const resetPasswordSchema = z.object({
 });
 
 export async function requestPasswordReset(input: { email: string }) {
+  if (!PASSWORD_AUTH_ENABLED) {
+    return { ok: false as const, error: PASSWORD_AUTH_DISABLED_MESSAGE };
+  }
   const parsed = forgotPasswordSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -231,6 +261,11 @@ export async function requestPasswordReset(input: { email: string }) {
         fullName: user.full_name,
       });
     }
+    // Always the same answer. Reporting a delivery failure here would say
+    // "this address has an account" out loud, which is exactly what the
+    // neutral wording exists to avoid — and the person on the form cannot do
+    // anything about a provider outage anyway. Failures are logged and
+    // audited inside sendPasswordResetEmail instead.
     return {
       ok: true as const,
       message:
@@ -342,12 +377,17 @@ export async function updatePassword(input: {
       return { ok: false as const, error: "Account not found." };
     }
 
-    const valid = await verifyPassword(
-      parsed.data.currentPassword,
-      user.password_hash,
-    );
-    if (!valid) {
-      return { ok: false as const, error: "Current password is incorrect." };
+    // Social-only accounts are adding a password, not changing one — there is
+    // nothing to check the current password against. The session is the proof
+    // of identity here, exactly as it is for a normal change.
+    if (user.password_hash) {
+      const valid = await verifyPassword(
+        parsed.data.currentPassword,
+        user.password_hash,
+      );
+      if (!valid) {
+        return { ok: false as const, error: "Current password is incorrect." };
+      }
     }
 
     if (parsed.data.currentPassword === parsed.data.newPassword) {
@@ -409,9 +449,17 @@ export async function deleteMyAccount(input: {
       };
     }
 
-    const valid = await verifyPassword(parsed.data.password, user.password_hash);
-    if (!valid) {
-      return { ok: false as const, error: "Password is incorrect." };
+    // A Google-only account has no password to confirm with. Typing the exact
+    // account email, already checked above, is the confirmation in that case —
+    // demanding a password nobody set would make the account undeletable.
+    if (user.password_hash) {
+      const valid = await verifyPassword(
+        parsed.data.password,
+        user.password_hash,
+      );
+      if (!valid) {
+        return { ok: false as const, error: "Password is incorrect." };
+      }
     }
 
     if (user.is_admin && (await countAdmins()) <= 1) {

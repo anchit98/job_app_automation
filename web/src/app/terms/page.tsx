@@ -32,17 +32,18 @@ export default function TermsPage() {
               JobApp OS is a job application automation platform. Users paste a
               job description; the service helps generate tailored resumes and
               cover letters, store materials via Google Drive and Google Docs,
-              prepare Gmail drafts for outreach and follow-ups, and track
-              applications in a dashboard.
+              write outreach and follow-up emails, and track applications in a
+              dashboard.
             </p>
             <p>
               Generations run server-side using AI (OpenAI). Certain features
               depend on Google authorization, a completed Profile setup
               (Google connection, required profile fields, and master resume),
-              and billing access where applicable. Outreach email is created as{" "}
-              <strong className="font-semibold">Gmail drafts only</strong> —
-              JobApp OS does not auto-send cold emails or follow-ups on your
-              behalf. Feature availability may change over time.
+              and available Apply credits. Outreach email{" "}
+              <strong className="font-semibold">never leaves our systems</strong>{" "}
+              — JobApp OS requests no mail permission at all, and each email
+              opens pre-filled in your own mail client for you to send. Feature
+              availability may change over time.
             </p>
           </div>
         </section>
@@ -108,11 +109,11 @@ export default function TermsPage() {
           <h2 className="li-section-title">5. Google and Third-Party Integrations</h2>
           <div className="space-y-4 text-[15px] leading-7 text-on-surface">
             <p>
-              JobApp OS may connect to Google Drive, Google Docs, Gmail, OpenAI,
-              and other third-party services when you authorize those
-              integrations or when the operator configures them for Apply.
-              Your use of those services remains subject to their own terms and
-              policies.
+              JobApp OS may connect to Google Drive and Google Docs when you
+              authorize that integration, and to OpenAI, Razorpay and Resend as
+              configured by the operator. No mail-account access is requested or
+              used. Your use of those services remains subject to their own
+              terms and policies.
             </p>
             <p>
               If a third-party service changes, revokes access, rate-limits
@@ -126,18 +127,24 @@ export default function TermsPage() {
           <h2 className="li-section-title">6. Billing, Access, and Refunds</h2>
           <div className="space-y-4 text-[15px] leading-7 text-on-surface">
             <p>
-              Some features or account states may require payment before access
-              is granted. Where manual payment review is used, activation may be
-              delayed until an administrator verifies the payment reference and
-              approves access. Launch offer details (such as one-time pricing,
-              lifetime access messaging, or included application volume) are
-              described on the live billing and marketing pages and may change.
+              The service is free to use up to a limited number of Apply runs
+              per account. Beyond that, further Apply runs require purchasing a
+              plan or a credit top-up. Plans and top-ups are one-time purchases
+              that add Apply credits; nothing auto-renews, and credits do not
+              expire. Current prices and included volumes are shown on the live
+              billing and marketing pages and may change.
             </p>
             <p>
-              After paid access is granted, Dashboard and Apply may remain
-              locked until required Profile setup is complete (Connect Google,
-              required profile fields, and master resume). Profile settings can
-              be updated anytime thereafter.
+              Users who purchased the earlier one-time lifetime offer keep
+              unmetered access; the credit limits above do not apply to them.
+            </p>
+            <p>
+              Where manual payment review is used, activation may be delayed
+              until an administrator verifies the payment reference and approves
+              access. Dashboard and Apply remain unavailable until required
+              Profile setup is complete (Connect Google, required profile
+              fields, and master resume), whether or not you have paid. Profile
+              settings can be updated anytime thereafter.
             </p>
             <p>
               Unless expressly stated otherwise on the live service, fees are

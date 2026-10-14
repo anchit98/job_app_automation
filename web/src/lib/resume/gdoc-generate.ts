@@ -23,7 +23,8 @@ export interface GdocGenerationInput {
 
 export interface GdocGenerationResult {
   drive_doc_id: string;
-  drive_pdf_id: string;
+  /** Null when the caller asked to skip the PDF export. */
+  drive_pdf_id: string | null;
   pdf_name: string;
 }
 
@@ -102,6 +103,18 @@ export async function generateResumeFromDoc(
   drive: DriveClient,
   docs: DocsClient,
   input: GdocGenerationInput,
+  options?: {
+    /** Fires once the Doc holds the final text, before the slower PDF work. */
+    onDocReady?: (driveDocId: string) => Promise<void>;
+    /**
+     * Skip exporting and uploading the Doc as a PDF.
+     *
+     * The downloadable PDF is typeset from LaTeX now; this Doc exists so the
+     * user can open their own layout and edit it. Exporting it as well would
+     * be two more Google round trips for a file nothing links to.
+     */
+    skipPdf?: boolean;
+  },
 ): Promise<GdocGenerationResult> {
   const applicationFolderId = await drive.ensureApplicationFolder(input.application);
   const base = buildFileBaseName(input.fullName, input.application);
@@ -135,6 +148,15 @@ export async function generateResumeFromDoc(
     if (skillStyleRequests.length > 0) {
       await docs.batchUpdate(copiedDocId, skillStyleRequests);
     }
+  }
+
+  // Everything above this line decides what the resume says; everything
+  // below is just turning it into a PDF file on Drive. The caller can start
+  // offering the download now.
+  if (options?.onDocReady) await options.onDocReady(copiedDocId);
+
+  if (options?.skipPdf) {
+    return { drive_doc_id: copiedDocId, drive_pdf_id: null, pdf_name: pdfName };
   }
 
   const pdfBuffer = await drive.exportAsPdf(copiedDocId);

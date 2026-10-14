@@ -4,6 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { LandingGallery } from "@/components/marketing/landing-gallery";
+import {
+  FREE_ALLOWANCE,
+  PRICING_PLANS,
+  PRICING_TOPUPS,
+  formatInr,
+} from "@/lib/billing/pricing";
 import { LandingAgentVisual } from "@/components/marketing/landing-agent-visual";
 
 type NavItem = { href: string; label: string };
@@ -42,14 +48,14 @@ const navEntries: NavEntry[] = [
 const heroChips = [
   { icon: "verified", label: "Fully customizable" },
   { icon: "cloud", label: "Runs in the cloud" },
-  { icon: "drafts", label: "Draft-only outreach" },
+  { icon: "drafts", label: "You send every email" },
 ];
 
 const features = [
   {
     icon: "rocket_launch",
     title: "Apply",
-    body: "Paste a job description with company and role. JobApp OS runs the full pipeline in the cloud: resume, cover letter, contacts, cold emails, and Gmail drafts.",
+    body: "Paste a job description with company and role. JobApp OS runs the full pipeline in the cloud: tailored resume, cover letter, recruiter contacts, and the cold emails to go with them.",
   },
   {
     icon: "auto_awesome",
@@ -63,8 +69,8 @@ const features = [
   },
   {
     icon: "mail",
-    title: "Gmail drafts and follow-ups",
-    body: "Outreach lands as drafts you send when ready. Scheduled follow-ups enqueue on your timeline without auto-sending.",
+    title: "Outreach and follow-ups",
+    body: "Each email opens pre-filled in your own mail client — Gmail, Outlook or whatever you use — so you send it yourself. Follow-ups are scheduled on your timeline, never auto-sent.",
   },
   {
     icon: "tune",
@@ -82,7 +88,7 @@ const benefits = [
   {
     icon: "hub",
     title: "Stop juggling ten tools",
-    body: "LinkedIn, documents, Gmail, trackers, and reminders collapse into one personal application OS.",
+    body: "LinkedIn, documents, email, trackers, and reminders collapse into one personal application OS.",
   },
   {
     icon: "auto_fix_high",
@@ -92,7 +98,7 @@ const benefits = [
   {
     icon: "verified_user",
     title: "You stay in control",
-    body: "Emails are drafts. Sends stay manual. The agent prepares the work; you approve what goes out.",
+    body: "Nothing leaves your account. The agent writes the email; you open it, read it, and press send.",
   },
   {
     icon: "stacked_line_chart",
@@ -144,11 +150,11 @@ const aiPoints = [
 const faqs = [
   {
     q: "What does JobApp OS access in my Google account?",
-    a: "With your consent, JobApp OS uses Google Drive and Google Docs only for files you choose or that the app creates (tailored resumes, cover letters, PDFs), and uses Gmail to create outreach drafts — not to send mail for you. You can revoke access anytime in your Google Account settings. See our Privacy Policy for full details.",
+    a: "Google Drive and Google Docs only, and only for the files you choose or that the app creates — tailored resumes, cover letters and their PDFs. JobApp OS asks for no mail permission at all: outreach opens in your own mail client instead. You can revoke access anytime in your Google Account settings. See our Privacy Policy for full details.",
   },
   {
     q: "Will emails ever be sent without my approval?",
-    a: "Never. Everything lands in your Gmail as a draft — cold emails and follow-ups included. You review, edit if you like, and hit send yourself. JobApp OS does not send cold outreach or follow-ups for you.",
+    a: "It is not possible. JobApp OS has no access to your mailbox — every email opens pre-filled in your own mail client, and you press send. Cold emails and follow-ups both work this way.",
   },
   {
     q: "Will the AI invent experience I don't have?",
@@ -156,19 +162,19 @@ const faqs = [
   },
   {
     q: "Do I need my own AI subscription or API keys?",
-    a: "No. Generation runs on JobApp OS servers and is included in the one-time price. You don't need ChatGPT Plus, API keys, or any other AI account.",
+    a: "No. Generation runs on JobApp OS servers, on the free plan as well as the paid ones. You don't need ChatGPT Plus, API keys, or any other AI account.",
   },
   {
     q: "Are the generated resumes ATS-friendly?",
-    a: "Yes. Resumes are clean, single-page, text-based PDFs built from Google Docs — no graphics, tables, or columns that trip up applicant tracking systems. Keywords from the job description are worked into your real experience.",
+    a: "Yes. Resumes are typeset as clean, single-page, text-based PDFs — no graphics, tables, or columns that trip up applicant tracking systems. Keywords from the job description are worked into your real experience. Note that this means an uploaded resume keeps its words, not its layout: every output uses our ATS-friendly format.",
   },
   {
     q: "How long does one application take?",
-    a: "A few minutes end to end. Text generation finishes first, PDFs upload to Drive automatically, and Gmail drafts are created once documents are ready — you can watch each stage live on the pipeline page.",
+    a: "A few minutes end to end. Text generation finishes first, PDFs upload to Drive automatically, and the outreach emails are ready to open as soon as the documents are — you can watch each stage live on the pipeline page.",
   },
   {
     q: "Is cold-emailing recruiters allowed?",
-    a: "Yes. You're sending a personal, one-to-one note from your own Gmail to a publicly listed professional — that's networking, not spam. Drafts are personalized per contact, and since you send manually, you stay in full control of tone and timing.",
+    a: "Yes. You're sending a personal, one-to-one note from your own mailbox to a publicly listed professional — that's networking, not spam. Each email is personalized per contact, and since you send manually, you stay in full control of tone and timing.",
   },
   {
     q: "What happens if a step fails mid-run?",
@@ -187,13 +193,13 @@ const workflowSteps = [
     step: "02",
     icon: "link",
     title: "Connect your Google account",
-    body: "Grant permission for Google Drive, Docs, and Gmail drafts so documents and outreach can be prepared for you.",
+    body: "Grant access to Google Drive and Docs so your tailored resumes and cover letters can be built in your own Drive. No mail permission is requested.",
   },
   {
     step: "03",
     icon: "description",
     title: "Set up your master resume",
-    body: "Fill in your profile and sync your master resume and cover letter from Google Docs — the source of truth for every application.",
+    body: "Build your CV in the app, or import one from Drive or your device — whichever you pick becomes the source of truth for every application.",
   },
   {
     step: "04",
@@ -211,7 +217,7 @@ const workflowSteps = [
     step: "06",
     icon: "send",
     title: "Review, send, and track",
-    body: "Check the Gmail drafts, send them yourself, and track every application, reply, and follow-up on the dashboard.",
+    body: "Open each email in your own mail client, send it yourself, and track every application, reply, and follow-up on the dashboard.",
   },
 ];
 
@@ -223,13 +229,13 @@ const googleAccessPoints = [
   },
   {
     icon: "drafts",
-    title: "Gmail — drafts only",
-    body: "Writes outreach and follow-up emails as drafts in your Gmail, attaching the finished PDFs. Nothing is ever sent automatically — you review and press send yourself.",
+    title: "No mail permission at all",
+    body: "JobApp OS asks for nothing from Gmail. Outreach and follow-ups open pre-filled in whatever mail client you use, with the PDFs offered as downloads to attach. Nothing can be sent without you.",
   },
   {
-    icon: "mark_email_read",
-    title: "Reply tracking, scoped tightly",
-    body: "Where you grant read access, JobApp OS only looks up the application threads it created for you, so follow-ups land in the right conversation. Unrelated email is never read.",
+    icon: "folder_managed",
+    title: "Drive access, scoped tightly",
+    body: "The `drive.file` scope only reaches files the app created or that you handed it through Google's own file picker. The rest of your Drive is invisible to it.",
   },
   {
     icon: "verified_user",
@@ -673,9 +679,9 @@ export function LandingPage() {
                   JobApp OS is a job application automation web app. Paste a
                   job description to generate tailored resumes and cover
                   letters, store them in your Google Drive and Google Docs,
-                  prepare Gmail drafts for outreach and follow-ups, and track
-                  every application in one dashboard. You review and send all
-                  emails yourself.
+                  write the outreach and follow-up emails to go with them, and
+                  track every application in one dashboard. You review and send
+                  every email yourself, from your own mail client.
                 </p>
               </Reveal>
               <Reveal delay={260}>
@@ -711,9 +717,15 @@ export function LandingPage() {
               </Reveal>
               <Reveal delay={420}>
                 <p className="mt-6 text-[13px] font-medium text-[var(--on-surface-variant)]">
-                  Launch offer for the first 100 buyers:{" "}
-                  <span className="price-display font-bold text-[var(--primary)]">₹299</span>
-                  {" "}· lifetime access · 60 applications included.
+                  Free to start:{" "}
+                  <span className="price-display font-bold text-[var(--primary)]">
+                    {FREE_ALLOWANCE.apply} applications
+                  </span>
+                  {" "}on the house, no card needed. Paid plans from{" "}
+                  <span className="price-display font-bold text-[var(--primary)]">
+                    {formatInr(PRICING_PLANS[1].priceInr)}
+                  </span>
+                  .
                 </p>
               </Reveal>
             </div>
@@ -731,7 +743,7 @@ export function LandingPage() {
             <SectionHeading
               eyebrow="How it works"
               title="From sign-up to sent application"
-              lead="JobApp OS helps job seekers automate applications end to end: tailor resumes and cover letters from a pasted job description, save materials to Google Drive/Docs, prepare Gmail drafts for recruiters, schedule follow-up reminders, and track every role in one place — while you stay in control of what gets sent."
+              lead="JobApp OS helps job seekers automate applications end to end: tailor resumes and cover letters from a pasted job description, save materials to Google Drive/Docs, write the outreach emails to recruiters, schedule follow-up reminders, and track every role in one place — while you stay in control of what gets sent."
             />
             <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {workflowSteps.map((item, index) => (
@@ -919,7 +931,7 @@ export function LandingPage() {
                 <SectionHeading
                   eyebrow="How AI is leveraged"
                   title="AI that prepares. You that decide."
-                  lead="JobApp OS treats AI as the reasoning engine inside a structured agent workflow. Generations run on the server from your materials, responses are validated, and outbound mail stays draft-only until you send it from Gmail."
+                  lead="JobApp OS treats AI as the reasoning engine inside a structured agent workflow. Generations run on the server from your materials, responses are validated, and no email can leave without you — the app has no access to your mailbox."
                 />
               </div>
               <div className="grid gap-5 sm:grid-cols-2 lg:col-span-7">
@@ -964,80 +976,103 @@ export function LandingPage() {
 
         <section id="pricing" className="marketing-section">
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-            <Reveal>
-              <div className="marketing-pricing relative overflow-hidden rounded-[24px] px-5 py-10 sm:rounded-[28px] sm:px-10 sm:py-14">
-                <div className="marketing-pricing-glow" aria-hidden />
-                <div className="relative grid gap-10 lg:grid-cols-12 lg:items-center">
-                  <div className="text-center sm:text-left lg:col-span-7">
-                    <p className="mk-offer-badge">
-                      <span className="material-symbols-outlined text-[15px]">
-                        bolt
-                      </span>
-                      Limited launch offer · first 100 buyers
-                    </p>
-                    <h2 className="marketing-display mt-5 text-[30px] font-bold leading-[1.12] tracking-tight sm:text-[38px]">
-                      Lifetime access. 60 applications included.
-                    </h2>
-                    <p className="mx-auto mt-4 max-w-xl text-[16px] leading-7 text-[var(--on-surface-variant)] sm:mx-0">
-                      One payment unlocks JobApp OS forever — profile, tracker,
-                      drafts, and the full Apply pipeline. This launch price
-                      includes 60 tailored applications; tiers and top-ups come
-                      later as usage grows.
-                    </p>
-                    <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-                      {[
-                        "Lifetime product access",
-                        "60 Apply runs included",
-                        "Resume, cover letter & cold emails",
-                        "One-time setup support",
-                      ].map((item) => (
+            <SectionHeading
+              eyebrow="Pricing"
+              title="Start free. Pay by the application."
+              lead="One Apply run is one complete tailored application — resume, cover letter, recruiter contacts and the outreach emails. The CV Builder, AI tailoring, the job tracker and follow-ups are unlimited on every plan, including the free one."
+              align="center"
+            />
+
+            <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {PRICING_PLANS.map((plan, index) => (
+                <Reveal key={plan.code} delay={(index % 4) * 90}>
+                  <article
+                    className={`marketing-panel flex h-full flex-col gap-4 rounded-2xl p-6 ${
+                      plan.highlighted
+                        ? "border-[var(--primary)] shadow-[0_18px_40px_-30px_color-mix(in_srgb,var(--primary)_60%,transparent)]"
+                        : ""
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-[17px] font-bold text-[var(--on-surface)]">
+                          {plan.name}
+                        </h3>
+                        {plan.highlighted ? (
+                          <span className="mk-offer-badge px-2.5 py-1 text-[11px]">
+                            Most popular
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="price-display marketing-gradient-text mt-3 text-[38px] font-bold leading-none">
+                        {formatInr(plan.priceInr)}
+                      </p>
+                      <p className="mt-2 text-[13px] leading-5 text-[var(--on-surface-variant)]">
+                        {plan.tagline}
+                      </p>
+                    </div>
+
+                    <ul className="flex-1 space-y-2">
+                      {plan.features.map((feature) => (
                         <li
-                          key={item}
-                          className="flex items-center justify-center gap-2.5 text-[14px] font-semibold sm:justify-start"
+                          key={feature}
+                          className="flex items-start gap-2 text-[13px] leading-5 text-[var(--on-surface-variant)]"
                         >
-                          <span className="material-symbols-outlined text-[18px] text-[var(--success)]">
+                          <span className="material-symbols-outlined mt-px text-[16px] text-[var(--success)]">
                             check_circle
                           </span>
-                          {item}
+                          {feature}
                         </li>
                       ))}
                     </ul>
-                  </div>
-                  <div className="lg:col-span-5">
-                    <div className="mk-price-card rounded-2xl p-6 text-center sm:p-7">
-                      <p className="text-[13px] font-bold uppercase tracking-[0.14em] text-[var(--on-surface-variant)]">
-                        First 100 buyers
-                      </p>
-                      <div className="mt-4 flex items-center justify-center gap-3">
-                        <span className="text-[26px] font-semibold text-[var(--on-surface-variant)] line-through decoration-[var(--error)]/60 decoration-2 price-display">
-                          ₹699
-                        </span>
-                        <span className="price-display marketing-gradient-text text-[52px] font-bold leading-none sm:text-[58px]">
-                          ₹299
-                        </span>
-                      </div>
-                      <p className="mt-3 text-[13px] leading-5 text-[var(--on-surface-variant)]">
-                        One-time. Lifetime access. 60 applications included.
-                      </p>
-                      <Link
-                        href="/signup"
-                        className="mk-btn mk-btn-primary mt-7 min-h-13 w-full text-[15px]"
-                      >
-                        Claim the offer
-                        <span className="material-symbols-outlined mk-btn-arrow text-[18px]">
-                          arrow_forward
-                        </span>
-                      </Link>
-                      <Link
-                        href="/login"
-                        className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-lg text-[14px] font-semibold text-[var(--primary)] no-underline transition-colors hover:bg-[var(--secondary-hover)]"
-                      >
-                        Already have an account? Log in
-                      </Link>
+
+                    <Link
+                      href="/signup"
+                      className={`mk-btn ${
+                        plan.highlighted ? "mk-btn-primary" : "mk-btn-outline"
+                      } min-h-11 w-full text-[14px]`}
+                    >
+                      {plan.priceInr === 0 ? "Start free" : `Get ${plan.name}`}
+                    </Link>
+                  </article>
+                </Reveal>
+              ))}
+            </div>
+
+            <Reveal delay={120}>
+              <div className="marketing-panel mt-5 rounded-2xl px-5 py-5 sm:px-7 sm:py-6">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-[16px] font-bold text-[var(--on-surface)]">
+                    Out of runs? Top up.
+                  </h3>
+                  <p className="text-[13px] text-[var(--on-surface-variant)]">
+                    Adds Apply runs without changing your plan. Runs never
+                    expire, and nothing auto-renews.
+                  </p>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {PRICING_TOPUPS.map((pack) => (
+                    <div
+                      key={pack.code}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border-hairline)] px-4 py-3"
+                    >
+                      <span className="text-[14px] font-semibold text-[var(--on-surface)]">
+                        {pack.name}
+                      </span>
+                      <span className="price-display text-[16px] font-bold text-[var(--primary)]">
+                        {formatInr(pack.priceInr)}
+                      </span>
                     </div>
-                  </div>
+                  ))}
                 </div>
               </div>
+            </Reveal>
+
+            <Reveal delay={160}>
+              <p className="mt-4 text-center text-[13px] text-[var(--on-surface-variant)]">
+                Already bought the ₹299 lifetime offer? Nothing changes for you
+                — your account stays unmetered.
+              </p>
             </Reveal>
             <Reveal delay={100}>
               <aside className="mx-auto mt-6 max-w-3xl overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--primary)_28%,var(--border-hairline))] bg-[linear-gradient(118deg,color-mix(in_srgb,var(--primary-container)_70%,var(--surface))_0%,var(--surface)_52%,color-mix(in_srgb,var(--tertiary-container)_40%,var(--surface))_100%)] px-5 py-5 text-center shadow-[0_14px_34px_-26px_color-mix(in_srgb,var(--primary)_40%,transparent)] sm:px-7 sm:py-6 sm:text-left">
@@ -1053,10 +1088,10 @@ export function LandingPage() {
                     </p>
                     <p className="mt-1.5 text-[14px] leading-6 text-[var(--on-surface-variant)]">
                       Doing this alone means rewriting resumes, cover letters,
-                      and outreach for every role, plus juggling Docs, Gmail,
-                      and a tracker. JobApp OS turns a pasted JD into tailored
-                      docs and draft emails in minutes — so you apply earlier,
-                      more often, and with less busywork.
+                      and outreach for every role, plus juggling Docs, your
+                      inbox, and a tracker. JobApp OS turns a pasted JD into
+                      tailored documents and ready-to-send emails in minutes —
+                      so you apply earlier, more often, and with less busywork.
                     </p>
                   </div>
                 </div>
@@ -1111,7 +1146,7 @@ export function LandingPage() {
             </div>
             <p className="mt-4 text-[14px] leading-6 text-[var(--on-surface-variant)]">
               JobApp OS — job application automation for tailored resumes and
-              cover letters, Google Drive/Docs storage, Gmail drafts, and
+              cover letters, Google Drive/Docs storage, recruiter outreach, and
               application tracking.{" "}
               <Link
                 href="/privacy-policy"

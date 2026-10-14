@@ -12,14 +12,23 @@ type WakeSignal = {
   chatgpt_url: string;
 };
 
-const BUSY_INTERVAL_MS = 5000;
+const BUSY_INTERVAL_MS = 3000;
 const IDLE_INTERVAL_MS = 60000;
+/**
+ * Cadence while the tab is in the background.
+ *
+ * A hidden tab used to skip its ticks entirely, which meant a pipeline stopped
+ * the moment the user switched to another window — the one time they most
+ * expect it to keep running. It keeps ticking now, just slowly enough that a
+ * forgotten background tab is not hammering the database.
+ */
+const HIDDEN_INTERVAL_MS = 15000;
 /** Let the page's own data queries win the DB pool before the first tick. */
-const FIRST_TICK_DELAY_MS = 4000;
+const FIRST_TICK_DELAY_MS = 1500;
 
 /**
  * Keeps Quick Apply pipelines moving on every app page - not only /pipeline/[id].
- * Backs off when idle / tab hidden so UI clicks stay snappy.
+ * Backs off when idle or backgrounded so UI clicks stay snappy.
  */
 export function PipelineKeeper() {
   const lastWakeRef = useRef<string | null>(null);
@@ -83,9 +92,14 @@ export function PipelineKeeper() {
       intervalRef.current = setInterval(() => void tick(), ms);
     }
 
+    function intervalFor(busy: boolean) {
+      if (!busy) return IDLE_INTERVAL_MS;
+      const hidden = typeof document !== "undefined" && document.hidden;
+      return hidden ? HIDDEN_INTERVAL_MS : BUSY_INTERVAL_MS;
+    }
+
     async function tick() {
       if (cancelled || inFlight) return;
-      if (typeof document !== "undefined" && document.hidden) return;
 
       inFlight = true;
       try {
@@ -93,12 +107,13 @@ export function PipelineKeeper() {
         if (cancelled || !result.ok) return;
 
         const busy = (result.busy_count ?? 0) > 0 || Boolean(result.wake);
-        if (busy !== busyRef.current) {
-          busyRef.current = busy;
-          schedule(busy ? BUSY_INTERVAL_MS : IDLE_INTERVAL_MS);
-        }
+        busyRef.current = busy;
+        schedule(intervalFor(busy));
 
+        // Waking the AI tab needs a foreground tab to open it in; the pipeline
+        // itself has already been advanced above either way.
         if (!result.wake) return;
+        if (typeof document !== "undefined" && document.hidden) return;
         const force = lastWakeRef.current !== result.wake.prompt_run_id;
         await wakeBridge(result.wake, force);
       } catch (err) {
@@ -115,6 +130,8 @@ export function PipelineKeeper() {
       if (!document.hidden) void tick();
     };
     const onVisibility = () => {
+      // Re-pace immediately: coming back to the foreground should feel live.
+      schedule(intervalFor(busyRef.current));
       if (!document.hidden) void tick();
     };
     window.addEventListener("focus", onFocus);

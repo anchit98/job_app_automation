@@ -15,6 +15,7 @@ import {
   getLatestOpenRazorpayPaymentLinkForUser,
   insertRazorpayPaymentLink,
 } from "@/lib/billing/razorpay-payment-links";
+import { resolvePurchase } from "@/lib/billing/pricing";
 import { reconcilePaidPaymentLink } from "@/lib/billing/razorpay-unlock";
 import { requireUser, userHasPaidAccess } from "@/lib/auth/user";
 import { env, hasRazorpayConfig } from "@/lib/env";
@@ -106,19 +107,26 @@ function buildPaymentLinkReferenceId(userId: string): string {
 }
 
 /**
- * Create a Razorpay Payment Link for the current user and redirect to the hosted page.
- * On failure returns `{ ok: false, error }` for the billing UI.
+ * Create a Razorpay Payment Link for the current user and redirect to the
+ * hosted page. On failure returns `{ ok: false, error }` for the billing UI.
+ *
+ * `purchase` names what is being bought — a plan code or a top-up code from
+ * lib/billing/pricing. It is written onto the link row so the webhook can
+ * grant the right thing without re-deriving it from the amount, which would
+ * break the moment two products cost the same.
+ *
+ * It is required. Nothing sells the old ₹299 lifetime offer any more — the
+ * unlock path still understands links that predate the ladder (they carry no
+ * purchase columns), but no new one is ever created.
  */
-export async function startRazorpayPaymentLink(): Promise<
-  { ok: false; error: string } | never
-> {
+export async function startRazorpayPaymentLink(purchase: {
+  kind: string;
+  code: string;
+}): Promise<{ ok: false; error: string } | never> {
   let shortUrl: string;
 
   try {
     const user = await requireUser();
-    if (userHasPaidAccess(user)) {
-      return { ok: false as const, error: "Your account already has access." };
-    }
     if (!hasRazorpayConfig()) {
       return {
         ok: false as const,
@@ -126,7 +134,15 @@ export async function startRazorpayPaymentLink(): Promise<
       };
     }
 
-    const amountPaise = Math.round(Number(env.paymentAmountInr()) * 100);
+    const resolved = resolvePurchase(purchase.kind, purchase.code);
+    if (!resolved) {
+      return { ok: false as const, error: "That plan is no longer available." };
+    }
+
+    // Tiers and top-ups are repeat purchases by design — running out of Apply
+    // runs and buying more is the normal case — so there is nothing to refuse
+    // an existing customer here.
+    const amountPaise = Math.round(resolved.priceInr * 100);
     if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
       return { ok: false as const, error: "Invalid payment amount configuration." };
     }
@@ -141,7 +157,7 @@ export async function startRazorpayPaymentLink(): Promise<
       referenceId,
       userId: user.id,
       callbackUrl,
-      description: env.paymentPlanLabel(),
+      description: resolved.label,
       customer: {
         name: user.full_name ?? undefined,
         email: user.email,
@@ -155,6 +171,8 @@ export async function startRazorpayPaymentLink(): Promise<
       currency: link.currency,
       shortUrl: link.shortUrl,
       referenceId: link.referenceId,
+      purchaseKind: resolved.kind,
+      purchaseCode: resolved.code,
     });
 
     await writeAuditLog(
@@ -165,6 +183,8 @@ export async function startRazorpayPaymentLink(): Promise<
         razorpay_payment_link_id: link.id,
         reference_id: link.referenceId,
         amount_paise: link.amountPaise,
+        purchase_kind: resolved.kind,
+        purchase_code: resolved.code,
       },
     );
 

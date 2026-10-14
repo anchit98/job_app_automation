@@ -1,21 +1,13 @@
 import { AppShell } from "@/components/layout/app-shell";
-import { PaidAccessGate } from "@/components/billing/paid-access-gate";
 import { SetupAccessGate } from "@/components/setup/setup-access-gate";
 import { HardRedirect } from "@/components/auth/hard-redirect";
-import { getCurrentUser, userHasPaidAccess } from "@/lib/auth/user";
+import { getCurrentUser } from "@/lib/auth/user";
 import { getProfile } from "@/app/actions/profile";
 import { profileAvatarSrc } from "@/lib/profile-avatar";
 import { getSetupReadiness } from "@/lib/setup/readiness";
 import { setupAllowed, setupLockedPath } from "@/lib/setup/setup-paths";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-
-/** Routes unpaid users may still open fully. */
-const UNPAID_ALLOWED = [
-  "/billing",
-  "/settings",
-  "/reset-password-required",
-];
 
 /** Skip setup/resume fan-out — these pages don't need the setup gate data. */
 function skipSetupReadiness(pathname: string) {
@@ -24,12 +16,6 @@ function skipSetupReadiness(pathname: string) {
     pathname.startsWith("/settings") ||
     pathname.startsWith("/billing") ||
     pathname === "/reset-password-required"
-  );
-}
-
-function unpaidAllowed(pathname: string) {
-  return UNPAID_ALLOWED.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 }
 
@@ -74,32 +60,24 @@ export default async function AppLayout({
     return <HardRedirect href="/login" label="Returning to sign in…" />;
   }
 
-  const isPaid = userHasPaidAccess(user);
-  const setupReady = !isPaid || readiness.setupReady;
+  const setupReady = readiness.setupReady;
 
-  // Server-side redirect when pathname is available from middleware.
-  if (!isPaid && pathname && !unpaidAllowed(pathname)) {
-    redirect("/billing");
+  // There is no paywall in front of the app any more. Every account starts on
+  // the free plan with a small allowance of Apply runs, and metering happens
+  // where the run is spent (spendCredit in actions/pipeline) rather than at
+  // the door — a lock screen for someone who has not tried the product yet is
+  // a lock screen nobody pays to get past.
+  //
+  // /billing is now a plans page anyone can open, so it no longer bounces
+  // paid users away either. Only the Razorpay return page still redirects,
+  // because it is a landing pad rather than a destination.
+  if (pathname.startsWith("/billing/razorpay/return")) {
+    redirect(readiness.setupReady ? "/dashboard" : "/onboarding");
   }
-  // Paid users leave billing; after payment always prefer onboarding.
+
+  // Setup still gates the pages that cannot work without it — Apply needs a
+  // master resume whether or not anyone paid.
   if (
-    isPaid &&
-    pathname &&
-    (pathname === "/billing" || pathname.startsWith("/billing/"))
-  ) {
-    const ready = lightLayout
-      ? (await getSetupReadiness().catch(() => ({ setupReady: false }))).setupReady
-      : readiness.setupReady;
-    redirect(
-      pathname.startsWith("/billing/razorpay/return")
-        ? "/onboarding"
-        : ready
-          ? "/dashboard"
-          : "/onboarding",
-    );
-  }
-  if (
-    isPaid &&
     !readiness.setupReady &&
     pathname &&
     setupLockedPath(pathname) &&
@@ -114,14 +92,9 @@ export default async function AppLayout({
       userName={profile?.full_name || user.full_name}
       avatarSrc={profileAvatarSrc(profile)}
       isAdmin={user.is_admin}
-      isPaid={isPaid}
       setupReady={setupReady}
     >
-      <PaidAccessGate isPaid={isPaid}>
-        <SetupAccessGate isPaid={isPaid} setupReady={setupReady}>
-          {children}
-        </SetupAccessGate>
-      </PaidAccessGate>
+      <SetupAccessGate setupReady={setupReady}>{children}</SetupAccessGate>
     </AppShell>
   );
 }

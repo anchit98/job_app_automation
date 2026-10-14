@@ -10,7 +10,10 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  -- Nullable: an account created through "Continue with Google" has no
+  -- password, and a placeholder hash would be indistinguishable from a real
+  -- credential to every check that reads this column. See migration 054.
+  password_hash TEXT,
   full_name TEXT,
   is_admin BOOLEAN NOT NULL DEFAULT false,
   must_reset_password BOOLEAN NOT NULL DEFAULT false,
@@ -23,6 +26,23 @@ CREATE TABLE IF NOT EXISTS users (
 -- Login looks users up via lower(email); the plain UNIQUE(email) index can't
 -- serve that predicate.
 CREATE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email));
+
+-- External sign-in identities. Keyed on the provider's own subject id, never
+-- on email, because an address can be reassigned and a subject id cannot.
+CREATE TABLE IF NOT EXISTS user_identities (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  provider_account_id TEXT NOT NULL,
+  email TEXT,
+  created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
+  last_login_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS user_identities_provider_account_idx
+  ON user_identities (provider, provider_account_id);
+CREATE UNIQUE INDEX IF NOT EXISTS user_identities_user_provider_idx
+  ON user_identities (user_id, provider);
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -146,6 +166,11 @@ CREATE TABLE IF NOT EXISTS master_resume (
   doc_id TEXT,
   doc_layout TEXT,
   doc_synced_at TEXT,
+  -- Which route produced the resume in use: builder | device_upload |
+  -- drive_file | google_doc | manual. NULL on rows synced before tracking.
+  source TEXT,
+  source_label TEXT,
+  source_ref TEXT,
   created_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text),
   updated_at TEXT NOT NULL DEFAULT ((NOW() AT TIME ZONE 'utc')::text)
 );
@@ -349,7 +374,9 @@ CREATE TABLE IF NOT EXISTS emails (
   gmail_draft_id TEXT,
   gmail_message_id TEXT,
   draft_status TEXT NOT NULL DEFAULT 'pending' CHECK (
-    draft_status IN ('pending', 'creating', 'created', 'failed', 'deleted_externally')
+    draft_status IN (
+      'pending', 'creating', 'created', 'failed', 'deleted_externally', 'sent'
+    )
   ),
   draft_error TEXT,
   sent_at TEXT,

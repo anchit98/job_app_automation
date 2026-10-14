@@ -317,8 +317,8 @@ These bite everywhere — they must be handled in shared code, not per-phase.
   - *Severity:* High in production until fixed.
 
 - **Payment-claim email lands in the wrong inbox (or seems “missing”).**
-  - *Symptom:* Admin expects mail at a personal/work address; message was sent to the admin account email (fallback when `ADMIN_NOTIFY_EMAIL` is unset) or only visible in Gmail Sent.
-  - *Mitigation:* Set `ADMIN_NOTIFY_EMAIL` on Vercel; ensure the admin has Connect Google with `gmail.send`. Check Sent for confirmation.
+  - *Symptom:* Admin expects mail at a personal/work address; it went to every admin account's email (the fallback when `ADMIN_NOTIFY_EMAIL` is unset).
+  - *Mitigation:* Set `ADMIN_NOTIFY_EMAIL` on Vercel. If nothing arrives at all, check `RESEND_API_KEY` is set and the from-domain is verified in Resend — with no key the app reports `not_configured` and sends nothing.
   - *Severity:* Medium (ops confusion, not a payment-data loss).
 
 ### 2.2 Master Resume Import

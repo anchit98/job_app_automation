@@ -6,22 +6,22 @@ import { setupAllowed } from "@/lib/setup/setup-paths";
 import { PageLoader } from "@/components/ui/page-loader";
 
 /**
- * Client-side backup when server x-pathname is missing:
- * paid users with incomplete setup are sent to /onboarding.
+ * Client-side backup when server x-pathname is missing: a user with
+ * incomplete setup is sent to /onboarding.
  * Uses a full document navigation — soft replace often left a blank shell.
+ *
+ * No longer conditional on having paid. Setup is what Apply needs to run at
+ * all, and since the free plan can run Apply, everyone goes through it.
  */
 export function SetupAccessGate({
   setupReady,
-  isPaid,
   children,
 }: {
   setupReady: boolean;
-  isPaid: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const locked =
-    isPaid && !setupReady && pathname && !setupAllowed(pathname);
+  const locked = !setupReady && pathname && !setupAllowed(pathname);
 
   useEffect(() => {
     if (!locked) return;

@@ -7,8 +7,10 @@ import {
   getPaymentClaimForReview,
   reviewPaymentClaim,
 } from "@/lib/billing/payment-claims";
+import { sendPaymentReceipt } from "@/lib/billing/payment-receipt-email";
 import { verifyPaymentReviewToken } from "@/lib/billing/payment-review-token";
 import { dbGet } from "@/lib/db";
+import { env } from "@/lib/env";
 import { setUserPaid } from "@/lib/auth/user";
 
 async function resolveEmailReviewerAdminId(): Promise<string | null> {
@@ -87,6 +89,13 @@ export async function reviewPaymentClaimViaEmailToken(input: {
       admin_user_id: adminId,
       user_id: claim.user_id,
       upi_reference: claim.upi_reference,
+    });
+    await sendPaymentReceipt({
+      userId: claim.user_id,
+      amountInr: `₹${env.paymentAmountInr()}`,
+      planLabel: env.paymentPlanLabel(),
+      reference: claim.upi_reference,
+      method: "upi",
     });
   } else {
     await writeAuditLog("admin.payment_rejected", "payment_claims", claim.id, {

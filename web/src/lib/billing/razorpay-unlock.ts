@@ -1,6 +1,13 @@
 import { revalidatePath } from "next/cache";
 import { writeAuditLog } from "@/lib/audit";
-import { setUserPaid } from "@/lib/auth/user";
+import { getUserById, setUserPaid } from "@/lib/auth/user";
+import { addApplyCredits, applyTierPurchase } from "@/lib/billing/entitlements";
+import { resolvePurchase } from "@/lib/billing/pricing";
+import { env } from "@/lib/env";
+import {
+  formatPaiseAsInr,
+  sendPaymentReceipt,
+} from "@/lib/billing/payment-receipt-email";
 import { getRazorpayClient } from "@/lib/billing/razorpay";
 import {
   getRazorpayPaymentLinkByRazorpayId,
@@ -17,6 +24,50 @@ export function revalidateAfterPaid() {
   revalidatePath("/", "layout");
 }
 
+/**
+ * Grant what this link actually bought.
+ *
+ * Three shapes, and the difference matters:
+ *
+ *   - **A plan** adds that tier's credits and records the tier. It must *not*
+ *     go through `setUserPaid`, which moves the account onto
+ *     `legacy_lifetime` — the unmetered grandfathered plan. Paying ₹100 for
+ *     Starter and silently receiving unlimited runs would be a bug worth real
+ *     money.
+ *   - **A top-up** adds Apply runs and leaves the plan alone.
+ *   - **Neither** — a link created before tiers existed, which can only be the
+ *     ₹299 lifetime offer. That one really is `setUserPaid`.
+ */
+async function grantPurchase(link: RazorpayPaymentLinkRow): Promise<void> {
+  const purchase =
+    link.purchase_kind && link.purchase_code
+      ? resolvePurchase(link.purchase_kind, link.purchase_code)
+      : null;
+
+  if (!purchase) {
+    await setUserPaid(link.user_id, true);
+    return;
+  }
+
+  if (purchase.kind === "plan") {
+    await applyTierPurchase(
+      link.user_id,
+      purchase.code as Parameters<typeof applyTierPurchase>[1],
+    );
+    return;
+  }
+  await addApplyCredits(link.user_id, purchase.applyRuns);
+}
+
+/** What the receipt should call this purchase. */
+function purchaseLabel(link: RazorpayPaymentLinkRow): string {
+  const purchase =
+    link.purchase_kind && link.purchase_code
+      ? resolvePurchase(link.purchase_kind, link.purchase_code)
+      : null;
+  return purchase?.label ?? env.paymentPlanLabel();
+}
+
 export async function unlockFromPaymentLinkRow(
   link: RazorpayPaymentLinkRow,
   paymentId: string,
@@ -28,9 +79,10 @@ export async function unlockFromPaymentLinkRow(
       link.razorpay_payment_link_id,
       paymentId || link.razorpay_payment_id || "",
     );
-  }
-  await setUserPaid(link.user_id, true);
-  if (!alreadyPaid) {
+    // Credits are additive, so this has to run exactly once. Razorpay retries
+    // webhooks; the status transition above is what makes that safe.
+    await grantPurchase(link);
+
     await writeAuditLog(
       "payment.razorpay_link_paid",
       "razorpay_payment_links",
@@ -41,6 +93,15 @@ export async function unlockFromPaymentLinkRow(
         via,
       },
     );
+    // Only on the transition. Razorpay retries webhooks, and a receipt per
+    // retry is worse than no receipt at all.
+    await sendPaymentReceipt({
+      userId: link.user_id,
+      amountInr: formatPaiseAsInr(link.amount_paise),
+      planLabel: purchaseLabel(link),
+      reference: paymentId || link.razorpay_payment_id || link.razorpay_payment_link_id,
+      method: "razorpay",
+    });
   }
   revalidateAfterPaid();
 }
@@ -50,11 +111,28 @@ export async function unlockUserById(
   via: string,
   meta: Record<string, unknown> = {},
 ): Promise<void> {
+  // Whether this user was already paid decides whether a receipt is owed —
+  // webhooks are retried, and this path has no payment-link row to record
+  // "already handled" on.
+  const alreadyPaid = (await getUserById(userId))?.is_paid === true;
+
   await setUserPaid(userId, true);
   await writeAuditLog("payment.razorpay_link_paid", "users", userId, {
     ...meta,
     via,
   });
+
+  if (!alreadyPaid) {
+    await sendPaymentReceipt({
+      userId,
+      amountInr: `₹${env.paymentAmountInr()}`,
+      planLabel: env.paymentPlanLabel(),
+      reference: String(
+        meta.razorpay_payment_id ?? meta.razorpay_payment_link_id ?? "",
+      ),
+      method: "razorpay",
+    });
+  }
   revalidateAfterPaid();
 }
 

@@ -1,9 +1,8 @@
 import { env } from "@/lib/env";
 import {
-  AdminGmailConfigError,
-  listAdminNotifyEmails,
-  sendAdminGmail,
-} from "@/lib/google/admin-gmail";
+  sendTransactionalEmail,
+  transactionalAdminRecipients,
+} from "@/lib/emails/transactional";
 import { paymentReviewUrl } from "@/lib/billing/payment-review-token";
 
 function paymentClaimHtml(input: {
@@ -55,14 +54,14 @@ export async function notifyAdminsOfPaymentClaim(input: {
   upiReference: string;
 }): Promise<{ ok: true; emailedTo: string[] } | { ok: false; error: string }> {
   try {
-    const recipients = await listAdminNotifyEmails();
+    const recipients = await transactionalAdminRecipients();
     if (recipients.length === 0) {
       return { ok: false, error: "No admin email addresses to notify." };
     }
 
     const appUrl = env.appUrl().replace(/\/$/, "");
     const reviewUrl = await paymentReviewUrl(input.claimId);
-    const result = await sendAdminGmail({
+    const result = await sendTransactionalEmail({
       to: recipients,
       subject: `JobApp OS: payment claim from ${input.payerEmail}`,
       bodyHtml: paymentClaimHtml({
@@ -74,14 +73,13 @@ export async function notifyAdminsOfPaymentClaim(input: {
         amountInr: env.paymentAmountInr(),
       }),
     });
-    return { ok: true, emailedTo: result.emailedTo };
+    if (!result.ok) return { ok: false, error: result.error };
+    return { ok: true, emailedTo: result.emailed_to };
   } catch (error) {
     const message =
-      error instanceof AdminGmailConfigError
+      error instanceof Error
         ? error.message
-        : error instanceof Error
-          ? error.message
-          : "Failed to send payment notification email.";
+        : "Failed to send payment notification email.";
     console.error("[payment-claim-email]", error);
     return { ok: false, error: message };
   }

@@ -110,7 +110,7 @@ export function QuickApplyExistingButton({
                 </h3>
                 <p className="text-[13px] text-on-surface-variant mt-1">
                   Re-runs resume → cover letter on the server. Cold emails and
-                  Gmail drafts run only if contacts with emails are included
+                  Outreach emails are written only if contacts with emails are included
                   (optional).
                 </p>
               </div>

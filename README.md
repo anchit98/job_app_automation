@@ -1,23 +1,23 @@
 # JobApp OS | Job Application Automation
 
-**JobApp OS** turns a pasted job description into a tracked application package: tailored resume, cover letter, optional cold emails, Gmail drafts, and follow-ups.
+**JobApp OS** turns a pasted job description into a tracked application package: tailored resume, cover letter, optional cold emails, and follow-ups. Every email opens pre-filled in your own mail client — the app holds no mail permission.
 
 Generations run **server-side with OpenAI (`gpt-4.1-mini`)** by default. The optional **JobApp Bridge** Chrome extension remains available as a ChatGPT paste fallback.
 
-Hosted multi-user app: **Next.js 16** + **Supabase Postgres** + **Google Drive/Gmail** + **Vercel**.
+Hosted multi-user app: **Next.js 16** + **Supabase Postgres** + **Google Drive/Docs** + **Resend** + **Vercel**.
 
 ---
 
 ## What it does
 
 1. **Sign up / sign in** — email + password; sessions scoped per user  
-2. **Razorpay billing** — unpaid users land on `/billing`; **₹299** launch offer (first 100 buyers messaging): **lifetime access** + **60 applications included**. Pay via Razorpay Payment Link; access unlocks automatically after webhook confirmation. Admin **Mark paid** remains the support override; manual UPI is a collapsed legacy fallback.  
+2. **Freemium billing** — every account starts on the **free plan** (4 Apply runs) with no paywall in front of the app. Paid tiers (Starter / Pro / Enterprise) and Apply-run top-ups are bought through Razorpay Payment Links and credited automatically after webhook confirmation. Accounts that bought the old ₹299 lifetime offer stay unmetered. Admin **Mark paid** remains the support override.  
 3. **Profile setup gate** — after payment, Dashboard & Apply stay locked until Google is connected, required profile fields are saved (name, location, phone, LinkedIn), and master resume is synced (`/onboarding`). Settings can be changed anytime.  
 4. **Dashboard** — date-filtered metrics (IST day bounds), fresh LinkedIn jobs banner, recent applications, quick actions  
 5. **Quick Apply** — paste JD + company + role (contacts optional) → OpenAI pipeline; cover letter optional (defaults off until master cover is synced); in-app guide to find emails via LinkedIn + [Mailmeteor](https://mailmeteor.com/tools/linkedin-email-finder)  
 6. **Tailored resume quality** — JD-framed rewrite of master facts; **≥70% grounded JD keyword coverage** (must-have + tech); each bullet keeps the **same Doc wrap line count** as master (one-page lock); skills reorder/swap within master shape  
 7. **Tracker (Jobs)** — applications, contacts, versions, notes  
-8. **Gmail drafts** — created only after Drive PDFs are ready (attachments included); never auto-send  
+8. **Outreach** — each email opens in your own mail client through a compose link, with the PDFs offered as downloads; nothing is ever sent for you  
 9. **Follow-ups** — enqueue draft prompts on **IST** business days (never auto-send)  
 10. **Admin Center** — users, Mark paid / unpaid, recent Razorpay payment links, legacy UPI claims  
 11. **Marketing site** — Insider tips, FAQ, launch pricing, Privacy / Terms
@@ -32,10 +32,10 @@ create_application
   → save_contacts     (skipped if no contacts)
   → cold_email        (OpenAI; skipped if no contacts)
   → wait for Drive PDFs (resume ± cover ready)
-  → gmail_drafts      (Gmail API; skipped if no contacts)
+  → gmail_drafts      (prepare outreach; stage id kept for stored runs)
 ```
 
-Emails are always **drafts** until you send them from Gmail.
+Emails never leave JobApp OS — you send them yourself, from your own client.
 
 ---
 
@@ -89,7 +89,7 @@ Emails are always **drafts** until you send them from Gmail.
 | `/pipeline/[id]` | Live pipeline + PDF downloads |
 | `/onboarding` | Profile (Google, profile fields, master docs) |
 | `/settings` | Privacy & Settings (password, account) |
-| `/billing` | Razorpay Payment Link paywall (launch offer) |
+| `/billing` | Plans, credit top-ups and your current balance |
 | `/billing/razorpay/return` | Post-payment confirm / poll |
 | `/admin-center` | Admin |
 | `/privacy-policy`, `/terms` | Legal |
@@ -116,7 +116,7 @@ Emails are always **drafts** until you send them from Gmail.
 1. Deploy `web/`  
 2. Set env (pooler DB, production URL, Google redirect, OpenAI key, Razorpay keys + webhook, `AUTH_SECRET`)  
 3. Confirm `/api/health`  
-4. Admin: Connect Google with `gmail.send` for transactional email  
+4. Set `RESEND_API_KEY` + `TRANSACTIONAL_FROM_EMAIL` for the app's own email  
 
 ---
 

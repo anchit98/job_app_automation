@@ -30,6 +30,18 @@ export const resumeEducationSchema = z.object({
   dates: z.string().optional().default(""),
 });
 
+/**
+ * A hyperlink the master document carried, kept as label + address.
+ *
+ * Harvested at sync time (lib/resume/doc-links) because a resume prints "
+ * LinkedIn", not the URL — so the address exists nowhere in the text and
+ * re-deriving it later is impossible, not merely expensive.
+ */
+export const resumeLinkSchema = z.object({
+  text: z.string(),
+  url: z.string(),
+});
+
 export const resumeContentSchema = z.object({
   headline: z.string().optional(),
   contact_line: z.string().optional(),
@@ -39,6 +51,7 @@ export const resumeContentSchema = z.object({
   projects: z.array(resumeProjectSchema).default([]),
   skills: z.array(z.string()).default([]),
   education: z.array(resumeEducationSchema).default([]),
+  links: z.array(resumeLinkSchema).optional(),
 });
 
 export type ResumeExperience = z.infer<typeof resumeExperienceSchema>;

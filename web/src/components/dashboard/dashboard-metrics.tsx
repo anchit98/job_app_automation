@@ -41,9 +41,9 @@ export function DashboardMetricsGrid({
           tone="success"
         />
         <MetricCard
-          label="Gmail drafts"
+          label="Outreach emails"
           value={metrics.emailsSent}
-          icon="drafts"
+          icon="outgoing_mail"
           tone="tertiary"
         />
         <MetricCard
